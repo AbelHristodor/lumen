@@ -1,0 +1,23 @@
+[package]
+name = "sda-gui"
+edition.workspace = true
+version.workspace = true
+
+[[bin]]
+name = "sda-manager"
+path = "src/main.rs"
+
+[dependencies]
+sda-core = { path = "../sda-core" }
+eframe = { version = "0.36.2", features = ["persistence"] }
+egui = "0.36.2"
+display-info = "0.5"
+rfd = "0.17"
+open = "5"
+sys-locale = "0.3"
+anyhow = { workspace = true }
+log = "0.4"
+env_logger = "0.11"
+
+[target.'cfg(windows)'.build-dependencies]
+winresource = "0.1"
