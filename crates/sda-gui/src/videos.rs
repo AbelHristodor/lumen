@@ -9,6 +9,7 @@ pub fn show(ctx: &egui::Context, app: &mut App) {
     let s = app.core.strings.clone();
     let mut open = app.ui.videos_open;
     egui::Window::new(&s.videos)
+        .id(egui::Id::new("videos_window"))
         .open(&mut open)
         .resizable(true)
         .default_size([520.0, 260.0])
