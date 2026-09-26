@@ -6,8 +6,7 @@ fn slides() -> Vec<String> {
 
 #[test]
 fn load_hymn_resets_to_first_slide_unblanked() {
-    let mut p = PresentationState::default();
-    p.blank = true;
+    let mut p = PresentationState { blank: true, ..PresentationState::default() };
     p.load_hymn(Some("150".into()), "T".into(), slides());
     assert_eq!(p.index, 0);
     assert!(!p.blank);

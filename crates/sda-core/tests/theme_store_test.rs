@@ -7,8 +7,7 @@ fn save_then_list_and_load_includes_default_and_custom() {
     let root = dir.path();
     let names: Vec<String> = list_themes(root).iter().map(|t| t.name.clone()).collect();
     assert!(names.contains(&"Default".to_string()));
-    let mut t = Theme::default();
-    t.name = "Christmas".into();
+    let t = Theme { name: "Christmas".into(), ..Theme::default() };
     save_theme(root, &t).unwrap();
     let names: Vec<String> = list_themes(root).iter().map(|t| t.name.clone()).collect();
     assert!(names.contains(&"Christmas".to_string()));
@@ -38,8 +37,7 @@ fn cannot_delete_builtin_default() {
 fn delete_removes_custom_theme() {
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path();
-    let mut t = Theme::default();
-    t.name = "Temp".into();
+    let t = Theme { name: "Temp".into(), ..Theme::default() };
     save_theme(root, &t).unwrap();
     delete_theme(root, "Temp").unwrap();
     let names: Vec<String> = list_themes(root).iter().map(|t| t.name.clone()).collect();

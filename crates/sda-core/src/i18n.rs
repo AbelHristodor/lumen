@@ -62,7 +62,7 @@ impl Language {
 /// compile error until every language provides it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Strings {
-    // Static UI (app.slint)
+    // Static UI labels
     pub app_title: String,
     pub search_placeholder: String,
     pub prev_slide: String,
