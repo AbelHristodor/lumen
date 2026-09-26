@@ -1,159 +1,141 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file guides Claude Code when working in this repository.
 
 ## What this is
 
-SDA Manager: a cross-platform desktop app (Rust + the [Slint](https://slint.dev)
-GUI toolkit) with three tabs:
+SDA Manager 2.0.0 is a desktop app for projecting hymns. It is written in Rust
+with eframe/egui 0.36. There is one operator screen. The search panel is on the
+left. The Preview card and the Live card are on the right. Settings and Videos
+open as egui windows. The projector is an immediate egui viewport shown
+fullscreen on a chosen display.
 
-- **Library** — search a hymnal of PowerPoint `.pptx` files by number, title, or
-  lyric line and open the deck in PowerPoint. Search is fuzzy and
-  diacritic-insensitive (typing `plecati` finds *Plecaţi-vă*).
-- **Video Downloader** — download a YouTube URL via a bundled `yt-dlp`/`ffmpeg`.
-- **Settings** — force re-sync of the hymn library and show update status.
-
-The app self-updates from GitHub Releases and fetches its hymn library from the
-`hymns.zip` asset of the latest release.
+Hymns are `.pptx` files. Search matches number, title, filename, and lyrics. It
+is fuzzy and ignores accents, so `plecati` finds *Plecaţi-vă*. The hymnal comes
+from the `hymns.zip` asset of the latest GitHub release with ETag sync. The app
+also checks GitHub Releases for new versions.
 
 ## Commands
 
 ```sh
-cargo build --release -p hymnal-gui      # build the app -> target/release/hymnal-gui
-cargo run -p hymnal-gui                  # run the app (debug; keeps a console on Windows)
-cargo test -p hymnal-core                # run all core tests
-cargo test -p hymnal-core search         # run one test file (matches test fn / file names)
-cargo test -p hymnal-core -- matches_by_number   # run a single test by name
-RUST_LOG=hymnal_gui=debug,hymnal_core=debug cargo run -p hymnal-gui   # verbose logs
+cargo build --release -p sda-gui      # -> target/release/sda-manager
+cargo run -p sda-gui                  # run in debug
+cargo test -p sda-core                # all core tests
+cargo test -p sda-core search         # one test file
+cargo test -p sda-core -- matches_by_number   # one test by name
+cargo test -p sda-gui                 # the fonts unit test
+RUST_LOG=sda_manager=debug,sda_core=debug cargo run -p sda-gui   # verbose logs
 ```
 
-`hymnal-gui` has no tests; all logic is tested in `hymnal-core`. There is no
-separate lint step beyond `cargo build` warnings — run `cargo clippy` if needed.
+The binary log target is `sda_manager`. Run `cargo clippy` for lints.
 
-### Releases & distribution
+### Releases and distribution
 
-- Releases are built by `.github/workflows/release.yml` — **manual trigger only**
-  (`workflow_dispatch` with a `version` input like `v0.1.0`). It builds natively
-  on `macos-14`, `windows-latest`, and `ubuntu-latest` (no cross-compilation),
-  then publishes a GitHub Release with one archive per target.
+- Releases are built by `.github/workflows/release.yml` by manual trigger only.
+  It takes a `version` input like `v2.0.0`. It builds natively on `macos-14`,
+  `windows-latest`, and `ubuntu-latest`. It publishes a GitHub Release with one archive per target.
 - `install.sh` (macOS/Linux) and `install.ps1` (Windows) are one-liner installers
-  that fetch the latest release asset. The README has the `curl … | sh` /
-  `irm … | iex` commands.
-- The `hymns` job zips `assets/920` into `hymns.zip`; the app downloads it on
+  that fetch the latest `sda-manager` asset. The README has the commands.
+- The `hymns` job zips `assets/920` into `hymns.zip`. The app downloads it on
   first run and whenever its ETag changes. Hymn edits reach users on the next
-  release, not on push.
+  release. A push alone does nothing.
 
 ## Architecture
 
-Two-crate workspace with a deliberate logic/UI split:
+Two crates. Logic lives in the core. The GUI stays thin.
 
-- **`crates/hymnal-core`** — all logic, no UI, unit-tested. Modules:
-  - `pptx` (unzip + parse slide XML) → `model::HymnEntry` → `index` (crawl +
-    bincode cache, parallel cold parse) → `search::Searcher` (fuzzy rank).
-    `fold` does diacritic folding.
-  - `library` (config + OS paths), `sync` (hymns.zip download keyed by ETag),
-    `refresh` (the shared boot/force-sync pipeline that ties sync + index +
-    cache together).
-  - `downloader` (yt-dlp resolution, spawn, progress parsing) and `update`
-    (GitHub-Releases binary self-update).
-- **`crates/hymnal-gui`** — thin Slint shell, one module per tab. `build.rs`
-  compiles `ui/app.slint` via `slint_build` (and on Windows embeds
-  `assets/icon.ico` via `winresource`); `slint::include_modules!()` generates
-  the `AppWindow` type and the property/callback setters. `state::App` is a
-  `Clone` bag of `Rc<RefCell<…>>` handles shared by every module; each module
-  exposes `wire(ui, app)`. Config is loaded once in `App::load` and written
-  only by `App::save_cfg`. The crate-level `#![windows_subsystem = "windows"]`
-  suppresses the console window in release builds (no-op in debug and on
-  non-Windows).
+- **`crates/sda-core`**: no UI, unit tested. Modules: `pptx`, `model`, `index`,
+  `search`, `fold`, `library`, `sync`, `refresh`, `downloader`, `update`,
+  `i18n`, `theme`, `present`, `fit`.
+- **`crates/sda-gui`**: the egui app, binary `sda-manager`. `build.rs` embeds
+  `assets/icon.ico` on Windows. `#![windows_subsystem = "windows"]` hides the
+  console in release builds on Windows. Modules:
 
-### Data flow & threading (the key thing to understand)
+```
+main.rs          eframe setup, logging, window options
+app.rs           App, Msg, UiState, App::ui: drain, shortcuts, layout
+core.rs          Core: config, strings, themes, worker spawns, save_cfg
+search_panel.rs  search box and virtualized results
+preview.rs       Preview card
+live.rs          Live card and projector controls
+projector.rs     display list and the projector viewport
+slide.rs         slide::paint, layout, footer, FitCache
+settings.rs      Settings window
+theme_editor.rs  theme thumbnails, form, live preview
+videos.rs        Videos window
+shortcuts.rs     key handling
+style.rs         visuals, spacing, bundled fonts
+```
 
-Slint UI handles are not `Send`, so background work cannot touch the UI directly.
-The pattern, all driven from `main.rs`:
+Config is loaded once in `Core::load` and written only by `Core::save_cfg`.
 
-1. **Worker threads** do the blocking work and send one `state::Msg` over one
-   `mpsc::channel` — never by touching the UI. Workers build the `Searcher`
-   themselves so the UI thread only swaps a handle. Flows:
-   - boot (`main::spawn_boot`): `refresh::load_local` (disk only) →
-     `Msg::Index`, then `refresh::sync_default` and a second `Msg::Index` only
-     if the zip changed, then `update::check_and_stage_update`;
-   - force-sync (Settings): `refresh::force_clean` + `load_library(force=true)`
-     → `Msg::Synced`;
-   - library folder edits (Settings): `load_local` → `Msg::Reindexed`;
-   - downloads: `downloader::download` emits `DownloadEvent`s through a
-     callback → `Msg::Download`.
-2. A single Slint `Timer` (200ms `Repeated`) drains the channel in
-   `main::drain`. **Keep the timer binding alive** or polling stops.
-3. `App.rows` / `App.ctl_rows` map a visible result row → the entry's index
-   inside the `Searcher`; `App::with_entry` reads through that map so hymn
-   bodies are never cloned per keystroke. Row labels are precomputed in
-   `Searcher::new`. Results are **not** capped — `StandardListView`
-   virtualizes rendering.
+### Data flow and threading
 
-### UI / Slint conventions (`ui/app.slint`)
+Workers never touch the UI. Each worker sends one `app::Msg` over an
+`mpsc` channel and calls `ctx.request_repaint()`. Messages are `Index`,
+`Synced`, `Reindexed`, `Update`, and `Download`. Workers build the `Searcher`
+themselves, so the UI thread only swaps it in.
 
-- Tabs are an `if active-tab == N` switch, so each panel component is **destroyed
-  and recreated on every tab switch**. State that must survive lives on
-  `AppWindow` (the Rust side), not inside a panel.
-- Arrow-key nav (Library): a `FocusScope` wraps the search box and uses
-  `capture-key-pressed` to claim Up/Down (list) and Left/Right (slide) *before*
-  the `LineEdit` sees them. This only fires when focus is inside that scope, so
-  the panel re-focuses the search box via a one-shot `Timer` on mount (calling
-  `focus()` directly in `init` runs before the window is mapped and is dropped).
+- Boot, `Core::spawn_boot`: load the local index, then sync `hymns.zip`, then
+  reindex only if the zip changed, then check for updates.
+- Force sync, `Core::spawn_force_sync`: sends `Msg::Synced`.
+- Library folder edits, `Core::spawn_reindex`: sends `Msg::Reindexed`.
+- Downloads, `Core::spawn_download`: sends `Msg::Download` events.
 
-### Conventions / non-obvious decisions
+`App::ui` calls `drain` first on every frame to apply pending messages.
 
-- **Hymn numbers come from the filename stem, not slide text** (`pptx.rs`): the
-  in-slide "Imnul N" marker is unreliably split across XML runs. The number is
-  `Option<String>` (not a `u32`) because some hymns carry a letter suffix
-  (`664b`); `search::number_sort_key` orders these numerically with the suffix as
-  tiebreaker (`664` < `664a` < `664b` < `665`; unparseable/`None` sort last).
-  Title = first non-marker line of the first slide; "Imnul …" and `N/M` counter
-  lines are skipped. Body = all slide text joined; `slides` keeps per-slide text.
-- **Diacritic folding** (`fold.rs`) is applied to both indexed text and query
-  before matching — that's what makes search accent-insensitive. Extend the
-  match table there for new characters.
-- **Search ranking** (`search.rs`): fuzzy score (`nucleo-matcher`) × 10, plus
-  large bonuses for exact (20k) / prefix (10k) / substring (5k) matches, plus a
-  small per-field weight (Number > Title > Filename > Body) to break ties. Best
-  field per entry wins. Haystacks are folded and UTF-32 encoded once at
-  construction; the `Matcher` is owned so `search` takes `&mut self`. Entries
-  are sorted by number once, so the empty query is a plain iteration.
-- **Index cache** (`index.rs`): bincode-serialized to the OS cache dir with a
-  `CACHE_VERSION` envelope (bump it when the parser or entry layout changes).
-  `refresh_index` reuses a cached entry when path+mtime are unchanged (HashMap
-  lookup), parses the rest in parallel with `std::thread::scope`, and keeps
-  crawl order. One unparseable `.pptx` is logged and skipped. Lock files
-  (`~$…`) and non-`.pptx` files are ignored.
-- **Libraries & config** (`library.rs`): a library is a folder of `.pptx` files.
-  The default library is `data_dir/hymns`, filled from `Config.hymns_url`
-  (default: the latest release's `hymns.zip`). All OS paths come from one
-  private `dirs()` helper. Config is TOML in the OS config dir; a missing file
-  yields `Config::default()`, and the old `default_repo_url` key is ignored.
-  `refresh::register_default_library` repairs a managed entry still pointing at
-  the pre-zip git clone.
-- **Zip sync** (`sync.rs`): `HEAD` the URL, compare `ETag` (or `Last-Modified`)
-  with `hymns.etag`, and only then `GET` + extract into a temp dir and swap.
-  Returns `SyncOutcome::{Downloaded, Unchanged}` so callers skip re-indexing
-  when nothing changed. Tested against a `TcpListener` HTTP stub.
-- **Translations** (`i18n.rs`): `Language` (En/It/Ro) selects a `Strings` struct
-  (one field per UI string). `main.rs::apply_language` maps it onto the Slint
-  `export global I18n` and reuses it for dynamic status messages. The choice
-  persists in `Config.language`; first run detects the OS locale (`sys-locale`),
-  falling back to English. Adding a UI string is a compile error until all three
-  languages supply it (`Strings` has named fields). Switching is live (no
-  restart); the picker lives in the Settings tab.
-- **Tool binaries** (`downloader.rs`): `yt-dlp`/`ffmpeg` are located on `PATH` or
-  in the app's data `tools/` dir, else downloaded from upstream releases on
-  demand. Downloaded binaries are `chmod +x`'d and de-quarantined on macOS.
-  `download` reports progress through an `FnMut(DownloadEvent)` callback.
+### UI conventions
+
+- Search runs only when the query changed. Results use `ScrollArea::show_rows`.
+- `slide::paint` is the only place slide text is drawn. Preview, Live, the
+  projector, and the theme editor all call it. Auto size uses `sda_core::fit`
+  and a `FitCache` bounded at 64 entries.
+- The selected hymn drives Preview. Go Live copies it into the presentation
+  state that Live and the projector show.
+- The projector runs through `ctx.show_viewport_immediate`, so its frames run
+  on the main thread. Closing it from the OS clears `app.projector`. Keys
+  pressed in the projector go through the same `shortcuts::handle`.
+- Settings and Videos are `egui::Window`s. eframe persists window geometry.
+
+### Keyboard
+
+| Key | Action | Scope |
+|---|---|---|
+| Cmd/Ctrl+K | focus search | always |
+| Up / Down | move selection | search focused or list |
+| Enter | go live with previewed slide | search focused |
+| Left / Right, Space | live prev / next | not in a text field |
+| B | blank toggle | not in a text field |
+| Esc | stop projector | always |
+| 1..9 | live jump to slide N | not in a text field |
+
+### Conventions
+
+- Hymn numbers come from the filename stem, not slide text. The number is an
+  `Option<String>` because some hymns have a letter suffix like `664b`.
+  `search::number_sort_key` sorts `664` before `664a` before `665`.
+- Accent folding in `fold.rs` runs on both indexed text and the query. Add new
+  characters to its table.
+- Ranking in `search.rs` adds fuzzy score with bonuses for exact, prefix, and
+  substring matches, plus a small field weight. Number beats title, then
+  filename, then body.
+- The index cache in `index.rs` is bincode with a `CACHE_VERSION`. Bump it when
+  the parser or entry layout changes. Unchanged files are reused by path and
+  mtime. The rest parse in parallel.
+- Themes in `theme.rs` are JSON files. Fonts are Inter, Noto Serif, Lora, and
+  Roboto Slab. Roboto Slab is Apache 2.0 and the others are OFL. A theme sets a
+  solid background color, auto or fixed size, bold, alignment, line spacing,
+  margin, and footer.
+- Config paths are unchanged from 1.x. Config is TOML in the OS config dir.
+- `i18n.rs` has a `Strings` struct per language, En, It, and Ro. A new UI
+  string fails to compile until all three languages have it.
+- `downloader.rs` finds `yt-dlp` and `ffmpeg` on `PATH` or in the data
+  `tools/` dir, else downloads them.
 
 ### Tests
 
-Core tests live in `crates/hymnal-core/tests/` and run against **real `.pptx`
-fixtures** in `tests/fixtures/` (`001.pptx`, `150.pptx`, `356.pptx`, `664b.pptx`
-— the last covers letter-suffixed numbers). When changing parsing, folding,
-ranking, or cache logic, assert against these fixtures. `sync` is tested
-against a local `TcpListener` HTTP stub serving an in-memory zip; `downloader`
-parsing/path logic is tested without network. Self-update is not exercised in
-tests.
+Core tests live in `crates/sda-core/tests/` and use real `.pptx` fixtures in
+`tests/fixtures/`: `001.pptx`, `150.pptx`, `356.pptx`, and `664b.pptx`. The
+last one covers letter suffixes. `sync` is tested against a local
+`TcpListener` stub. `downloader` parsing runs without network. Self update is
+not tested. `sda-gui` has one unit test for fonts.

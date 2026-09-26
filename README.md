@@ -2,12 +2,12 @@
 
 # SDA Manager
 
-**Find a hymn and put it on the screen — in seconds.**
+**Find a hymn and put it on the screen in seconds.**
 
 A free, cross-platform desktop app for projecting hymns during a service.
 Search a hymnal by number, title, or a half-remembered line of the lyrics,
-then project it full-screen on the sanctuary display with your own styling — no
-PowerPoint, no internet, no fiddling mid-service.
+then project it full screen on the sanctuary display with your own styling.
+No PowerPoint and no fiddling in the middle of a service.
 
 Runs on **macOS**, **Windows**, and **Linux**. Available in **English**,
 **Italian**, and **Romanian**.
@@ -21,131 +21,111 @@ Runs on **macOS**, **Windows**, and **Linux**. Available in **English**,
 
 ## Why
 
-Getting the right hymn on the projector usually means hunting through folders of
-PowerPoint files, opening the right one, and starting the slideshow — while the
-congregation waits. SDA Manager replaces that with a single search box and a
-**Project** button. Type `plecati`, hit Enter, and *Plecaţi-vă* is on the wall.
+Getting a hymn on the projector often means hunting through folders of
+PowerPoint files while the congregation waits. SDA Manager replaces that with
+one search box. Type `plecati`, press Enter, and *Plecaţi-vă* is on the wall.
 
-It ships with a full hymnal and stays current automatically, and you can add
-your own folders of slides on top.
+It ships with a full hymnal that stays current on its own. You can add your own
+folders of slides too.
 
 ## Features
 
-- 🔎 **Instant fuzzy search** — search across hymn number, title, filename, and
-  every line of the lyrics. Accent-insensitive, so `plecati` finds *Plecaţi-vă*.
-  The best match is highlighted as you type.
-- 📽️ **Built-in projector** — project hymns full-screen on a second display.
-  The app draws the slides itself, so there's **no dependency on PowerPoint** and
-  it works the same on every OS. Live slide + next-slide preview on your laptop,
-  blank-screen toggle, and arrow-key control.
-- 🎨 **Custom themes** — design how projected slides look: fonts, sizes, colors,
-  backgrounds (solid, gradient, or image), alignment, and footer. Live preview,
-  multiple saved themes, switch the active one in a click.
-- 📚 **Your own libraries** — comes with a built-in hymnal that updates itself,
-  and you can add any folder of `.pptx` files alongside it. Enable, disable, or
-  remove your folders from Settings.
-- ⬇️ **Video downloader** — paste a YouTube link and save the video to a folder
-  you choose, with live progress. Handy for grabbing illustrations or special
-  music.
-- 🌍 **Multilingual UI** — English, Italian, and Romanian, auto-detected from
-  your system and switchable any time.
-- ⌨️ **Keyboard-first** — arrow keys to browse and step through slides, Enter to
-  open the highlighted hymn, `B` to blank the projector, `Esc` to stop. Built for
-  live use.
-- 🔄 **Always up to date** — the bundled hymnal is fetched from the latest
-  release on launch and the app checks for new versions automatically.
+- **Instant fuzzy search.** Search by number, title, filename, or any lyric
+  line. Search ignores accents, so `plecati` finds *Plecaţi-vă*.
+- **Built-in projector.** The app draws the slides itself on a second display.
+  It needs no PowerPoint and works the same on every OS.
+- **Preview and Live.** Check a slide in the Preview card, then send it to the
+  Live card and the projector.
+- **Custom themes.** Solid colors and four bundled fonts: Inter, Noto Serif,
+  Lora, and Roboto Slab. Pick auto or fixed text size, bold, alignment, line
+  spacing, margin, and footer.
+- **Your own libraries.** Add any folder of `.pptx` files next to the built-in
+  hymnal.
+- **Video downloader.** Paste a YouTube link and save the video to a folder.
+- **Multilingual UI.** English, Italian, and Romanian.
+- **Keyboard first.** Every live action has a key. See the table below.
+- **Always up to date.** The hymnal and the app update from the latest release.
 
 ## Install
 
 Prebuilt apps are on the
 [Releases](https://github.com/AbelHristodor/sda_manager/releases) page for
-macOS (Apple Silicon), Windows (x86_64), and Linux (x86_64).
+macOS on Apple Silicon, Windows x86_64, and Linux x86_64.
 
-**macOS / Linux** — paste into a terminal:
+**macOS and Linux.** Paste into a terminal:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/AbelHristodor/sda_manager/main/install.sh | sh
 ```
 
-> On macOS the app is unsigned, so the first time you open it, right-click the
-> app and choose **Open** to get past Gatekeeper. (Installs to `~/.local/bin`;
-> override with `BIN_DIR=…`.)
+The macOS app is unsigned. The first time, right click it and choose **Open**.
+It installs `sda-manager` to `~/.local/bin`. Set `BIN_DIR` to change that.
 
-**Windows** — paste into PowerShell:
+**Windows.** Paste into PowerShell:
 
 ```powershell
 irm https://raw.githubusercontent.com/AbelHristodor/sda_manager/main/install.ps1 | iex
 ```
 
-> Installs to `%LOCALAPPDATA%\Programs\hymnal-gui`, adds a Desktop shortcut, and
-> puts the app on your `PATH`.
-
-Prefer to build it yourself? See [For developers](#building-from-source).
+It installs to `%LOCALAPPDATA%\Programs\sda-manager`, adds a Desktop shortcut,
+and puts `sda-manager` on your `PATH`.
 
 ## Using it
 
-1. **Search** — start typing in the Library tab. Results rank across number,
-   title, filename, and lyrics. ↑/↓ move the highlight.
-2. **Preview** — the highlighted hymn's slides show on the right; ←/→ step
-   through them.
-3. **Project** — click **Project** on a hymn to load it into the Control tab,
-   pick your output display, and **Start projecting**. ←/→ or Space advance
-   slides on the projector; `B` blanks the screen; `Esc` stops. (Enter opens the
-   hymn in PowerPoint instead, if you'd rather present there.)
-4. **Style it** — in the Themes tab, design how slides look and set the active
-   theme. The preview matches exactly what the projector shows.
-5. **Add your own hymns** — Settings → *Your library folders* → **Add folder…**
-   to index your own `.pptx` files alongside the built-in hymnal.
+1. **Search.** Type in the search panel on the left. Up and Down move the
+   selection.
+2. **Preview.** The selected hymn shows in the Preview card.
+3. **Go Live.** Press Enter or click **Go Live**. The slide moves to the Live
+   card.
+4. **Projector.** Turn the projector on in the Live card and pick a display.
+5. **Settings.** Open Settings to edit themes, add folders, change language,
+   and sync the hymnal.
 
-Still have PowerPoint decks you'd rather run there? **Open in PowerPoint** and
-**Reveal in folder** are one click away from any search result.
+### Keyboard
+
+| Key | Action | Scope |
+|---|---|---|
+| Cmd/Ctrl+K | focus search | always |
+| Up / Down | move selection | search focused or list |
+| Enter | go live with previewed slide | search focused |
+| Left / Right, Space | live prev / next | not in a text field |
+| B | blank toggle | not in a text field |
+| Esc | stop projector | always |
+| 1..9 | live jump to slide N | not in a text field |
 
 ---
 
 ## For developers
 
-SDA Manager is written in **Rust** with the [Slint](https://slint.dev) GUI
-toolkit. The slide projector is rendered natively by the app — it parses the
-text out of `.pptx` files and draws the slides itself.
+SDA Manager is written in Rust with eframe/egui. It reads the text out of
+`.pptx` files and draws the slides itself.
 
 ### Workspace layout
 
 ```
 crates/
-  hymnal-core/   # pure logic: pptx text extraction, indexing, fuzzy search,
-                 # config, git sync, themes, presentation state — fully tested
-  hymnal-gui/    # Slint UI wired to the core on a worker thread; the projector
-                 # is a second Slint window
+  sda-core/   # logic: pptx text, index, fuzzy search, config, sync,
+              # themes, presentation state, text fit. Fully tested.
+  sda-gui/    # egui app, binary `sda-manager`
 ```
-
-The core crate has no UI dependency, so its logic (extraction, diacritic
-folding, fuzzy ranking, cache invalidation, theme load/save, slide transitions)
-is unit-tested headlessly.
 
 ### Building from source
 
 ```sh
-cargo build --release -p hymnal-gui      # binary at target/release/hymnal-gui
-cargo run   --release -p hymnal-gui      # build and run
+cargo build --release -p sda-gui      # binary at target/release/sda-manager
+cargo run --release -p sda-gui        # build and run
 ```
 
-Use `--release` for daily use — search is noticeably snappier (~5–15 ms vs tens
-of ms per keystroke over ~900 hymns). Dependencies are compiled optimized even
-in debug builds (`profile.dev.package."*"` in the workspace `Cargo.toml`), so
-`cargo run` is fine for development.
-
-Set `RUST_LOG=hymnal_gui=debug,hymnal_core=debug` to log indexing, sync, query,
-and projection activity to the console.
+Use `--release` for daily use. Search feels faster. Set
+`RUST_LOG=sda_manager=debug,sda_core=debug` to log indexing, sync, and search.
 
 ### How libraries work
 
-A *library* is a folder of `.pptx` files; you can use several. Each is crawled
-recursively (`~$` lock files and non-`.pptx` files are ignored). The default
-library is the `hymns.zip` asset of the latest GitHub release: downloaded on
-first run and re-downloaded only when its ETag changes, so newly released hymns
-appear automatically without touching the GitHub API. Additional libraries are
-plain folders you add in Settings. A cached index means subsequent launches only
-re-parse files whose modification time changed, and cold parses run in parallel.
+A library is a folder of `.pptx` files. Each folder is crawled recursively.
+Lock files and other file types are skipped. The default library is the
+`hymns.zip` asset of the latest release. The app downloads it on first run and
+again only when its ETag changes. A cached index means later launches only
+parse files that changed.
 
 ### Configuration
 
@@ -155,12 +135,11 @@ Config is a TOML file in the OS config directory:
 - **Windows:** `%APPDATA%\hymnal\HymnFinder\config\config.toml`
 - **Linux:** `~/.config/HymnFinder/config.toml`
 
-The default library lives under `…/org.hymnal.HymnFinder/hymns` (with the last
-downloaded ETag in `hymns.etag`), themes under `…/themes/*.json`, and the index
-cache under the OS cache dir (`…/org.hymnal.HymnFinder/index.bin`).
+The default library lives in `…/org.hymnal.HymnFinder/hymns` with the last
+ETag in `hymns.etag`. Themes live in `…/themes/*.json`. The index cache is
+`…/org.hymnal.HymnFinder/index.bin` in the OS cache dir.
 
-Point `hymns_url` at your own published `hymns.zip`, and/or add libraries
-directly:
+Point `hymns_url` at your own `hymns.zip`, or add libraries directly:
 
 ```toml
 hymns_url = "https://example.com/hymns.zip"
@@ -175,28 +154,21 @@ managed_by_git = false
 ### Tests
 
 ```sh
-cargo test -p hymnal-core
+cargo test -p sda-core
 ```
 
-Covers text extraction, diacritic folding, fuzzy ranking, index-cache
-invalidation, zip sync against a local HTTP stub, theme JSON round-trips, and
-presentation-state transitions, using real `.pptx` fixtures under
-`crates/hymnal-core/tests/fixtures/`. The GUI and projector are thin and
-verified manually.
+Tests cover text extraction, accent folding, ranking, cache invalidation, zip
+sync against a local HTTP stub, themes, presentation state, and text fit. They
+use real `.pptx` fixtures in `crates/sda-core/tests/fixtures/`. `sda-gui` has
+one unit test for fonts. The rest of the GUI is checked by hand.
 
-### Cross-compilation
+### Fonts
 
-- **macOS → Windows:** add the target and a mingw-w64 toolchain
-  (`brew install mingw-w64`):
-  ```sh
-  rustup target add x86_64-pc-windows-gnu
-  cargo build --release -p hymnal-gui --target x86_64-pc-windows-gnu
-  ```
-- **Windows → macOS** is not supported; build natively on macOS.
+Inter, Noto Serif, and Lora use the SIL Open Font License. Roboto Slab uses the
+Apache 2.0 license.
 
 ### Releases
 
-Releases are produced manually: run the **Release** workflow from the Actions
-tab with a tag like `v0.1.0`. It publishes one binary archive per platform plus
-`hymns.zip` built from `assets/920`. The install one-liners fetch the latest
-release, and running apps pick up the new `hymns.zip` on their next launch.
+Run the **Release** workflow from the Actions tab with a tag like `v2.0.0`. It
+publishes one archive per platform plus `hymns.zip` built from `assets/920`.
+Running apps pick up the new `hymns.zip` on their next launch.
