@@ -165,7 +165,7 @@ impl Searcher {
                 })
             })
             .collect();
-        hits.sort_by(|a, b| b.score.cmp(&a.score));
+        hits.sort_by_key(|h| std::cmp::Reverse(h.score));
         hits
     }
 }
