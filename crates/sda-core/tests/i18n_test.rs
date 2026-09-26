@@ -30,3 +30,20 @@ fn format_strings_keep_their_placeholders() {
         );
     }
 }
+
+#[test]
+fn italian_and_romanian_are_translated_not_copied() {
+    let en = Strings::for_language(Language::En);
+    for lang in [Language::It, Language::Ro] {
+        let s = Strings::for_language(lang);
+        assert_ne!(s.go_live, en.go_live, "{lang:?}");
+        assert_ne!(s.projector_on, en.projector_on, "{lang:?}");
+        assert_ne!(s.nothing_live, en.nothing_live, "{lang:?}");
+        assert_ne!(s.theme_footer_label, en.theme_footer_label, "{lang:?}");
+    }
+}
+
+#[test]
+fn field_count_matches_struct() {
+    assert_eq!(Strings::for_language(Language::En).as_fields().len(), 72);
+}
