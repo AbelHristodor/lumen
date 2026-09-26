@@ -1,31 +1,86 @@
-use sda_core::theme::{Background, Rgba, Theme};
+use sda_core::theme::{Font, FontSize, HAlign, Rgba, Theme, VAlign};
 
 #[test]
 fn theme_json_round_trips() {
     let t = Theme::default();
-    let json = t.to_json().unwrap();
-    let back = Theme::from_json(&json).unwrap();
-    assert_eq!(back, t);
+    assert_eq!(Theme::from_json(&t.to_json().unwrap()).unwrap(), t);
 }
 
 #[test]
-fn default_theme_has_name_and_dark_background() {
+fn default_theme_matches_spec() {
     let t = Theme::default();
     assert_eq!(t.name, "Default");
-    assert!(matches!(t.background.kind, Background::Solid { .. }));
+    assert_eq!(t.font, Font::Inter);
+    assert_eq!(t.size, FontSize::Auto);
+    assert!(t.bold);
+    assert_eq!(t.text_color, Rgba::new(255, 255, 255, 255));
+    assert_eq!(t.bg_color, Rgba::new(11, 31, 58, 255));
+    assert_eq!(t.h_align, HAlign::Center);
+    assert_eq!(t.v_align, VAlign::Middle);
+    assert_eq!(t.line_spacing, 1.3);
+    assert_eq!(t.margin, 0.06);
+    assert!(!t.footer);
 }
 
 #[test]
 fn custom_theme_round_trips_all_fields() {
-    let mut t = Theme::default();
-    t.name = "Christmas".into();
-    t.text.font_family = "Georgia".into();
-    t.text.font_size_pt = Some(48.0);
-    t.text.font_weight = 700;
-    t.background.kind = Background::Image { path: "/tmp/bg.jpg".into() };
-    t.background.overlay_opacity = 0.4;
-    let back = Theme::from_json(&t.to_json().unwrap()).unwrap();
-    assert_eq!(back, t);
+    let t = Theme {
+        name: "Christmas".into(),
+        font: Font::Lora,
+        size: FontSize::Pt(48.0),
+        bold: false,
+        text_color: Rgba::new(1, 2, 3, 255),
+        bg_color: Rgba::new(4, 5, 6, 255),
+        h_align: HAlign::Left,
+        v_align: VAlign::Bottom,
+        line_spacing: 1.1,
+        margin: 0.1,
+        footer: true,
+    };
+    assert_eq!(Theme::from_json(&t.to_json().unwrap()).unwrap(), t);
+}
+
+const OLD_JSON: &str = r##"{
+  "name": "Old",
+  "text": {"font_family":"Georgia","font_size_pt":48.0,"font_weight":700,
+    "color":{"r":255,"g":255,"b":255,"a":255},"h_align":"Center","v_align":"Middle","line_spacing":1.3,
+    "shadow":{"enabled":false,"color":{"r":0,"g":0,"b":0,"a":180},"blur":4.0,"dx":2.0,"dy":2.0},
+    "outline":{"enabled":false,"color":{"r":0,"g":0,"b":0,"a":255},"width":1.0}},
+  "background": {"kind":{"Solid":{"color":{"r":11,"g":31,"b":58,"a":255}}},"image_fit":"Cover",
+    "overlay_color":{"r":0,"g":0,"b":0,"a":255},"overlay_opacity":0.0},
+  "layout": {"margin":48.0,"max_text_width":0.8},
+  "footer": {"show":true,"content":"HymnNumberTitle"}
+}"##;
+
+#[test]
+fn old_nested_json_loads_with_defaults_and_footer_show() {
+    let t = Theme::from_json(OLD_JSON).unwrap();
+    assert_eq!(t.name, "Old");
+    assert_eq!(t.font, Font::Inter);
+    assert_eq!(t.size, FontSize::Auto);
+    assert!(t.footer, "old footer.show must map to the new bool");
+}
+
+#[test]
+fn missing_fields_take_defaults() {
+    let t = Theme::from_json(r#"{"name":"Bare"}"#).unwrap();
+    assert_eq!(t.name, "Bare");
+    assert_eq!(t.bg_color, Theme::default().bg_color);
+}
+
+#[test]
+fn cache_key_changes_with_any_field() {
+    let a = Theme::default();
+    let mut b = a.clone();
+    b.margin = 0.07;
+    assert_ne!(a.cache_key(), b.cache_key());
+    assert_eq!(a.cache_key(), Theme::default().cache_key());
+}
+
+#[test]
+fn font_labels_and_all() {
+    assert_eq!(Font::all().len(), 4);
+    assert_eq!(Font::NotoSerif.label(), "Noto Serif");
 }
 
 #[test]

@@ -51,136 +51,96 @@ pub enum VAlign {
     Bottom,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct Shadow {
-    pub enabled: bool,
-    pub color: Rgba,
-    pub blur: f32,
-    pub dx: f32,
-    pub dy: f32,
+/// A bundled font family.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum Font {
+    Inter,
+    NotoSerif,
+    Lora,
+    RobotoSlab,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct Outline {
-    pub enabled: bool,
-    pub color: Rgba,
-    pub width: f32,
+impl Font {
+    /// Every bundled font in display order.
+    pub fn all() -> [Font; 4] {
+        [Font::Inter, Font::NotoSerif, Font::Lora, Font::RobotoSlab]
+    }
+
+    /// Human readable font name.
+    pub fn label(self) -> &'static str {
+        match self {
+            Font::Inter => "Inter",
+            Font::NotoSerif => "Noto Serif",
+            Font::Lora => "Lora",
+            Font::RobotoSlab => "Roboto Slab",
+        }
+    }
 }
 
+/// Slide text size. Auto fits the text to the slide.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, Default)]
+pub enum FontSize {
+    #[default]
+    Auto,
+    Pt(f32),
+}
+
+fn footer_compat<'de, D: serde::Deserializer<'de>>(d: D) -> Result<bool, D::Error> {
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum F {
+        Flag(bool),
+        Old { show: bool },
+    }
+    Ok(match F::deserialize(d)? {
+        F::Flag(b) => b,
+        F::Old { show } => show,
+    })
+}
+
+/// A saved set of styling applied to projected slides.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct TextStyle {
-    pub font_family: String,
-    /// `None` = auto-fit; `Some(pt)` = fixed point size.
-    pub font_size_pt: Option<f32>,
-    pub font_weight: u16,
-    pub color: Rgba,
+#[serde(default)]
+pub struct Theme {
+    pub name: String,
+    pub font: Font,
+    pub size: FontSize,
+    pub bold: bool,
+    pub text_color: Rgba,
+    pub bg_color: Rgba,
     pub h_align: HAlign,
     pub v_align: VAlign,
     pub line_spacing: f32,
-    pub shadow: Shadow,
-    pub outline: Outline,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum Background {
-    Solid { color: Rgba },
-    Gradient { from: Rgba, to: Rgba, angle: f32 },
-    Image { path: String },
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum ImageFit {
-    Cover,
-    Contain,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct BackgroundStyle {
-    pub kind: Background,
-    pub image_fit: ImageFit,
-    pub overlay_color: Rgba,
-    pub overlay_opacity: f32,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct LayoutStyle {
     pub margin: f32,
-    /// Fraction of slide width (0..1) the text may occupy.
-    pub max_text_width: f32,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum FooterContent {
-    HymnNumberTitle,
-    SlideCounter,
-    None,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct FooterStyle {
-    pub show: bool,
-    pub content: FooterContent,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct Theme {
-    pub name: String,
-    pub text: TextStyle,
-    pub background: BackgroundStyle,
-    pub layout: LayoutStyle,
-    pub footer: FooterStyle,
+    #[serde(deserialize_with = "footer_compat")]
+    pub footer: bool,
 }
 
 impl Default for Theme {
     fn default() -> Self {
         Theme {
             name: "Default".into(),
-            text: TextStyle {
-                font_family: "sans-serif".into(),
-                font_size_pt: Some(44.0),
-                font_weight: 700,
-                color: Rgba::new(255, 255, 255, 255),
-                h_align: HAlign::Center,
-                v_align: VAlign::Middle,
-                line_spacing: 1.3,
-                shadow: Shadow {
-                    enabled: false,
-                    color: Rgba::new(0, 0, 0, 180),
-                    blur: 4.0,
-                    dx: 2.0,
-                    dy: 2.0,
-                },
-                outline: Outline {
-                    enabled: false,
-                    color: Rgba::new(0, 0, 0, 255),
-                    width: 1.0,
-                },
-            },
-            background: BackgroundStyle {
-                kind: Background::Solid {
-                    color: Rgba::new(11, 31, 58, 255),
-                },
-                image_fit: ImageFit::Cover,
-                overlay_color: Rgba::new(0, 0, 0, 255),
-                overlay_opacity: 0.0,
-            },
-            layout: LayoutStyle {
-                margin: 48.0,
-                max_text_width: 0.8,
-            },
-            footer: FooterStyle {
-                show: false,
-                content: FooterContent::None,
-            },
+            font: Font::Inter,
+            size: FontSize::Auto,
+            bold: true,
+            text_color: Rgba::new(255, 255, 255, 255),
+            bg_color: Rgba::new(11, 31, 58, 255),
+            h_align: HAlign::Center,
+            v_align: VAlign::Middle,
+            line_spacing: 1.3,
+            margin: 0.06,
+            footer: false,
         }
     }
 }
 
 impl Theme {
+    /// Serialize to pretty JSON.
     pub fn to_json(&self) -> anyhow::Result<String> {
         Ok(serde_json::to_string_pretty(self)?)
     }
 
+    /// Parse JSON. Missing fields take defaults and old nested files still load.
     pub fn from_json(text: &str) -> anyhow::Result<Theme> {
         Ok(serde_json::from_str(text)?)
     }
@@ -188,6 +148,28 @@ impl Theme {
     /// The built-in default theme cannot be deleted or overwritten on disk.
     pub fn is_builtin_default(&self) -> bool {
         self.name == "Default"
+    }
+
+    /// Stable hash of every field, used by the GUI layout cache.
+    pub fn cache_key(&self) -> u64 {
+        use std::hash::{Hash, Hasher};
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        self.name.hash(&mut h);
+        self.font.hash(&mut h);
+        self.bold.hash(&mut h);
+        match self.size {
+            FontSize::Auto => 0u32.hash(&mut h),
+            FontSize::Pt(p) => p.to_bits().hash(&mut h),
+        }
+        let c = self.text_color;
+        (c.r, c.g, c.b, c.a).hash(&mut h);
+        let c = self.bg_color;
+        (c.r, c.g, c.b, c.a).hash(&mut h);
+        (self.h_align as u8, self.v_align as u8).hash(&mut h);
+        self.line_spacing.to_bits().hash(&mut h);
+        self.margin.to_bits().hash(&mut h);
+        self.footer.hash(&mut h);
+        h.finish()
     }
 }
 
