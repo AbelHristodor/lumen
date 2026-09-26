@@ -1,4 +1,4 @@
-use hymnal_core::index::{build_index, crawl_pptx_paths};
+use hymnal_core::index::{crawl_pptx_paths, refresh_index};
 use std::path::Path;
 
 #[test]
@@ -12,14 +12,14 @@ fn crawl_skips_lock_and_non_pptx_files() {
 }
 
 #[test]
-fn build_index_parses_fixtures() {
-    let entries = build_index(Path::new("tests/fixtures"), "test-lib");
+fn cold_refresh_parses_fixtures() {
+    let entries = refresh_index(Path::new("tests/fixtures"), "test-lib", &[]);
     let one = entries.iter().find(|e| e.number.as_deref() == Some("1")).unwrap();
     assert!(one.title.contains("Plecaţi-vă"));
     assert_eq!(one.library, "test-lib");
 }
 
-use hymnal_core::index::{load_cache, refresh_index, save_cache};
+use hymnal_core::index::{load_cache, save_cache};
 use hymnal_core::model::HymnEntry;
 use std::path::PathBuf;
 
@@ -30,7 +30,6 @@ fn cache_round_trips() {
     let entries = vec![HymnEntry {
         number: Some("7".into()),
         title: "T".into(),
-        body: "B".into(),
         slides: vec![],
         path: PathBuf::from("/x/7.pptx"),
         library: "L".into(),
@@ -44,7 +43,7 @@ fn cache_round_trips() {
 #[test]
 fn refresh_reuses_unchanged_entries() {
     let root = std::path::Path::new("tests/fixtures");
-    let first = hymnal_core::index::build_index(root, "L");
+    let first = refresh_index(root, "L", &[]);
     let again = refresh_index(root, "L", &first);
     assert_eq!(first.len(), again.len());
 }
@@ -60,7 +59,6 @@ fn cache_with_wrong_version_is_ignored() {
     let legacy = vec![HymnEntry {
         number: Some("1".into()),
         title: "stale".into(),
-        body: "b".into(),
         slides: vec![],
         path: PathBuf::from("/x/1.pptx"),
         library: "L".into(),

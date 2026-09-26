@@ -1,9 +1,9 @@
-use hymnal_core::index::build_index;
+use hymnal_core::index::refresh_index;
 use hymnal_core::search::Searcher;
 use std::path::Path;
 
 fn searcher() -> Searcher {
-    let entries = build_index(Path::new("tests/fixtures"), "test-lib");
+    let entries = refresh_index(Path::new("tests/fixtures"), "test-lib", &[]);
     Searcher::new(entries)
 }
 
@@ -43,7 +43,6 @@ fn lettered_number_sorts_numerically_then_by_suffix() {
     let mk = |n: &str| HymnEntry {
         number: Some(n.into()),
         title: format!("hymn {n}"),
-        body: String::new(),
         slides: vec![],
         path: std::path::PathBuf::from(format!("/x/{n}.pptx")),
         library: "L".into(),

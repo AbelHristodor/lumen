@@ -47,7 +47,7 @@ impl Searcher {
                     number_str: entry.number.clone().unwrap_or_default(),
                     title_folded: fold(&entry.title),
                     filename_folded: fold(&filename),
-                    body_folded: fold(&entry.body),
+                    body_folded: fold(&entry.slides.join("\n")),
                     entry,
                 }
             })

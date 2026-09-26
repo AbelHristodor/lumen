@@ -9,9 +9,8 @@ pub struct HymnEntry {
     pub number: Option<String>,
     /// Title line (first meaningful text on the title slide).
     pub title: String,
-    /// Concatenated verse text from all slides, for full-text search.
-    pub body: String,
     /// Text of each slide (paragraphs joined by `\n`), in presentation order.
+    /// Full-text search runs over these joined by `\n`.
     pub slides: Vec<String>,
     /// Absolute path to the source .pptx.
     pub path: PathBuf,

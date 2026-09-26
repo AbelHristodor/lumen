@@ -11,7 +11,7 @@ fn extracts_number_title_and_body() {
     // Title is the first meaningful line of the title slide.
     assert!(parsed.title.contains("Plecaţi-vă lui Dumnezeu"));
     // Body contains verse text from later slides.
-    assert!(parsed.body.contains("Popoare-oriunde"));
+    assert!(parsed.slides.join("\n").contains("Popoare-oriunde"));
     // The "Imnul" marker and counter lines are not the title.
     assert!(!parsed.title.starts_with("Imnul"));
 }
@@ -50,8 +50,6 @@ fn preserves_text_per_slide() {
     assert_eq!(parsed.slides.len(), 5);
     // The first slide holds the title.
     assert!(parsed.slides[0].contains("Plecaţi-vă lui Dumnezeu"));
-    // body is exactly the slides joined by newlines (search input unchanged).
-    assert_eq!(parsed.body, parsed.slides.join("\n"));
 }
 
 #[test]

@@ -1,5 +1,7 @@
 use crate::model::HymnEntry;
 use crate::pptx::extract;
+use log::warn;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
 use walkdir::WalkDir;
@@ -30,32 +32,11 @@ fn mtime_secs(path: &Path) -> i64 {
         .unwrap_or(0)
 }
 
-/// Build hymn entries for every .pptx under `root`. Unparseable files are
-/// skipped (logged to stderr) so one bad file never aborts the crawl.
-pub fn build_index(root: &Path, library: &str) -> Vec<HymnEntry> {
-    let mut entries = Vec::new();
-    for path in crawl_pptx_paths(root) {
-        match extract(&path) {
-            Ok(parsed) => entries.push(HymnEntry {
-                number: parsed.number,
-                title: parsed.title,
-                body: parsed.body,
-                slides: parsed.slides,
-                path: path.clone(),
-                library: library.to_string(),
-                mtime: mtime_secs(&path),
-            }),
-            Err(err) => eprintln!("skip {}: {err}", path.display()),
-        }
-    }
-    entries
-}
-
 /// On-disk cache format version. Bump this whenever the parser or entry layout
 /// changes in a way that makes previously-cached entries stale (e.g. improved
 /// title extraction). A mismatch makes `load_cache` return `None`, forcing a
 /// full re-parse even though the underlying .pptx mtimes are unchanged.
-pub const CACHE_VERSION: u32 = 6;
+pub const CACHE_VERSION: u32 = 7;
 
 #[derive(serde::Serialize, serde::Deserialize)]
 struct CacheFile {
@@ -88,34 +69,30 @@ pub fn save_cache(cache_path: &Path, entries: &[HymnEntry]) -> anyhow::Result<()
     Ok(())
 }
 
-/// Reuse a cached entry when the file's mtime is unchanged, otherwise re-parse.
-/// `cached` is the previously loaded index; returns a fresh, up-to-date index.
-pub fn refresh_index(
-    root: &Path,
-    library: &str,
-    cached: &[HymnEntry],
-) -> Vec<HymnEntry> {
+/// Build the index for every .pptx under `root`. A cached entry is reused when
+/// its path and mtime are unchanged; everything else is re-parsed. Unparseable
+/// files are logged and skipped so one bad file never aborts the crawl. Output
+/// follows crawl order.
+pub fn refresh_index(root: &Path, library: &str, cached: &[HymnEntry]) -> Vec<HymnEntry> {
+    let by_path: HashMap<&Path, &HymnEntry> =
+        cached.iter().map(|e| (e.path.as_path(), e)).collect();
     let mut out = Vec::new();
     for path in crawl_pptx_paths(root) {
         let mtime = mtime_secs(&path);
-        if let Some(hit) = cached
-            .iter()
-            .find(|e| e.path == path && e.mtime == mtime)
-        {
-            out.push(hit.clone());
+        if let Some(hit) = by_path.get(path.as_path()).filter(|e| e.mtime == mtime) {
+            out.push((*hit).clone());
             continue;
         }
         match extract(&path) {
             Ok(parsed) => out.push(HymnEntry {
                 number: parsed.number,
                 title: parsed.title,
-                body: parsed.body,
                 slides: parsed.slides,
-                path: path.clone(),
+                path,
                 library: library.to_string(),
                 mtime,
             }),
-            Err(err) => eprintln!("skip {}: {err}", path.display()),
+            Err(err) => warn!("skip {}: {err}", path.display()),
         }
     }
     out

@@ -9,7 +9,6 @@ use zip::ZipArchive;
 pub struct ParsedPptx {
     pub number: Option<String>,
     pub title: String,
-    pub body: String,
     /// Text of each slide (paragraphs joined by `\n`), in presentation order.
     pub slides: Vec<String>,
 }
@@ -19,7 +18,7 @@ pub struct ParsedPptx {
 /// The number is taken from the filename stem (authoritative; the in-slide
 /// "Imnul N" text is unreliably split across XML runs). The title is the first
 /// meaningful line of the slide with the lowest file index, skipping the
-/// "Imnul ..." marker and "N/M" counter lines. The body is all slide text.
+/// "Imnul ..." marker and "N/M" counter lines.
 pub fn extract(path: &Path) -> Result<ParsedPptx> {
     let number = path
         .file_stem()
@@ -54,8 +53,7 @@ pub fn extract(path: &Path) -> Result<ParsedPptx> {
     }
 
     let title = pick_title(&first_slide_lines);
-    let body = slides.join("\n");
-    Ok(ParsedPptx { number, title, body, slides })
+    Ok(ParsedPptx { number, title, slides })
 }
 
 /// Derive the hymn number from a filename stem, preserving an optional letter
