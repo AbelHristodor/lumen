@@ -12,8 +12,11 @@ pub fn show(ui: &mut egui::Ui, app: &mut App) {
     });
     let present = &app.core.present;
     if let Some(text) = present.current_slide() {
-        let w = ui.available_width();
-        let (rect, _) = ui.allocate_exact_size(egui::vec2(w, w * 9.0 / 16.0), egui::Sense::hover());
+        let controls_h = 3.0 * ui.spacing().interact_size.y;
+        let max_h = (ui.available_height() - controls_h).max(80.0);
+        let w = ui.available_width().min(max_h * 16.0 / 9.0);
+        let (rect, _) = ui.allocate_exact_size(egui::vec2(ui.available_width(), w * 9.0 / 16.0), egui::Sense::hover());
+        let rect = egui::Rect::from_center_size(rect.center(), egui::vec2(w, w * 9.0 / 16.0));
         if present.blank {
             ui.painter().rect_filled(rect, 0.0, egui::Color32::BLACK);
         } else {

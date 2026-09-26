@@ -269,13 +269,21 @@ impl eframe::App for App {
         });
         egui::Panel::left("search").resizable(true).default_size(340.0).show(ui, |ui| search_panel::show(ui, self));
         egui::CentralPanel::default().show(ui, |ui| {
-            ui.horizontal(|ui| {
-                let w = (ui.available_width() - ui.spacing().item_spacing.x) / 2.0;
-                let h = ui.available_height();
-                let layout = egui::Layout::top_down(egui::Align::Min);
-                ui.allocate_ui_with_layout(egui::vec2(w, h), layout, |ui| preview::show(ui, self));
-                ui.allocate_ui_with_layout(egui::vec2(w, h), layout, |ui| live::show(ui, self));
-            });
+            let card = egui::Frame::group(ui.style()).inner_margin(12.0).corner_radius(8.0);
+            let gap = ui.spacing().item_spacing.y;
+            let size = egui::vec2(ui.available_width(), (ui.available_height() - gap) / 2.0);
+            let layout = egui::Layout::top_down(egui::Align::Min);
+            for (i, body) in [preview::show as fn(&mut egui::Ui, &mut App), live::show].into_iter().enumerate() {
+                ui.push_id(i, |ui| {
+                    ui.allocate_ui_with_layout(size, layout, |ui| {
+                        ui.set_clip_rect(ui.max_rect());
+                        card.show(ui, |ui| {
+                            ui.set_min_size(ui.available_size());
+                            body(ui, self);
+                        });
+                    });
+                });
+            }
         });
         settings::show(ui.ctx(), self);
         videos::show(ui.ctx(), self);
