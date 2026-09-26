@@ -1,110 +1,112 @@
-//! Reusable library-loading pipeline shared by app boot and "force sync":
-//! ensure the default library is present (clone/pull), index all enabled
-//! libraries, and maintain the on-disk cache.
+//! Library-loading pipeline shared by app boot, force sync and folder edits:
+//! keep the built-in library current, index every enabled library, maintain
+//! the on-disk cache.
 
 use crate::index::{load_cache, refresh_index, save_cache};
 use crate::library::{
-    default_library_dir, index_cache_path, Config,
+    default_library, default_library_dir, hymns_stamp_path, index_cache_path, legacy_clone_dir,
+    Config,
 };
 use crate::model::HymnEntry;
-use crate::sync::{sync_default_library, SyncOutcome};
+use crate::sync::{sync_hymns, SyncOutcome};
 use log::{debug, info, warn};
 use std::path::Path;
 
-/// Delete the default git-managed library clone and the index cache, given
-/// explicit paths. Missing paths are not an error. Split out from `force_clean`
-/// so it is unit-testable without touching real app directories.
+/// Delete the built-in library folder, its ETag stamp and the index cache.
+/// Missing paths are not an error.
 pub fn force_clean_paths(
-    clone_dir: Option<&Path>,
+    hymns_dir: Option<&Path>,
+    stamp: Option<&Path>,
     cache_file: Option<&Path>,
 ) -> anyhow::Result<()> {
-    if let Some(dir) = clone_dir {
-        if dir.exists() {
-            info!("force_clean: removing clone dir {}", dir.display());
-            std::fs::remove_dir_all(dir)?;
-        }
+    if let Some(dir) = hymns_dir.filter(|d| d.exists()) {
+        info!("force_clean: removing {}", dir.display());
+        std::fs::remove_dir_all(dir)?;
     }
-    if let Some(file) = cache_file {
-        if file.exists() {
-            info!("force_clean: removing cache file {}", file.display());
-            std::fs::remove_file(file)?;
-        }
+    for file in [stamp, cache_file].into_iter().flatten().filter(|f| f.exists()) {
+        info!("force_clean: removing {}", file.display());
+        std::fs::remove_file(file)?;
     }
     Ok(())
 }
 
 /// Force-clean using the standard app directories.
-pub fn force_clean(_cfg: &Config) -> anyhow::Result<()> {
-    force_clean_paths(default_library_dir().as_deref(), index_cache_path().as_deref())
+pub fn force_clean() -> anyhow::Result<()> {
+    force_clean_paths(
+        default_library_dir().as_deref(),
+        hymns_stamp_path().as_deref(),
+        index_cache_path().as_deref(),
+    )
 }
 
-/// Register the default git-managed library in `cfg` (path only; does NOT touch
-/// the network). Adds the entry if no git-managed library is present yet.
-/// Returns false if the default library dir can't be determined.
-fn register_default_library(cfg: &mut Config) -> bool {
-    let Some(default) = crate::library::default_library() else {
+/// Make sure `cfg` carries the built-in library at its current location. Adds
+/// the entry when absent and repairs the path of one left by an older version
+/// that pointed into the git clone. Returns false if no data dir is available.
+pub fn register_default_library(cfg: &mut Config) -> bool {
+    let Some(default) = default_library() else {
         warn!("could not determine default library dir");
         return false;
     };
-    if !cfg.libraries.iter().any(|l| l.managed_by_git) {
-        debug!("registering default library at {}", default.path);
-        cfg.libraries.push(default);
+    match cfg.libraries.iter_mut().find(|l| l.managed_by_git) {
+        Some(managed) => {
+            if managed.path != default.path {
+                debug!("repairing default library path {} -> {}", managed.path, default.path);
+                managed.path = default.path;
+                managed.name = default.name;
+            }
+        }
+        None => {
+            debug!("registering default library at {}", default.path);
+            cfg.libraries.push(default);
+        }
     }
     true
 }
 
-/// Clone the default library if it's missing, otherwise fast-forward pull.
-/// Returns the sync outcome (Cloned/Updated/Unchanged), or None on error/no dir.
-/// This is the network step — call it off the UI thread.
+/// Download the hymns zip if its ETag changed. Network step: keep it off the
+/// UI thread. Returns `None` on error or when no data dir exists.
 pub fn sync_default(cfg: &Config) -> Option<SyncOutcome> {
     let dir = default_library_dir()?;
-    let fresh = !dir.join(".git").is_dir();
-    info!(
-        "{} default library from {} -> {}",
-        if fresh { "cloning" } else { "updating" },
-        cfg.default_repo_url,
-        dir.display()
-    );
-    match sync_default_library(&cfg.default_repo_url, &dir) {
+    let stamp = hymns_stamp_path()?;
+    info!("syncing hymns from {} -> {}", cfg.hymns_url, dir.display());
+    match sync_hymns(&cfg.hymns_url, &dir, &stamp) {
         Ok(outcome) => {
             info!("sync ok: {outcome:?}");
+            if outcome == SyncOutcome::Downloaded {
+                if let Some(old) = legacy_clone_dir().filter(|p| p.exists()) {
+                    info!("removing legacy clone {}", old.display());
+                    let _ = std::fs::remove_dir_all(old);
+                }
+            }
             Some(outcome)
         }
         Err(e) => {
-            warn!("clone/sync failed: {e}");
+            warn!("hymns sync failed: {e}");
             None
         }
     }
 }
 
-/// Index from whatever is already on disk — NO network. Use on boot for an
-/// instant time-to-searchable; a background [`sync_default`] + re-index can
-/// follow if it reports changes. If the default library has never been cloned
-/// (first run), this returns whatever other libraries yield (often empty),
-/// and the caller should fall back to [`load_library`].
+/// Index from disk only. Use on boot for instant search; follow with
+/// [`sync_default`] and re-index when it reports a download.
 pub fn load_local(mut cfg: Config) -> Vec<HymnEntry> {
     register_default_library(&mut cfg);
     index_enabled(&cfg, false)
 }
 
-/// True if the default git-managed library has been cloned at least once.
+/// True once the built-in library has been downloaded at least once.
 pub fn default_library_present() -> bool {
-    default_library_dir()
-        .map(|d| d.join(".git").is_dir())
-        .unwrap_or(false)
+    default_library_dir().is_some_and(|d| d.is_dir())
 }
 
-/// Load (and cache) the hymn index for all enabled libraries in `cfg`. When
-/// `force` is true the on-disk cache is ignored, forcing a full re-parse.
-/// This performs the network sync first (clone/pull) — use for first run and
-/// force-sync, not the fast boot path.
+/// Sync, then index every enabled library. `force` ignores the cache. Use for
+/// first run and force sync, not the fast boot path.
 pub fn load_library(mut cfg: Config, force: bool) -> Vec<HymnEntry> {
     let _ = sync_default(&cfg);
     register_default_library(&mut cfg);
     index_enabled(&cfg, force)
 }
 
-/// Index every enabled library in `cfg`, using the on-disk cache unless `force`.
 fn index_enabled(cfg: &Config, force: bool) -> Vec<HymnEntry> {
     let cache = index_cache_path();
     let cached = if force {
@@ -116,15 +118,9 @@ fn index_enabled(cfg: &Config, force: bool) -> Vec<HymnEntry> {
 
     let mut entries = Vec::new();
     for lib in cfg.libraries.iter().filter(|l| l.enabled) {
-        let root = Path::new(&lib.path);
         let before = entries.len();
-        entries.extend(refresh_index(root, &lib.name, &cached));
-        info!(
-            "indexed library '{}' at {} -> {} hymns",
-            lib.name,
-            lib.path,
-            entries.len() - before
-        );
+        entries.extend(refresh_index(Path::new(&lib.path), &lib.name, &cached));
+        info!("indexed '{}' at {} -> {} hymns", lib.name, lib.path, entries.len() - before);
     }
     if entries.is_empty() && !force {
         warn!("no entries indexed; falling back to {} cached", cached.len());
@@ -133,9 +129,8 @@ fn index_enabled(cfg: &Config, force: bool) -> Vec<HymnEntry> {
     info!("total {} hymns indexed", entries.len());
 
     if let Some(p) = cache {
-        match save_cache(&p, &entries) {
-            Ok(()) => debug!("wrote index cache to {}", p.display()),
-            Err(e) => warn!("failed to write index cache: {e}"),
+        if let Err(e) = save_cache(&p, &entries) {
+            warn!("failed to write index cache: {e}");
         }
     }
     entries

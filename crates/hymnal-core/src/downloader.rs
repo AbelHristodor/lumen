@@ -73,11 +73,7 @@ pub fn resolve_in_dir(dir: &Path, stem: &str) -> Option<PathBuf> {
     }
 }
 
-/// Directory where auto-downloaded tool binaries are stored.
-pub fn tools_dir() -> Option<PathBuf> {
-    directories::ProjectDirs::from("org", "hymnal", "HymnFinder")
-        .map(|d| d.data_dir().join("tools"))
-}
+use crate::library::tools_dir;
 
 /// Locate `stem` (e.g. "yt-dlp"): prefer the app tools dir, then `PATH`.
 /// Returns `None` if not found anywhere.

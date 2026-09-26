@@ -409,7 +409,7 @@ fn main() -> anyhow::Result<()> {
             use hymnal_core::sync::SyncOutcome;
             if matches!(
                 hymnal_core::refresh::sync_default(&cfg),
-                Some(SyncOutcome::Updated | SyncOutcome::Cloned)
+                Some(SyncOutcome::Downloaded)
             ) {
                 info!("library updated by background pull; re-indexing");
                 let refreshed = hymnal_core::refresh::load_local(cfg);
@@ -700,7 +700,7 @@ fn main() -> anyhow::Result<()> {
                 Some(p) => Config::load(&p).unwrap_or_default(),
                 None => Config::default(),
             };
-            let result = match hymnal_core::refresh::force_clean(&cfg) {
+            let result = match hymnal_core::refresh::force_clean() {
                 Ok(()) => Ok(hymnal_core::refresh::load_library(cfg, true)),
                 Err(e) => Err(format!("force clean failed: {e}")),
             };

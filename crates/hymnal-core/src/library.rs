@@ -1,15 +1,16 @@
+use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
+use std::path::{Path, PathBuf};
 
-/// The default hymns repository, baked in but overridable in config.
-pub const DEFAULT_REPO_URL: &str =
-    "https://github.com/AbelHristodor/sda_manager.git";
+/// Release asset holding the hymn library, downloadable without the GitHub API.
+pub const DEFAULT_HYMNS_URL: &str =
+    "https://github.com/AbelHristodor/sda_manager/releases/latest/download/hymns.zip";
 
-/// Subdirectory within the default repo that holds the hymn .pptx folders.
-/// The repo also contains application code, so the indexer points here rather
-/// than at the clone root (which would double-index the test fixtures).
-pub const DEFAULT_REPO_HYMNS_SUBDIR: &str = "assets/920";
+fn default_hymns_url() -> String {
+    DEFAULT_HYMNS_URL.to_string()
+}
 
-/// Display name of the built-in (git-managed) library.
+/// Display name of the built-in library.
 pub const DEFAULT_LIBRARY_NAME: &str = "Imnuri Creștine";
 
 /// One library = a folder of .pptx files.
@@ -18,14 +19,17 @@ pub struct Library {
     pub name: String,
     pub path: String,
     pub enabled: bool,
-    /// True for the default library synced via git.
+    /// True for the built-in library the app downloads and refreshes itself.
     pub managed_by_git: bool,
 }
 
 /// Persisted application configuration.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Config {
-    pub default_repo_url: String,
+    /// Where the built-in library zip is fetched from. Old configs carried a
+    /// `default_repo_url` git URL instead; that key is ignored and this default applies.
+    #[serde(default = "default_hymns_url")]
+    pub hymns_url: String,
     pub libraries: Vec<Library>,
     /// User's chosen download folder. `None` => OS Downloads directory.
     #[serde(default)]
@@ -45,7 +49,7 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         Config {
-            default_repo_url: DEFAULT_REPO_URL.to_string(),
+            hymns_url: default_hymns_url(),
             libraries: Vec::new(),
             download_dir: None,
             language: None,
@@ -65,7 +69,7 @@ impl Config {
     }
 
     /// Load config from `path`, or return the default if it doesn't exist.
-    pub fn load(path: &std::path::Path) -> anyhow::Result<Config> {
+    pub fn load(path: &Path) -> anyhow::Result<Config> {
         match std::fs::read_to_string(path) {
             Ok(text) => Config::from_toml(&text),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
@@ -75,7 +79,7 @@ impl Config {
         }
     }
 
-    pub fn save(&self, path: &std::path::Path) -> anyhow::Result<()> {
+    pub fn save(&self, path: &Path) -> anyhow::Result<()> {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
@@ -84,61 +88,68 @@ impl Config {
     }
 }
 
-/// Standard config + data directories for this app.
-pub fn config_path() -> Option<std::path::PathBuf> {
-    directories::ProjectDirs::from("org", "hymnal", "HymnFinder")
-        .map(|d| d.config_dir().join("config.toml"))
+fn dirs() -> Option<ProjectDirs> {
+    ProjectDirs::from("org", "hymnal", "HymnFinder")
 }
 
-/// Directory where the default git library is cloned.
-pub fn default_library_dir() -> Option<std::path::PathBuf> {
-    directories::ProjectDirs::from("org", "hymnal", "HymnFinder")
-        .map(|d| d.data_dir().join("default-library"))
+pub fn config_path() -> Option<PathBuf> {
+    dirs().map(|d| d.config_dir().join("config.toml"))
 }
 
-/// The built-in git-managed library entry (name + hymns-subdir path), or `None`
-/// if the data directory can't be determined. Single source of truth shared by
-/// the indexer's registration and the Settings UI so they can't drift.
+/// Folder the built-in library zip is extracted into.
+pub fn default_library_dir() -> Option<PathBuf> {
+    dirs().map(|d| d.data_dir().join("hymns"))
+}
+
+/// ETag of the last downloaded hymns zip, next to the library folder.
+pub fn hymns_stamp_path() -> Option<PathBuf> {
+    dirs().map(|d| d.data_dir().join("hymns.etag"))
+}
+
+/// Where versions before the zip sync cloned the whole app repo. Deleted once
+/// the zip library is in place.
+pub fn legacy_clone_dir() -> Option<PathBuf> {
+    dirs().map(|d| d.data_dir().join("default-library"))
+}
+
+/// The built-in library entry, or `None` if the data directory can't be
+/// determined. Single source of truth shared by the indexer and Settings UI.
 pub fn default_library() -> Option<Library> {
     default_library_dir().map(|dir| Library {
         name: DEFAULT_LIBRARY_NAME.to_string(),
-        path: dir
-            .join(DEFAULT_REPO_HYMNS_SUBDIR)
-            .to_string_lossy()
-            .to_string(),
+        path: dir.to_string_lossy().to_string(),
         enabled: true,
         managed_by_git: true,
     })
 }
 
-/// Path for the serialized index cache.
-pub fn index_cache_path() -> Option<std::path::PathBuf> {
-    directories::ProjectDirs::from("org", "hymnal", "HymnFinder")
-        .map(|d| d.cache_dir().join("index.bin"))
+pub fn index_cache_path() -> Option<PathBuf> {
+    dirs().map(|d| d.cache_dir().join("index.bin"))
 }
 
-/// Directory holding user theme JSON files (one per theme).
-pub fn themes_dir() -> Option<std::path::PathBuf> {
-    directories::ProjectDirs::from("org", "hymnal", "HymnFinder")
-        .map(|d| d.config_dir().join("themes"))
+pub fn tools_dir() -> Option<PathBuf> {
+    dirs().map(|d| d.data_dir().join("tools"))
 }
 
-/// Resolve the effective download directory: the configured one, or the OS
-/// Downloads folder, or the home dir as a last resort.
-pub fn downloads_dir(cfg: &Config) -> std::path::PathBuf {
+pub fn themes_dir() -> Option<PathBuf> {
+    dirs().map(|d| d.config_dir().join("themes"))
+}
+
+/// The configured download directory, else the OS Downloads folder, else home.
+pub fn downloads_dir(cfg: &Config) -> PathBuf {
     if let Some(d) = &cfg.download_dir {
-        return std::path::PathBuf::from(d);
+        return PathBuf::from(d);
     }
-    dirs::download_dir()
-        .or_else(dirs::home_dir)
-        .unwrap_or_else(|| std::path::PathBuf::from("."))
+    directories::UserDirs::new()
+        .and_then(|u| u.download_dir().map(Path::to_path_buf).or_else(|| Some(u.home_dir().to_path_buf())))
+        .unwrap_or_else(|| PathBuf::from("."))
 }
 
 /// Whether a library folder is currently reachable on disk. Used for the
 /// Settings "unavailable" marker; an unreachable folder is simply skipped at
 /// index time (the crawl yields nothing) rather than being an error.
 pub fn library_available(path: &str) -> bool {
-    std::path::Path::new(path).is_dir()
+    Path::new(path).is_dir()
 }
 
 /// Set the `enabled` flag of the library whose `path` matches. Works on any
@@ -155,7 +166,7 @@ pub fn set_library_enabled(cfg: &mut Config, path: &str, enabled: bool) {
 /// Canonicalize `path` to an absolute, symlink-resolved form for stable
 /// comparison; falls back to the input as-is if canonicalization fails (e.g.
 /// the folder is on an unmounted drive).
-fn canonical_string(path: &std::path::Path) -> String {
+fn canonical_string(path: &Path) -> String {
     std::fs::canonicalize(path)
         .unwrap_or_else(|_| path.to_path_buf())
         .to_string_lossy()
@@ -166,7 +177,7 @@ fn canonical_string(path: &std::path::Path) -> String {
 /// path component (falling back to the full path). `managed_by_git = false`,
 /// `enabled = true`. The stored path is the canonicalized form. Returns `Err`
 /// if the folder is already present (compared canonically) or does not exist.
-pub fn add_user_library(cfg: &mut Config, path: &std::path::Path) -> anyhow::Result<()> {
+pub fn add_user_library(cfg: &mut Config, path: &Path) -> anyhow::Result<()> {
     if !path.is_dir() {
         anyhow::bail!("not a folder: {}", path.display());
     }
@@ -174,14 +185,14 @@ pub fn add_user_library(cfg: &mut Config, path: &std::path::Path) -> anyhow::Res
     let exists = cfg
         .libraries
         .iter()
-        .any(|l| canonical_string(std::path::Path::new(&l.path)) == canon);
+        .any(|l| canonical_string(Path::new(&l.path)) == canon);
     if exists {
         anyhow::bail!("folder already added");
     }
     // Derive the display name from the canonical path so a messy input (e.g.
     // ".../Dup/./..") or a Windows `\\?\`-prefixed path doesn't yield a weird
     // name like "." or the verbatim prefix.
-    let name = std::path::Path::new(&canon)
+    let name = Path::new(&canon)
         .file_name()
         .map(|n| n.to_string_lossy().to_string())
         .filter(|s| !s.is_empty())
@@ -210,7 +221,7 @@ mod tests {
     #[test]
     fn config_toml_round_trips() {
         let cfg = Config {
-            default_repo_url: "https://example.com/hymns.git".into(),
+            hymns_url: "https://example.com/hymns.zip".into(),
             libraries: vec![
                 Library {
                     name: "Imnuri".into(),
@@ -242,15 +253,20 @@ mod tests {
     }
 
     #[test]
-    fn default_config_has_baked_in_repo() {
-        let cfg = Config::default();
-        assert!(!cfg.default_repo_url.is_empty());
+    fn default_config_points_at_release_zip() {
+        assert_eq!(Config::default().hymns_url, DEFAULT_HYMNS_URL);
+    }
+
+    #[test]
+    fn old_config_with_git_url_still_parses() {
+        let cfg = Config::from_toml("default_repo_url = \"https://example.com/x.git\"\nlibraries = []\n").unwrap();
+        assert_eq!(cfg.hymns_url, DEFAULT_HYMNS_URL);
     }
 
     #[test]
     fn config_persists_download_dir() {
         let cfg = Config {
-            default_repo_url: "https://example.com/hymns.git".into(),
+            hymns_url: "https://example.com/hymns.zip".into(),
             libraries: vec![],
             download_dir: Some("/home/user/Videos".into()),
             language: None,
@@ -264,7 +280,7 @@ mod tests {
     #[test]
     fn config_persists_language() {
         let cfg = Config {
-            default_repo_url: "https://example.com/hymns.git".into(),
+            hymns_url: "https://example.com/hymns.zip".into(),
             libraries: vec![],
             download_dir: None,
             language: Some("ro".into()),
@@ -297,7 +313,7 @@ mod tests {
     #[test]
     fn set_library_enabled_flips_flag() {
         let mut cfg = Config {
-            default_repo_url: "x".into(),
+            hymns_url: "x".into(),
             libraries: vec![Library {
                 name: "U".into(), path: "/tmp/u".into(), enabled: true, managed_by_git: false,
             }],
@@ -315,7 +331,7 @@ mod tests {
     #[test]
     fn set_library_enabled_can_disable_default() {
         let mut cfg = Config {
-            default_repo_url: "x".into(),
+            hymns_url: "x".into(),
             libraries: vec![Library {
                 name: "Default".into(), path: "/data/default".into(), enabled: true, managed_by_git: true,
             }],
@@ -357,14 +373,14 @@ mod tests {
     #[test]
     fn add_user_library_rejects_non_directory() {
         let mut cfg = Config::default();
-        assert!(add_user_library(&mut cfg, std::path::Path::new("/no/such/dir/xyz")).is_err());
+        assert!(add_user_library(&mut cfg, Path::new("/no/such/dir/xyz")).is_err());
         assert!(cfg.libraries.is_empty());
     }
 
     #[test]
     fn remove_user_library_removes_user_but_not_default() {
         let mut cfg = Config {
-            default_repo_url: "x".into(),
+            hymns_url: "x".into(),
             libraries: vec![
                 Library { name: "Default".into(), path: "/data/default".into(), enabled: true, managed_by_git: true },
                 Library { name: "Mine".into(), path: "/tmp/mine".into(), enabled: true, managed_by_git: false },
