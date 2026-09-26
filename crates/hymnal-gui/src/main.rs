@@ -567,8 +567,8 @@ fn main() -> anyhow::Result<()> {
     let rows_for_query = row_to_entry.clone();
     let weak3 = ui.as_weak();
     ui.on_query_changed(move |q| {
-        let guard = searcher_for_query.borrow();
-        let Some(s) = guard.as_ref() else {
+        let mut guard = searcher_for_query.borrow_mut();
+        let Some(s) = guard.as_mut() else {
             debug!("query '{q}' ignored: searcher not ready yet");
             return;
         };
@@ -1162,8 +1162,8 @@ fn main() -> anyhow::Result<()> {
         let weak = ui.as_weak();
         ui.on_ctl_search_changed(move |q| {
             let Some(ui) = weak.upgrade() else { return };
-            let guard = searcher.borrow();
-            let Some(s) = guard.as_ref() else { return };
+            let mut guard = searcher.borrow_mut();
+            let Some(s) = guard.as_mut() else { return };
             let hits = s.search(&q);
             let mut rows = Vec::new();
             let mut map = Vec::new();
