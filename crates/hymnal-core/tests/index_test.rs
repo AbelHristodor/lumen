@@ -70,3 +70,22 @@ fn cache_with_wrong_version_is_ignored() {
         "legacy/unversioned cache must be treated as a miss"
     );
 }
+
+#[test]
+fn cold_refresh_preserves_crawl_order() {
+    let root = Path::new("tests/fixtures");
+    let paths: Vec<_> = refresh_index(root, "L", &[]).into_iter().map(|e| e.path).collect();
+    assert_eq!(paths, crawl_pptx_paths(root));
+}
+
+#[test]
+fn refresh_reparses_when_mtime_changed() {
+    let root = Path::new("tests/fixtures");
+    let mut stale = refresh_index(root, "L", &[]);
+    for e in &mut stale {
+        e.mtime -= 1;
+        e.title = "STALE".into();
+    }
+    let fresh = refresh_index(root, "L", &stale);
+    assert!(fresh.iter().all(|e| e.title != "STALE"));
+}

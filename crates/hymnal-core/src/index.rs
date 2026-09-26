@@ -70,30 +70,58 @@ pub fn save_cache(cache_path: &Path, entries: &[HymnEntry]) -> anyhow::Result<()
 }
 
 /// Build the index for every .pptx under `root`. A cached entry is reused when
-/// its path and mtime are unchanged; everything else is re-parsed. Unparseable
-/// files are logged and skipped so one bad file never aborts the crawl. Output
-/// follows crawl order.
+/// its path and mtime are unchanged; everything else is re-parsed in parallel.
+/// Unparseable files are logged and skipped so one bad file never aborts the
+/// crawl. Output follows crawl order.
 pub fn refresh_index(root: &Path, library: &str, cached: &[HymnEntry]) -> Vec<HymnEntry> {
     let by_path: HashMap<&Path, &HymnEntry> =
         cached.iter().map(|e| (e.path.as_path(), e)).collect();
-    let mut out = Vec::new();
-    for path in crawl_pptx_paths(root) {
+    let paths = crawl_pptx_paths(root);
+    let mut out: Vec<Option<HymnEntry>> = vec![None; paths.len()];
+    let mut misses: Vec<(usize, PathBuf, i64)> = Vec::new();
+    for (i, path) in paths.into_iter().enumerate() {
         let mtime = mtime_secs(&path);
-        if let Some(hit) = by_path.get(path.as_path()).filter(|e| e.mtime == mtime) {
-            out.push((*hit).clone());
-            continue;
-        }
-        match extract(&path) {
-            Ok(parsed) => out.push(HymnEntry {
-                number: parsed.number,
-                title: parsed.title,
-                slides: parsed.slides,
-                path,
-                library: library.to_string(),
-                mtime,
-            }),
-            Err(err) => warn!("skip {}: {err}", path.display()),
+        match by_path.get(path.as_path()).filter(|e| e.mtime == mtime) {
+            Some(hit) => out[i] = Some((*hit).clone()),
+            None => misses.push((i, path, mtime)),
         }
     }
-    out
+    for (i, entry) in parse_all(&misses, library) {
+        out[i] = entry;
+    }
+    out.into_iter().flatten().collect()
+}
+
+/// Parse every miss, spreading the work over all CPUs. Unzipping and XML
+/// parsing hundreds of decks is the cold-start bottleneck.
+fn parse_all(misses: &[(usize, PathBuf, i64)], library: &str) -> Vec<(usize, Option<HymnEntry>)> {
+    if misses.is_empty() {
+        return Vec::new();
+    }
+    let threads = std::thread::available_parallelism().map_or(1, |n| n.get()).min(misses.len());
+    let chunk = misses.len().div_ceil(threads);
+    std::thread::scope(|scope| {
+        let handles: Vec<_> = misses
+            .chunks(chunk)
+            .map(|part| scope.spawn(move || part.iter().map(|(i, p, m)| (*i, parse_one(p, *m, library))).collect::<Vec<_>>()))
+            .collect();
+        handles.into_iter().flat_map(|h| h.join().expect("parse thread panicked")).collect()
+    })
+}
+
+fn parse_one(path: &Path, mtime: i64, library: &str) -> Option<HymnEntry> {
+    match extract(path) {
+        Ok(parsed) => Some(HymnEntry {
+            number: parsed.number,
+            title: parsed.title,
+            slides: parsed.slides,
+            path: path.to_path_buf(),
+            library: library.to_string(),
+            mtime,
+        }),
+        Err(err) => {
+            warn!("skip {}: {err}", path.display());
+            None
+        }
+    }
 }
