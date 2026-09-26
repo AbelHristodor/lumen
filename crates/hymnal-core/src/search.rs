@@ -1,39 +1,64 @@
 use crate::fold::fold;
 use crate::model::{HymnEntry, MatchField, SearchHit};
 use nucleo_matcher::pattern::{CaseMatching, Normalization, Pattern};
-use nucleo_matcher::{Config, Matcher, Utf32Str};
+use nucleo_matcher::{Config, Matcher, Utf32String};
 
-/// Pre-folded searchable text for one entry, kept alongside the entry.
-struct Indexed {
-    entry: HymnEntry,
-    number_str: String,
-    title_folded: String,
-    filename_folded: String,
-    body_folded: String,
+/// One searchable field: the folded text plus its UTF-32 encoding, so a
+/// query never re-encodes or re-folds a haystack.
+struct Field {
+    kind: MatchField,
+    weight: u32,
+    folded: String,
+    utf32: Utf32String,
 }
 
-/// In-memory fuzzy searcher over hymn entries.
+impl Field {
+    fn new(kind: MatchField, weight: u32, folded: String) -> Self {
+        let utf32 = Utf32String::from(folded.as_str());
+        Field { kind, weight, folded, utf32 }
+    }
+}
+
+struct Indexed {
+    entry: HymnEntry,
+    label: String,
+    fields: Vec<Field>,
+}
+
+/// In-memory fuzzy searcher over hymn entries. Owns its matcher so the
+/// scoring slab is allocated once, not per keystroke.
 pub struct Searcher {
     items: Vec<Indexed>,
+    matcher: Matcher,
 }
 
 /// Sort key for a hymn number that orders numerically with a letter suffix as
 /// the tiebreaker: "664" < "664a" < "664b" < "665". Numbers come before any
 /// non-numeric/`None` value. Returns `(numeric, suffix)`; unparseable or `None`
 /// sort last via `u32::MAX`.
-fn number_sort_key(number: Option<&str>) -> (u32, String) {
+fn number_sort_key(number: Option<&str>) -> (u32, &str) {
     match number {
         Some(s) => {
-            let digits: String = s.chars().take_while(|c| c.is_ascii_digit()).collect();
-            let suffix = s[digits.len()..].to_string();
-            (digits.parse::<u32>().unwrap_or(u32::MAX), suffix)
+            let digits = s.len() - s.trim_start_matches(|c: char| c.is_ascii_digit()).len();
+            (s[..digits].parse().unwrap_or(u32::MAX), &s[digits..])
         }
-        None => (u32::MAX, String::new()),
+        None => (u32::MAX, ""),
+    }
+}
+
+/// One result row: "150  Cerul, pământul  · Imnuri".
+fn row_label(entry: &HymnEntry) -> String {
+    match &entry.number {
+        Some(n) => format!("{n}  {}  · {}", entry.title, entry.library),
+        None => format!("{}  · {}", entry.title, entry.library),
     }
 }
 
 impl Searcher {
-    pub fn new(entries: Vec<HymnEntry>) -> Self {
+    pub fn new(mut entries: Vec<HymnEntry>) -> Self {
+        entries.sort_by(|a, b| {
+            number_sort_key(a.number.as_deref()).cmp(&number_sort_key(b.number.as_deref()))
+        });
         let items = entries
             .into_iter()
             .map(|entry| {
@@ -41,18 +66,28 @@ impl Searcher {
                     .path
                     .file_stem()
                     .and_then(|s| s.to_str())
-                    .unwrap_or("")
-                    .to_string();
+                    .unwrap_or("");
+                let fields = [
+                    (MatchField::Number, 4, entry.number.clone().unwrap_or_default()),
+                    (MatchField::Title, 3, fold(&entry.title)),
+                    (MatchField::Filename, 2, fold(filename)),
+                    (MatchField::Body, 1, fold(&entry.slides.join("\n"))),
+                ]
+                .into_iter()
+                .filter(|(_, _, text)| !text.is_empty())
+                .map(|(kind, weight, text)| Field::new(kind, weight, text))
+                .collect();
                 Indexed {
-                    number_str: entry.number.clone().unwrap_or_default(),
-                    title_folded: fold(&entry.title),
-                    filename_folded: fold(&filename),
-                    body_folded: fold(&entry.slides.join("\n")),
+                    label: row_label(&entry),
+                    fields,
                     entry,
                 }
             })
             .collect();
-        Searcher { items }
+        Searcher {
+            items,
+            matcher: Matcher::new(Config::DEFAULT),
+        }
     }
 
     /// Number of indexed hymns.
@@ -70,15 +105,20 @@ impl Searcher {
         self.items.get(index).map(|it| &it.entry)
     }
 
+    /// Display label for the entry at `index`, precomputed at construction.
+    pub fn label(&self, index: usize) -> Option<&str> {
+        self.items.get(index).map(|it| it.label.as_str())
+    }
+
     /// Rank entries against `query`. Empty query returns all entries sorted by
     /// hymn number. Otherwise fuzzy-matches across number, title, filename and
     /// body, keeping the best-scoring field per entry.
     ///
     /// Hits borrow their entry from the searcher (no body cloning per keystroke).
-    pub fn search(&self, query: &str) -> Vec<SearchHit<'_>> {
+    pub fn search(&mut self, query: &str) -> Vec<SearchHit<'_>> {
         let q = fold(query);
         if q.trim().is_empty() {
-            let mut all: Vec<SearchHit<'_>> = self
+            return self
                 .items
                 .iter()
                 .enumerate()
@@ -89,60 +129,42 @@ impl Searcher {
                     field: MatchField::Number,
                 })
                 .collect();
-            all.sort_by(|a, b| {
-                number_sort_key(a.entry.number.as_deref())
-                    .cmp(&number_sort_key(b.entry.number.as_deref()))
-            });
-            return all;
         }
 
-        let mut matcher = Matcher::new(Config::DEFAULT);
         let pattern = Pattern::parse(&q, CaseMatching::Ignore, Normalization::Smart);
-
-        let mut hits: Vec<SearchHit<'_>> = Vec::new();
-        for (index, it) in self.items.iter().enumerate() {
-            // Field weight nudges ties toward more authoritative fields.
-            let candidates = [
-                (MatchField::Number, &it.number_str, 4u32),
-                (MatchField::Title, &it.title_folded, 3),
-                (MatchField::Filename, &it.filename_folded, 2),
-                (MatchField::Body, &it.body_folded, 1),
-            ];
-            let mut best: Option<(MatchField, u32)> = None;
-            for (field, haystack, weight) in candidates {
-                if haystack.is_empty() {
-                    continue;
-                }
-                let mut buf = Vec::new();
-                let hay = Utf32Str::new(haystack, &mut buf);
-                if let Some(raw) = pattern.score(hay, &mut matcher) {
-                    // Strong bonuses so exact/prefix matches dominate fuzzy ones.
-                    // An exact field equality (e.g. number "150" == "150") should
-                    // always outrank a substring/fuzzy hit in some other field.
-                    let bonus = if *haystack == q {
-                        20_000
-                    } else if haystack.starts_with(&q) {
-                        10_000
-                    } else if haystack.contains(&q) {
-                        5_000
-                    } else {
-                        0
-                    };
-                    let weighted = raw * 10 + bonus + weight;
-                    if best.is_none_or(|(_, b)| weighted > b) {
-                        best = Some((field, weighted));
-                    }
-                }
-            }
-            if let Some((field, score)) = best {
-                hits.push(SearchHit {
+        let matcher = &mut self.matcher;
+        let mut hits: Vec<SearchHit<'_>> = self
+            .items
+            .iter()
+            .enumerate()
+            .filter_map(|(index, it)| {
+                let best = it
+                    .fields
+                    .iter()
+                    .filter_map(|f| {
+                        let raw = pattern.score(f.utf32.slice(..), matcher)?;
+                        // Exact/prefix/substring bonuses dominate fuzzy scores so
+                        // number "150" always beats a fuzzy hit in some other field.
+                        let bonus = if f.folded == q {
+                            20_000
+                        } else if f.folded.starts_with(&q) {
+                            10_000
+                        } else if f.folded.contains(&q) {
+                            5_000
+                        } else {
+                            0
+                        };
+                        Some((f.kind, raw * 10 + bonus + f.weight))
+                    })
+                    .max_by_key(|(_, score)| *score)?;
+                Some(SearchHit {
                     index,
                     entry: &it.entry,
-                    score,
-                    field,
-                });
-            }
-        }
+                    score: best.1,
+                    field: best.0,
+                })
+            })
+            .collect();
         hits.sort_by(|a, b| b.score.cmp(&a.score));
         hits
     }
