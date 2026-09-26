@@ -1,11 +1,10 @@
-//! YouTube downloader: resolves the yt-dlp binary, spawns it, and streams
-//! parsed progress events back over a channel. Pure logic lives here so it can
+//! YouTube downloader: resolves the yt-dlp binary, spawns it, and reports
+//! parsed progress events through a callback. Pure logic lives here so it can
 //! be unit-tested without a GUI or network access.
 
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::sync::mpsc::Sender;
 
 /// A single progress update parsed from yt-dlp's output.
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -323,14 +322,14 @@ fn maybe_self_update(ytdlp: &Path) {
 const PROGRESS_TEMPLATE: &str =
     "download:PROGRESS|%(progress._percent_str)s|%(progress._speed_str)s|%(progress._eta_str)s|%(info.title)s";
 
-/// Download a single video from `url` into `dir`, streaming `DownloadEvent`s on
-/// `tx`. Blocks until the child process exits, so call it on a worker thread.
-pub fn download(url: &str, dir: &Path, tx: &Sender<DownloadEvent>) {
-    let _ = tx.send(DownloadEvent::Resolving);
+/// Download a single video from `url` into `dir`, reporting `DownloadEvent`s
+/// to `emit`. Blocks until the child process exits, so call it on a worker thread.
+pub fn download(url: &str, dir: &Path, mut emit: impl FnMut(DownloadEvent)) {
+    emit(DownloadEvent::Resolving);
     let ytdlp = match ensure_ytdlp() {
         Ok(p) => p,
         Err(e) => {
-            let _ = tx.send(DownloadEvent::Failed {
+            emit(DownloadEvent::Failed {
                 message: format!("Could not set up downloader: {e}"),
             });
             return;
@@ -339,7 +338,7 @@ pub fn download(url: &str, dir: &Path, tx: &Sender<DownloadEvent>) {
 
     // Ensure a destination we can actually write to before doing any work.
     if let Err(e) = std::fs::create_dir_all(dir) {
-        let _ = tx.send(DownloadEvent::Failed {
+        emit(DownloadEvent::Failed {
             message: format!("Cannot use download folder: {e}"),
         });
         return;
@@ -385,7 +384,7 @@ pub fn download(url: &str, dir: &Path, tx: &Sender<DownloadEvent>) {
     let mut child = match cmd.spawn() {
         Ok(c) => c,
         Err(e) => {
-            let _ = tx.send(DownloadEvent::Failed {
+            emit(DownloadEvent::Failed {
                 message: format!("Failed to start yt-dlp: {e}"),
             });
             return;
@@ -411,10 +410,10 @@ pub fn download(url: &str, dir: &Path, tx: &Sender<DownloadEvent>) {
                 // The title rides on every progress line; emit it once, the
                 // first time we see a non-empty one.
                 if !sent_title && !p.title.is_empty() {
-                    let _ = tx.send(DownloadEvent::Title(p.title.clone()));
+                    emit(DownloadEvent::Title(p.title.clone()));
                     sent_title = true;
                 }
-                let _ = tx.send(DownloadEvent::Progress(p));
+                emit(DownloadEvent::Progress(p));
             }
         }
     }
@@ -426,7 +425,7 @@ pub fn download(url: &str, dir: &Path, tx: &Sender<DownloadEvent>) {
 
     match status {
         Ok(s) if s.success() => {
-            let _ = tx.send(DownloadEvent::Done {
+            emit(DownloadEvent::Done {
                 path: dir.to_path_buf(),
             });
         }
@@ -437,10 +436,10 @@ pub fn download(url: &str, dir: &Path, tx: &Sender<DownloadEvent>) {
                 .find(|l| l.contains("ERROR"))
                 .map(|l| l.to_string())
                 .unwrap_or_else(|| format!("yt-dlp exited with {s}"));
-            let _ = tx.send(DownloadEvent::Failed { message: msg });
+            emit(DownloadEvent::Failed { message: msg });
         }
         Err(e) => {
-            let _ = tx.send(DownloadEvent::Failed {
+            emit(DownloadEvent::Failed {
                 message: format!("yt-dlp did not run: {e}"),
             });
         }
