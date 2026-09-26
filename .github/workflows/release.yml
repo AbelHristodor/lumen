@@ -43,26 +43,25 @@ jobs:
         with:
           key: ${{ matrix.target }}
 
-      # Slint's default backend links against X11/Wayland and font libraries
-      # that aren't on the bare Ubuntu runner.
+      # eframe plus rfd GTK dialogs
       - name: Install Linux GUI dependencies
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            libxcb1-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev \
-            libxkbcommon-dev libfontconfig-dev libfreetype-dev
+            libxkbcommon-dev libwayland-dev libxcb-render0-dev libxcb-shape0-dev \
+            libxcb-xfixes0-dev libgtk-3-dev
 
       - name: Build
-        run: cargo build --release -p hymnal-gui --target ${{ matrix.target }}
+        run: cargo build --release -p sda-gui --target ${{ matrix.target }}
 
       - name: Package (unix)
         if: runner.os != 'Windows'
         shell: bash
         run: |
-          staging="hymnal-gui-${{ matrix.target }}"
+          staging="sda-manager-${{ matrix.target }}"
           mkdir "$staging"
-          cp "target/${{ matrix.target }}/release/hymnal-gui" "$staging/"
+          cp "target/${{ matrix.target }}/release/sda-manager" "$staging/"
           cp README.md "$staging/" 2>/dev/null || true
           tar -czf "$staging.tar.gz" "$staging"
           echo "ASSET=$staging.tar.gz" >> "$GITHUB_ENV"
@@ -71,9 +70,9 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          $staging = "hymnal-gui-${{ matrix.target }}"
+          $staging = "sda-manager-${{ matrix.target }}"
           New-Item -ItemType Directory -Force -Path $staging | Out-Null
-          Copy-Item "target/${{ matrix.target }}/release/hymnal-gui.exe" $staging
+          Copy-Item "target/${{ matrix.target }}/release/sda-manager.exe" $staging
           Copy-Item README.md $staging -ErrorAction SilentlyContinue
           Compress-Archive -Path $staging -DestinationPath "$staging.zip"
           "ASSET=$staging.zip" | Out-File -FilePath $env:GITHUB_ENV -Append
