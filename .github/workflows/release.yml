@@ -85,9 +85,23 @@ jobs:
           path: ${{ env.ASSET }}
           if-no-files-found: error
 
+  hymns:
+    name: Package hymns.zip
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Zip the hymn library
+        run: cd assets/920 && zip -qr ../../hymns.zip .
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: hymns
+          path: hymns.zip
+          if-no-files-found: error
+
   release:
     name: Publish release
-    needs: build
+    needs: [build, hymns]
     runs-on: ubuntu-latest
     steps:
       - name: Download all artifacts

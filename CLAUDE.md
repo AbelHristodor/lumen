@@ -13,7 +13,8 @@ GUI toolkit) with three tabs:
 - **Video Downloader** — download a YouTube URL via a bundled `yt-dlp`/`ffmpeg`.
 - **Settings** — force re-sync of the hymn library and show update status.
 
-The app self-updates from GitHub Releases and auto-syncs its hymn library via git.
+The app self-updates from GitHub Releases and fetches its hymn library from the
+`hymns.zip` asset of the latest release.
 
 ## Commands
 
@@ -38,8 +39,9 @@ separate lint step beyond `cargo build` warnings — run `cargo clippy` if neede
 - `install.sh` (macOS/Linux) and `install.ps1` (Windows) are one-liner installers
   that fetch the latest release asset. The README has the `curl … | sh` /
   `irm … | iex` commands.
-- `git2` builds with `vendored-libgit2` always on (see `hymnal-core/Cargo.toml`)
-  so released binaries don't depend on a system libgit2.
+- The `hymns` job zips `assets/920` into `hymns.zip`; the app downloads it on
+  first run and whenever its ETag changes. Hymn edits reach users on the next
+  release, not on push.
 
 ## Architecture
 
@@ -47,38 +49,45 @@ Two-crate workspace with a deliberate logic/UI split:
 
 - **`crates/hymnal-core`** — all logic, no UI, unit-tested. Modules:
   - `pptx` (unzip + parse slide XML) → `model::HymnEntry` → `index` (crawl +
-    bincode cache) → `search::Searcher` (fuzzy rank). `fold` does diacritic folding.
-  - `library` (config + OS paths), `sync` (git clone/pull), `refresh` (the
-    shared boot/force-sync pipeline that ties sync + index + cache together).
+    bincode cache, parallel cold parse) → `search::Searcher` (fuzzy rank).
+    `fold` does diacritic folding.
+  - `library` (config + OS paths), `sync` (hymns.zip download keyed by ETag),
+    `refresh` (the shared boot/force-sync pipeline that ties sync + index +
+    cache together).
   - `downloader` (yt-dlp resolution, spawn, progress parsing) and `update`
     (GitHub-Releases binary self-update).
-- **`crates/hymnal-gui`** — thin Slint shell. `build.rs` compiles `ui/app.slint`
-  via `slint_build` (and on Windows embeds `assets/icon.ico` via `winresource`);
-  `slint::include_modules!()` generates the `AppWindow` type and the
-  property/callback setters used in `main.rs`. The crate-level
-  `#![windows_subsystem = "windows"]` suppresses the console window in release
-  builds (no-op in debug and on non-Windows).
+- **`crates/hymnal-gui`** — thin Slint shell, one module per tab. `build.rs`
+  compiles `ui/app.slint` via `slint_build` (and on Windows embeds
+  `assets/icon.ico` via `winresource`); `slint::include_modules!()` generates
+  the `AppWindow` type and the property/callback setters. `state::App` is a
+  `Clone` bag of `Rc<RefCell<…>>` handles shared by every module; each module
+  exposes `wire(ui, app)`. Config is loaded once in `App::load` and written
+  only by `App::save_cfg`. The crate-level `#![windows_subsystem = "windows"]`
+  suppresses the console window in release builds (no-op in debug and on
+  non-Windows).
 
 ### Data flow & threading (the key thing to understand)
 
 Slint UI handles are not `Send`, so background work cannot touch the UI directly.
 The pattern, all driven from `main.rs`:
 
-1. **Worker threads** do the blocking work and hand results back over
-   `mpsc::channel`s — never by touching the UI. There are three flows:
-   - boot: `refresh::load_library` (git sync + index) → `Vec<HymnEntry>`, then a
-     background `update::check_and_stage_update`;
-   - force-sync (Settings tab): `refresh::force_clean` + `load_library(force=true)`;
-   - downloads: `downloader` streams `DownloadEvent`s as yt-dlp runs.
-2. A single Slint `Timer` (200ms `Repeated`) on the event loop polls all channels
-   with `try_recv` and updates the UI. **Keep the timer binding alive** or polling
-   stops.
-3. UI-thread state (`searcher`, `row_to_entry`) lives in `Rc<RefCell<…>>`.
-   `row_to_entry` maps a visible result row → the entry's index inside the
-   `Searcher`, so hymn bodies are never cloned per keystroke. Callbacks
-   (`query-changed`, `current-changed`, `open-current`, `reveal-current`,
-   `prev-slide`/`next-slide`, `force-sync`, `choose-folder`, `start-download`)
-   read through that map. Results are **not** capped — `StandardListView`
+1. **Worker threads** do the blocking work and send one `state::Msg` over one
+   `mpsc::channel` — never by touching the UI. Workers build the `Searcher`
+   themselves so the UI thread only swaps a handle. Flows:
+   - boot (`main::spawn_boot`): `refresh::load_local` (disk only) →
+     `Msg::Index`, then `refresh::sync_default` and a second `Msg::Index` only
+     if the zip changed, then `update::check_and_stage_update`;
+   - force-sync (Settings): `refresh::force_clean` + `load_library(force=true)`
+     → `Msg::Synced`;
+   - library folder edits (Settings): `load_local` → `Msg::Reindexed`;
+   - downloads: `downloader::download` emits `DownloadEvent`s through a
+     callback → `Msg::Download`.
+2. A single Slint `Timer` (200ms `Repeated`) drains the channel in
+   `main::drain`. **Keep the timer binding alive** or polling stops.
+3. `App.rows` / `App.ctl_rows` map a visible result row → the entry's index
+   inside the `Searcher`; `App::with_entry` reads through that map so hymn
+   bodies are never cloned per keystroke. Row labels are precomputed in
+   `Searcher::new`. Results are **not** capped — `StandardListView`
    virtualizes rendering.
 
 ### UI / Slint conventions (`ui/app.slint`)
@@ -107,21 +116,26 @@ The pattern, all driven from `main.rs`:
 - **Search ranking** (`search.rs`): fuzzy score (`nucleo-matcher`) × 10, plus
   large bonuses for exact (20k) / prefix (10k) / substring (5k) matches, plus a
   small per-field weight (Number > Title > Filename > Body) to break ties. Best
-  field per entry wins. Tune scoring here.
-- **Index cache** (`index.rs`): bincode-serialized to the OS cache dir.
-  `refresh_index` reuses a cached entry when path+mtime are unchanged, else
-  re-parses. A corrupt/missing cache silently falls back. One unparseable
-  `.pptx` is logged and skipped, never aborting the crawl. Lock files (`~$…`)
-  and non-`.pptx` files are ignored.
+  field per entry wins. Haystacks are folded and UTF-32 encoded once at
+  construction; the `Matcher` is owned so `search` takes `&mut self`. Entries
+  are sorted by number once, so the empty query is a plain iteration.
+- **Index cache** (`index.rs`): bincode-serialized to the OS cache dir with a
+  `CACHE_VERSION` envelope (bump it when the parser or entry layout changes).
+  `refresh_index` reuses a cached entry when path+mtime are unchanged (HashMap
+  lookup), parses the rest in parallel with `std::thread::scope`, and keeps
+  crawl order. One unparseable `.pptx` is logged and skipped. Lock files
+  (`~$…`) and non-`.pptx` files are ignored.
 - **Libraries & config** (`library.rs`): a library is a folder of `.pptx` files.
-  The default library is git-managed (clone on first run, fast-forward pull).
-  `DEFAULT_REPO_HYMNS_SUBDIR = "assets/920"` — the default repo (this one) holds
-  app code alongside hymns, so the indexer points at the hymns subdir to avoid
-  double-indexing fixtures. Config is TOML in the OS config dir (`directories`
-  crate); a missing file yields `Config::default()`.
-- **git sync** (`sync.rs`) is intentionally minimal: clone-if-absent, else
-  fast-forward only (hardcoded `refs/heads/main`). No merge/rebase. Returns a
-  `SyncOutcome` so callers can skip re-indexing when nothing changed.
+  The default library is `data_dir/hymns`, filled from `Config.hymns_url`
+  (default: the latest release's `hymns.zip`). All OS paths come from one
+  private `dirs()` helper. Config is TOML in the OS config dir; a missing file
+  yields `Config::default()`, and the old `default_repo_url` key is ignored.
+  `refresh::register_default_library` repairs a managed entry still pointing at
+  the pre-zip git clone.
+- **Zip sync** (`sync.rs`): `HEAD` the URL, compare `ETag` (or `Last-Modified`)
+  with `hymns.etag`, and only then `GET` + extract into a temp dir and swap.
+  Returns `SyncOutcome::{Downloaded, Unchanged}` so callers skip re-indexing
+  when nothing changed. Tested against a `TcpListener` HTTP stub.
 - **Translations** (`i18n.rs`): `Language` (En/It/Ro) selects a `Strings` struct
   (one field per UI string). `main.rs::apply_language` maps it onto the Slint
   `export global I18n` and reuses it for dynamic status messages. The choice
@@ -132,12 +146,14 @@ The pattern, all driven from `main.rs`:
 - **Tool binaries** (`downloader.rs`): `yt-dlp`/`ffmpeg` are located on `PATH` or
   in the app's data `tools/` dir, else downloaded from upstream releases on
   demand. Downloaded binaries are `chmod +x`'d and de-quarantined on macOS.
+  `download` reports progress through an `FnMut(DownloadEvent)` callback.
 
 ### Tests
 
 Core tests live in `crates/hymnal-core/tests/` and run against **real `.pptx`
 fixtures** in `tests/fixtures/` (`001.pptx`, `150.pptx`, `356.pptx`, `664b.pptx`
 — the last covers letter-suffixed numbers). When changing parsing, folding,
-ranking, or cache logic, assert against these fixtures. `sync` is tested with
-local git repos (`tempfile`); `downloader` parsing/path logic is tested without
-network. Network and self-update paths are not exercised in tests.
+ranking, or cache logic, assert against these fixtures. `sync` is tested
+against a local `TcpListener` HTTP stub serving an in-memory zip; `downloader`
+parsing/path logic is tested without network. Self-update is not exercised in
+tests.

@@ -52,8 +52,8 @@ your own folders of slides on top.
 - ⌨️ **Keyboard-first** — arrow keys to browse and step through slides, Enter to
   open the highlighted hymn, `B` to blank the projector, `Esc` to stop. Built for
   live use.
-- 🔄 **Always up to date** — the bundled hymnal refreshes on launch and the app
-  checks for new versions automatically.
+- 🔄 **Always up to date** — the bundled hymnal is fetched from the latest
+  release on launch and the app checks for new versions automatically.
 
 ## Install
 
@@ -141,10 +141,11 @@ and projection activity to the console.
 
 A *library* is a folder of `.pptx` files; you can use several. Each is crawled
 recursively (`~$` lock files and non-`.pptx` files are ignored). The default
-library is managed via git — cloned on first run, fast-forward-pulled on every
-launch so newly published hymns appear automatically. Additional libraries are
+library is the `hymns.zip` asset of the latest GitHub release: downloaded on
+first run and re-downloaded only when its ETag changes, so newly released hymns
+appear automatically without touching the GitHub API. Additional libraries are
 plain folders you add in Settings. A cached index means subsequent launches only
-re-parse files whose modification time changed.
+re-parse files whose modification time changed, and cold parses run in parallel.
 
 ### Configuration
 
@@ -154,15 +155,15 @@ Config is a TOML file in the OS config directory:
 - **Windows:** `%APPDATA%\hymnal\HymnFinder\config\config.toml`
 - **Linux:** `~/.config/HymnFinder/config.toml`
 
-The cloned default library lives under `…/org.hymnal.HymnFinder/default-library`,
-themes under `…/themes/*.json`, and the index cache under the OS cache dir
-(`…/org.hymnal.HymnFinder/index.bin`).
+The default library lives under `…/org.hymnal.HymnFinder/hymns` (with the last
+downloaded ETag in `hymns.etag`), themes under `…/themes/*.json`, and the index
+cache under the OS cache dir (`…/org.hymnal.HymnFinder/index.bin`).
 
-Point `default_repo_url` at your own published hymns repository, and/or add
-libraries directly:
+Point `hymns_url` at your own published `hymns.zip`, and/or add libraries
+directly:
 
 ```toml
-default_repo_url = "https://github.com/CHANGEME/imnuri-crestine.git"
+hymns_url = "https://example.com/hymns.zip"
 
 [[libraries]]
 name = "Imnuri Creștine"
@@ -178,9 +179,10 @@ cargo test -p hymnal-core
 ```
 
 Covers text extraction, diacritic folding, fuzzy ranking, index-cache
-invalidation, theme JSON round-trips, and presentation-state transitions, using
-real `.pptx` fixtures under `crates/hymnal-core/tests/fixtures/`. The GUI and
-projector are thin and verified manually.
+invalidation, zip sync against a local HTTP stub, theme JSON round-trips, and
+presentation-state transitions, using real `.pptx` fixtures under
+`crates/hymnal-core/tests/fixtures/`. The GUI and projector are thin and
+verified manually.
 
 ### Cross-compilation
 
@@ -192,10 +194,9 @@ projector are thin and verified manually.
   ```
 - **Windows → macOS** is not supported; build natively on macOS.
 
-`git2` builds against the system libgit2 by default; the release builds enable
-the `vendored-libgit2` feature for self-contained binaries.
-
 ### Releases
 
 Releases are produced manually: run the **Release** workflow from the Actions
-tab with a tag like `v0.1.0`. The install one-liners fetch the latest release.
+tab with a tag like `v0.1.0`. It publishes one binary archive per platform plus
+`hymns.zip` built from `assets/920`. The install one-liners fetch the latest
+release, and running apps pick up the new `hymns.zip` on their next launch.

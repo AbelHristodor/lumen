@@ -15,15 +15,20 @@ pub enum SyncOutcome {
 }
 
 /// Ensure `dest` holds the hymns published at `url`. `stamp` stores the ETag
-/// of the last extracted zip. Extraction goes to a sibling temp folder and is
-/// swapped in atomically so a failed download never leaves a half library.
+/// (or Last-Modified when the server sends no ETag) of the last extracted zip.
+/// Extraction goes to a sibling temp folder and is swapped in atomically so a
+/// failed download never leaves a half library.
 pub fn sync_hymns(url: &str, dest: &Path, stamp: &Path) -> Result<SyncOutcome> {
     let agent = ureq::AgentBuilder::new()
         .timeout(Duration::from_secs(300))
         .build();
 
     let head = agent.head(url).call().with_context(|| format!("HEAD {url}"))?;
-    let etag = head.header("etag").unwrap_or_default().to_string();
+    let etag = head
+        .header("etag")
+        .or_else(|| head.header("last-modified"))
+        .unwrap_or_default()
+        .to_string();
     let last = std::fs::read_to_string(stamp).unwrap_or_default();
     if !etag.is_empty() && etag == last.trim() && dest.is_dir() {
         return Ok(SyncOutcome::Unchanged);
