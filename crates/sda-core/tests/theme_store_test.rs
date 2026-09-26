@@ -1,5 +1,5 @@
-use hymnal_core::theme::store::{delete_theme, list_themes, load_theme, save_theme};
-use hymnal_core::theme::Theme;
+use sda_core::theme::store::{delete_theme, list_themes, load_theme, save_theme};
+use sda_core::theme::Theme;
 
 #[test]
 fn save_then_list_and_load_includes_default_and_custom() {

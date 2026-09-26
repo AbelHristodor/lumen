@@ -7,7 +7,7 @@ use anyhow::Result;
 
 const REPO_OWNER: &str = "AbelHristodor";
 const REPO_NAME: &str = "sda_manager";
-const BIN_NAME: &str = "hymnal-gui";
+const BIN_NAME: &str = "sda-manager";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum UpdateOutcome {
@@ -46,8 +46,8 @@ pub fn check_and_stage_update() -> Result<UpdateOutcome> {
             .repo_name(REPO_NAME)
             .bin_name(BIN_NAME)
             // Release archives nest the binary one level deep, as
-            // `hymnal-gui-<target>/hymnal-gui` (see .github/workflows/release.yml).
-            // Without this, self_update looks for `hymnal-gui` at the archive root
+            // `sda-manager-<target>/sda-manager` (see .github/workflows/release.yml).
+            // Without this, self_update looks for `sda-manager` at the archive root
             // and fails with "Could not find the required path in the archive".
             .bin_path_in_archive("{{ bin }}-{{ target }}/{{ bin }}")
             .current_version(current)

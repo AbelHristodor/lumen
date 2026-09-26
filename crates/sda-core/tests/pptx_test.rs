@@ -1,4 +1,4 @@
-use hymnal_core::pptx::extract;
+use sda_core::pptx::extract;
 use std::path::Path;
 
 #[test]

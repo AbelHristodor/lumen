@@ -1,5 +1,5 @@
 [package]
-name = "hymnal-core"
+name = "sda-core"
 edition.workspace = true
 version.workspace = true
 

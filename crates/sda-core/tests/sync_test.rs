@@ -1,4 +1,4 @@
-use hymnal_core::sync::{sync_hymns, SyncOutcome};
+use sda_core::sync::{sync_hymns, SyncOutcome};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpListener;
 use std::sync::{Arc, Mutex};

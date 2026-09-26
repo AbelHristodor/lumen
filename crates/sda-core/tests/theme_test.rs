@@ -1,4 +1,4 @@
-use hymnal_core::theme::{Background, Rgba, Theme};
+use sda_core::theme::{Background, Rgba, Theme};
 
 #[test]
 fn theme_json_round_trips() {

@@ -1,5 +1,5 @@
-use hymnal_core::index::refresh_index;
-use hymnal_core::search::Searcher;
+use sda_core::index::refresh_index;
+use sda_core::search::Searcher;
 use std::path::Path;
 
 fn searcher() -> Searcher {
@@ -39,7 +39,7 @@ fn empty_query_returns_all_sorted_by_number() {
 
 #[test]
 fn lettered_number_sorts_numerically_then_by_suffix() {
-    use hymnal_core::model::{HymnEntry, MatchField};
+    use sda_core::model::{HymnEntry, MatchField};
     let mk = |n: &str| HymnEntry {
         number: Some(n.into()),
         title: format!("hymn {n}"),

@@ -1,5 +1,5 @@
-use hymnal_core::library::{default_library, Config, Library};
-use hymnal_core::refresh::{force_clean_paths, register_default_library};
+use sda_core::library::{default_library, Config, Library};
+use sda_core::refresh::{force_clean_paths, register_default_library};
 use std::fs;
 
 #[test]

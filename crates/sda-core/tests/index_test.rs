@@ -1,4 +1,4 @@
-use hymnal_core::index::{crawl_pptx_paths, refresh_index};
+use sda_core::index::{crawl_pptx_paths, refresh_index};
 use std::path::Path;
 
 #[test]
@@ -19,8 +19,8 @@ fn cold_refresh_parses_fixtures() {
     assert_eq!(one.library, "test-lib");
 }
 
-use hymnal_core::index::{load_cache, save_cache};
-use hymnal_core::model::HymnEntry;
+use sda_core::index::{load_cache, save_cache};
+use sda_core::model::HymnEntry;
 use std::path::PathBuf;
 
 #[test]

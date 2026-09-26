@@ -1,4 +1,4 @@
-use hymnal_core::present::PresentationState;
+use sda_core::present::PresentationState;
 
 fn slides() -> Vec<String> {
     vec!["title".into(), "verse 1".into(), "verse 2".into()]

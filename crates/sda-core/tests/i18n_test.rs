@@ -1,4 +1,4 @@
-use hymnal_core::i18n::{Language, Strings};
+use sda_core::i18n::{Language, Strings};
 
 #[test]
 fn every_language_has_no_empty_strings() {
