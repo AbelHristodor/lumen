@@ -338,7 +338,7 @@ L=https://raw.githubusercontent.com/cyrealtype/Lora-Cyrillic/master
 curl -fL -o $R/Lora-Regular.ttf $L/fonts/ttf/Lora-Regular.ttf; curl -fL -o $R/Lora-Bold.ttf $L/fonts/ttf/Lora-Bold.ttf; curl -fL -o $R/OFL-Lora.txt $L/OFL.txt
 S=https://raw.githubusercontent.com/googlefonts/robotoslab/main/fonts/static
 curl -fL -o $R/RobotoSlab-Regular.ttf $S/RobotoSlab-Regular.ttf; curl -fL -o $R/RobotoSlab-Bold.ttf $S/RobotoSlab-Bold.ttf
-curl -fL -o $R/OFL-RobotoSlab.txt https://raw.githubusercontent.com/google/fonts/main/ofl/robotoslab/OFL.txt
+curl -fL -o $R/LICENSE-RobotoSlab-Apache-2.0.txt https://raw.githubusercontent.com/google/fonts/main/ofl/robotoslab/OFL.txt
 ```
 If Inter zip layout differs: `unzip -l inter.zip | grep -E "Inter-(Regular|Bold)\.ttf"`. Fallback for any dead TTF URL, Google Fonts CSS API serves static TTF to curl:
 ```bash
