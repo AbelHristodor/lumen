@@ -1,9 +1,9 @@
 #!/bin/sh
-# Hymn Finder installer for macOS and Linux.
+# SDA Manager installer for macOS and Linux.
 #
 #   curl -fsSL https://raw.githubusercontent.com/AbelHristodor/sda_manager/main/install.sh | sh
 #
-# Downloads the latest released `hymnal-gui` binary for your OS/arch and
+# Downloads the latest released `sda-manager` binary for your OS/arch and
 # installs it to $BIN_DIR (default ~/.local/bin). Override the destination:
 #
 #   curl -fsSL .../install.sh | BIN_DIR=/usr/local/bin sh
@@ -42,7 +42,7 @@ case "$os" in
     ;;
 esac
 
-asset="hymnal-gui-${target}.tar.gz"
+asset="sda-manager-${target}.tar.gz"
 url="https://github.com/${REPO}/releases/latest/download/${asset}"
 
 tmp="$(mktemp -d)"
@@ -58,9 +58,9 @@ fi
 tar -xzf "$tmp/$asset" -C "$tmp"
 
 mkdir -p "$BIN_DIR"
-install -m 0755 "$tmp/hymnal-gui-${target}/hymnal-gui" "$BIN_DIR/hymnal-gui"
+install -m 0755 "$tmp/sda-manager-${target}/sda-manager" "$BIN_DIR/sda-manager"
 
-echo "Installed hymnal-gui to $BIN_DIR/hymnal-gui"
+echo "Installed sda-manager to $BIN_DIR/sda-manager"
 
 case ":$PATH:" in
   *":$BIN_DIR:"*) ;;
@@ -73,6 +73,6 @@ esac
 
 if [ "$os" = "Darwin" ]; then
   echo
-  echo "macOS: the binary is unsigned. The first time, right-click hymnal-gui"
-  echo "in Finder and choose Open (or run: xattr -d com.apple.quarantine \"$BIN_DIR/hymnal-gui\")."
+  echo "macOS: the binary is unsigned. The first time, right-click sda-manager"
+  echo "in Finder and choose Open (or run: xattr -d com.apple.quarantine \"$BIN_DIR/sda-manager\")."
 fi
