@@ -13,9 +13,9 @@ pub mod video;
 
 pub use fonts::fonts;
 pub use scene::{BackgroundState, Layer, Scene, Viewport};
-pub use video::FrameSource;
+pub use video::{FrameSource, spawn_decoder};
 
-use background::SolidPipeline;
+use background::{GradientPipeline, ParticlesPipeline, SolidPipeline};
 use layer::{LayerParams, LayerPipeline};
 use std::collections::{HashMap, VecDeque};
 use std::hash::{DefaultHasher, Hash, Hasher};
@@ -40,17 +40,32 @@ struct Cached {
     source: Layer,
 }
 
+/// Which background passes run under the layers this frame.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum BgPass {
+    /// Only the clear to black, the image or video quad sits on top.
+    None,
+    Solid,
+    Gradient,
+    /// Solid base then the particle quads.
+    Particles,
+}
+
 /// Owns every pipeline. Create once per device and reuse across frames.
 pub struct Renderer {
     solid: SolidPipeline,
+    gradient: GradientPipeline,
+    particles: ParticlesPipeline,
     layer: LayerPipeline,
     text: TextRaster,
     cache: HashMap<u64, Cached>,
     lru: VecDeque<u64>,
     /// Draw list for the prepared frame as uniform slot and cache key.
     draws: Vec<(usize, u64)>,
-    /// Whether the solid pass runs under the layers.
-    draw_solid: bool,
+    bg: BgPass,
+    /// Cache key of the last uploaded video frame so it can be evicted when
+    /// the next frame arrives instead of filling the LRU.
+    video_key: Option<u64>,
 }
 
 impl Renderer {
@@ -58,43 +73,77 @@ impl Renderer {
     pub fn new(device: &wgpu::Device, _queue: &wgpu::Queue, format: wgpu::TextureFormat) -> Self {
         Renderer {
             solid: SolidPipeline::new(device, format),
+            gradient: GradientPipeline::new(device, format),
+            particles: ParticlesPipeline::new(device, format),
             layer: LayerPipeline::new(device, format),
             text: TextRaster::new(),
             cache: HashMap::new(),
             lru: VecDeque::new(),
             draws: Vec::new(),
-            draw_solid: true,
+            bg: BgPass::Solid,
+            video_key: None,
         }
     }
 
     /// Upload per frame data. Call once before `render`.
     pub fn prepare(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, scene: &Scene) {
         self.draws.clear();
-        self.draw_solid = true;
-        match &scene.background {
-            BackgroundState::Solid(c) => self.solid.prepare(queue, *c, scene.background_opacity),
-            BackgroundState::Image(img) => {
-                // The pass already clears to black, the image goes straight on top.
-                self.draw_solid = false;
-                let mut params = LayerParams::opaque();
-                params.alpha = scene.background_opacity.clamp(0.0, 1.0);
-                let layer = Layer::Bitmap(img.clone());
-                self.queue_draw(
-                    device,
-                    queue,
-                    composite::BACKGROUND,
-                    &layer,
-                    params,
-                    scene.size,
-                );
+        let opacity = scene.background_opacity.clamp(0.0, 1.0);
+        self.bg = match &scene.background {
+            BackgroundState::Solid(c) => {
+                self.solid.prepare(queue, *c, opacity);
+                BgPass::Solid
             }
-            // Other backgrounds land in later tasks. Draw black until then.
-            _ => self.solid.prepare(
-                queue,
-                sda_core::theme::Rgba::BLACK,
-                scene.background_opacity,
-            ),
-        }
+            BackgroundState::Gradient {
+                stops,
+                angle,
+                drift,
+            } => {
+                self.gradient
+                    .prepare(queue, stops, *angle, drift * scene.now_secs, opacity);
+                BgPass::Gradient
+            }
+            BackgroundState::Particles {
+                base,
+                color,
+                count,
+                speed,
+            } => {
+                self.solid.prepare(queue, *base, opacity);
+                self.particles.prepare(
+                    queue,
+                    *color,
+                    *count,
+                    *speed,
+                    scene.now_secs,
+                    scene.size,
+                    opacity,
+                );
+                BgPass::Particles
+            }
+            BackgroundState::Image(img) => {
+                self.background_image(device, queue, img.clone(), opacity, scene.size);
+                BgPass::None
+            }
+            BackgroundState::Video(src) => match src.latest() {
+                Some(frame) => {
+                    // One frame lives in the cache at a time.
+                    let key = self.background_image(device, queue, frame, opacity, scene.size);
+                    if let Some(old) = self.video_key.replace(key)
+                        && old != key
+                    {
+                        self.cache.remove(&old);
+                        self.lru.retain(|k| *k != old);
+                    }
+                    BgPass::None
+                }
+                None => {
+                    self.solid
+                        .prepare(queue, sda_core::theme::Rgba::BLACK, opacity);
+                    BgPass::Solid
+                }
+            },
+        };
         if scene.blank {
             return;
         }
@@ -122,6 +171,28 @@ impl Renderer {
         }
     }
 
+    /// Queue `img` in the background slot at `opacity`, covering the output.
+    /// The pass already clears to black so no solid pass runs under it.
+    fn background_image(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        img: Arc<image::RgbaImage>,
+        opacity: f32,
+        size: (u32, u32),
+    ) -> u64 {
+        let mut params = LayerParams::opaque();
+        params.alpha = opacity;
+        self.queue_draw(
+            device,
+            queue,
+            composite::BACKGROUND,
+            &Layer::Bitmap(img),
+            params,
+            size,
+        )
+    }
+
     /// Record draw commands for the last prepared scene into `view`. One
     /// pass clears to black and draws the background then the layers.
     pub fn render(
@@ -147,8 +218,14 @@ impl Renderer {
         });
         pass.set_viewport(vp.x as f32, vp.y as f32, vp.w as f32, vp.h as f32, 0.0, 1.0);
         pass.set_scissor_rect(vp.x, vp.y, vp.w, vp.h);
-        if self.draw_solid {
-            self.solid.draw(&mut pass);
+        match self.bg {
+            BgPass::None => {}
+            BgPass::Solid => self.solid.draw(&mut pass),
+            BgPass::Gradient => self.gradient.draw(&mut pass),
+            BgPass::Particles => {
+                self.solid.draw(&mut pass);
+                self.particles.draw(&mut pass);
+            }
         }
         for (slot, key) in &self.draws {
             if let Some(c) = self.cache.get(key) {
@@ -159,6 +236,7 @@ impl Renderer {
 
     /// Make sure `layer` has a texture, write `params` into `slot`, and add
     /// the draw to this frame. Bitmaps are scaled to cover the output.
+    /// Returns the cache key.
     fn queue_draw(
         &mut self,
         device: &wgpu::Device,
@@ -167,7 +245,7 @@ impl Renderer {
         layer: &Layer,
         params: LayerParams,
         size: (u32, u32),
-    ) {
+    ) -> u64 {
         let params = match layer {
             Layer::Text(_) => params,
             Layer::Bitmap(img) => {
@@ -177,6 +255,7 @@ impl Renderer {
         let key = self.texture(device, queue, layer, size);
         self.layer.set_params(queue, slot, &params);
         self.draws.push((slot, key));
+        key
     }
 
     /// Upload `layer` at `size` unless a texture for it is cached. Returns

@@ -235,3 +235,73 @@ fn image_background() {
     s.background = BackgroundState::Image(Arc::new(bmp));
     check("image_bg", &s);
 }
+
+#[test]
+fn gradient_drifts_with_time() {
+    let g = BackgroundState::Gradient {
+        stops: vec![
+            (0.0, Rgba::new(20, 0, 60, 255)),
+            (1.0, Rgba::new(0, 120, 200, 255)),
+        ],
+        angle: 30.0,
+        drift: 0.3,
+    };
+    let mut a = base();
+    a.background = g.clone();
+    check("gradient_t0", &a);
+    let mut b = a.clone();
+    b.now_secs = 2.0;
+    check("gradient_t2", &b);
+    let (Some(ia), Some(ib)) = (headless::render_to_image(&a), headless::render_to_image(&b))
+    else {
+        return;
+    };
+    assert_ne!(ia.get_pixel(50, 50), ib.get_pixel(50, 50));
+}
+
+#[test]
+fn particles_draw_bright_points() {
+    let mut s = base();
+    s.background = BackgroundState::Particles {
+        base: Rgba::new(0, 0, 20, 255),
+        color: Rgba::new(255, 255, 255, 255),
+        count: 120,
+        speed: 0.4,
+    };
+    let Some(img) = headless::render_to_image(&s) else {
+        return;
+    };
+    assert!(img.pixels().filter(|p| p[0] > 180).count() > 50);
+    check("particles_t0", &s);
+}
+
+#[test]
+fn decoder_fails_cleanly_without_ffmpeg() {
+    assert!(
+        spawn_decoder(
+            std::path::Path::new("/nonexistent/ffmpeg"),
+            std::path::Path::new("/x.mp4"),
+            (64, 36)
+        )
+        .is_err()
+    );
+}
+
+#[test]
+fn verses() {
+    let slide = sda_core::resolve::resolve(
+        &sda_core::theme::Theme::default(),
+        &sda_core::resolve::SlideContent::Verses {
+            reference: "John 3:16".into(),
+            verses: vec![
+                (16, "For God so loved the world".into()),
+                (17, "that he gave".into()),
+            ],
+        },
+        None,
+    )
+    .unwrap();
+    let mut s = base();
+    s.current = Some(Layer::Text(Arc::new(slide)));
+    check("verses", &s);
+}
