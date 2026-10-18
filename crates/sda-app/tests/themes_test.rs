@@ -349,3 +349,38 @@ fn inherit_rows_show_the_file_value_and_previews_follow_the_hymn() {
         sda_core::present::Source::None
     );
 }
+
+#[test]
+fn opening_themes_resyncs_the_preview_with_the_hymn_picked_in_present() {
+    let mut app = themes_app();
+    let _ = app.update(Msg::Tab(Tab::Present));
+    let _ = app.update(Msg::Search("150".into()));
+    let hymn = sda_app::state::present::selected_hymn(&app)
+        .map(|(_, h)| h.clone())
+        .expect("hymn 150 selected");
+    let _ = app.update(Msg::PreviewSlide(1));
+    assert_ne!(
+        app.themes.preview.present.title,
+        sda_app::state::present::title_of(&hymn),
+        "nothing on the Themes tab ran yet"
+    );
+
+    let _ = app.update(Msg::Tab(Tab::Themes));
+    assert_eq!(
+        app.themes.preview.present.title,
+        sda_app::state::present::title_of(&hymn)
+    );
+    assert_eq!(app.themes.preview.present.index, 1);
+    let default_key = app.core.themes[0].cache_key();
+    let thumb = app.themes.thumbs.get(&default_key).cloned().unwrap();
+
+    let _ = app.update(Msg::Tab(Tab::Present));
+    let _ = app.update(Msg::PreviewSlide(0));
+    let _ = app.update(Msg::Tab(Tab::Themes));
+    assert_eq!(app.themes.preview.present.index, 0);
+    let again = app.themes.thumbs.get(&default_key).cloned().unwrap();
+    assert!(
+        !std::sync::Arc::ptr_eq(&thumb, &again),
+        "a new preview slide rebuilds the thumbnails"
+    );
+}

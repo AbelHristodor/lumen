@@ -41,7 +41,7 @@ fn section<'a>(title: &'a str, rows: Vec<Element<'a, Msg>>) -> Element<'a, Msg> 
     let body = rows
         .into_iter()
         .fold(Column::new().spacing(ui_theme::SPACING), Column::push);
-    card(column![ui_theme::section_label::<Msg>(title), body].spacing(ui_theme::SPACING))
+    card(column![ui_theme::section_label(title), body].spacing(ui_theme::SPACING))
         .width(Fill)
         .into()
 }

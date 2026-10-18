@@ -323,6 +323,7 @@ impl App {
                     log::warn!("indexing worker failed: {e}");
                     self.status.library = s.worker_failed;
                     self.status.library_error = true;
+                    self.status.library_detail = Some(e);
                 }
             },
             Msg::Synced(r) => {

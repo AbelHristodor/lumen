@@ -32,7 +32,7 @@ fn group<'a>(items: impl IntoIterator<Item = Element<'a, Msg>>) -> Element<'a, M
 }
 
 fn heading(label: &str) -> Element<'_, Msg> {
-    ui_theme::section_label::<Msg>(label).into()
+    ui_theme::section_label(label).into()
 }
 
 fn hint(label: &str) -> Element<'_, Msg> {

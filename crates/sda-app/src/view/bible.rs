@@ -122,7 +122,7 @@ fn empty_state(app: &App) -> Element<'_, Msg> {
 }
 
 fn heading(label: &str) -> Element<'_, Msg> {
-    ui_theme::section_label::<Msg>(label).into()
+    ui_theme::section_label(label).into()
 }
 
 /// Room for the scrollbar so rows and the grid never sit under it.

@@ -24,7 +24,7 @@ pub fn show(app: &App) -> Element<'_, Msg> {
         space::horizontal().into()
     };
     let thumb = column![
-        ui_theme::section_label::<Msg>(&s.live),
+        ui_theme::section_label(&s.live),
         container(frame)
             .width(160)
             .height(90)

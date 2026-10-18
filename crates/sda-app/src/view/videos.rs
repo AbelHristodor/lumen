@@ -50,7 +50,7 @@ fn downloader(app: &App) -> Element<'_, Msg> {
     .spacing(ui_theme::SPACING);
 
     let mut col = column![
-        ui_theme::section_label::<Msg>(&s.videos),
+        ui_theme::section_label(&s.videos),
         text(&s.downloader_subtitle).size(13).color(ui_theme::MUTED),
         url_row,
     ]
@@ -171,7 +171,7 @@ fn history(app: &App) -> Element<'_, Msg> {
     }
     card(
         column![
-            ui_theme::section_label::<Msg>(&s.videos_history),
+            ui_theme::section_label(&s.videos_history),
             scrollable(container(rows).padding(iced::Padding::ZERO.right(10))).height(Fill),
         ]
         .spacing(ui_theme::SPACING),

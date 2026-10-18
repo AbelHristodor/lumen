@@ -64,8 +64,9 @@ pub struct ThemesState {
     pub error: Option<String>,
     /// Resolved sample slide per theme cache key, for the list thumbnails.
     pub thumbs: HashMap<u64, Arc<ResolvedSlide>>,
-    /// Which sample `thumbs` were resolved for. A change clears them.
-    thumbs_for: SampleKey,
+    /// Which sample the preview player and `thumbs` were built for. A change
+    /// reloads the player and clears the cache.
+    sample_for: SampleKey,
 }
 
 /// Identifies the slide the previews show: a hymn path and slide index, or
@@ -91,7 +92,7 @@ impl Default for ThemesState {
             ticking: false,
             error: None,
             thumbs: HashMap::new(),
-            thumbs_for: None,
+            sample_for: None,
         }
     }
 }
@@ -422,14 +423,15 @@ fn sync_preview(app: &mut App) -> Task<Msg> {
     if t.preview.theme != shown {
         t.preview.set_theme(shown);
     }
-    if t.preview.present.source != presentation.source || t.preview.present.title != title {
+    // The key carries the hymn path and slide index, so a new preview slide
+    // on the same hymn reloads the player too. The title changes with the
+    // language for the fixed sample.
+    if t.sample_for != sample_key || t.preview.present.title != title {
         t.preview.go(presentation);
+        t.thumbs.clear();
+        t.sample_for = sample_key;
     }
     t.preview.adopt_video(&app.live);
-    if t.thumbs_for != sample_key {
-        t.thumbs.clear();
-        t.thumbs_for = sample_key;
-    }
     let keys: Vec<u64> = app.core.themes.iter().map(Theme::cache_key).collect();
     t.thumbs.retain(|k, _| keys.contains(k));
     for theme in &app.core.themes {
@@ -460,9 +462,11 @@ fn tick_later() -> Task<Msg> {
     })
 }
 
-/// The Themes tab was shown. Starts the preview loop.
+/// The Themes tab was shown. Catches the preview up with the hymn picked in
+/// Present and starts the preview loop.
 pub fn opened(app: &mut App) -> Task<Msg> {
-    ensure_ticking(app)
+    let preview = sync_preview(app);
+    Task::batch([preview, ensure_ticking(app)])
 }
 
 /// Start the preview loop if the tab is open and it is not running.

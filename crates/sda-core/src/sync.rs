@@ -120,8 +120,15 @@ pub fn short_reason(err: &str) -> String {
     if network.iter().any(|n| err.contains(n)) {
         return "network".into();
     }
-    let first_line = err.lines().next().unwrap_or_default().trim();
-    first_line.chars().take(40).collect()
+    let first_line = err.lines().next().unwrap_or_default();
+    // The chain often reads `HEAD https://host/file: reason`. Drop the URL
+    // and whatever follows it, so the chip never shows a link.
+    let no_url = ["http://", "https://"]
+        .iter()
+        .filter_map(|p| first_line.find(p))
+        .min()
+        .map_or(first_line, |i| &first_line[..i]);
+    no_url.trim().chars().take(40).collect()
 }
 
 /// Unpack `zip` into `dest`. Entry paths are sanitized by the `zip` crate, so

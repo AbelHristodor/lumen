@@ -190,7 +190,7 @@ pub fn tile_label(_theme: &Theme) -> container::Style {
 }
 
 /// Section label above a group of controls. Small, muted, upper case.
-pub fn section_label<'a, M: 'a>(label: &str) -> iced::widget::Text<'a> {
+pub fn section_label<'a>(label: &str) -> iced::widget::Text<'a> {
     iced::widget::text(label.to_uppercase())
         .size(11)
         .font(BOLD)

@@ -113,7 +113,7 @@ fn hymn_at(app: &App, pos: usize) -> Option<&Hymn> {
 }
 
 fn heading(label: &str) -> Element<'_, Msg> {
-    container(ui_theme::section_label::<Msg>(label))
+    container(ui_theme::section_label(label))
         .padding([6, 10])
         .into()
 }
@@ -169,7 +169,7 @@ fn center_panel(app: &App) -> Element<'_, Msg> {
         let (w, h) = slide_size(avail);
         card(
             column![
-                ui_theme::section_label::<Msg>(&app.core.strings.preview),
+                ui_theme::section_label(&app.core.strings.preview),
                 container(preview(app, w, h)).width(Fill).center_x(Fill),
                 thumbs(app),
                 actions(app),
@@ -356,7 +356,7 @@ fn side_panel(app: &App) -> Element<'_, Msg> {
     }
     let theme_card = card(
         column![
-            ui_theme::section_label::<Msg>(&s.theme_label),
+            ui_theme::section_label(&s.theme_label),
             container(scrollable(themes).height(Shrink))
                 .max_height(THEME_ROWS * (THEME_ROW_H + 2.0)),
         ]
@@ -372,7 +372,7 @@ fn side_panel(app: &App) -> Element<'_, Msg> {
         Some(notes) => scrollable(text(notes).size(13)).height(Fill).into(),
         None => text(&s.no_notes).size(13).color(ui_theme::MUTED).into(),
     };
-    let notes_card = card(column![ui_theme::section_label::<Msg>(&s.notes), body].spacing(SPACING))
+    let notes_card = card(column![ui_theme::section_label(&s.notes), body].spacing(SPACING))
         .width(Fill)
         .height(Fill);
     column![theme_card, notes_card]

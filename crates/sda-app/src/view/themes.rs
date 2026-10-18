@@ -265,7 +265,7 @@ fn theme_list(app: &App) -> Element<'_, Msg> {
         });
     card(
         column![
-            ui_theme::section_label::<Msg>(&s.themes_heading),
+            ui_theme::section_label(&s.themes_heading),
             toolbar,
             scrollable(cards).height(Fill),
         ]
@@ -337,7 +337,7 @@ fn preview(app: &App) -> Element<'_, Msg> {
     // form below gets the room.
     card(
         column![
-            ui_theme::section_label::<Msg>(&s.preview),
+            ui_theme::section_label(&s.preview),
             row![frame, toolbar]
                 .spacing(ui_theme::SPACING)
                 .align_y(Alignment::Start),

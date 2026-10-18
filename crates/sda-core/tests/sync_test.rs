@@ -191,4 +191,13 @@ fn short_reason_hides_urls_and_names_the_failure() {
     let other = "a".repeat(60);
     assert_eq!(short_reason(&other).chars().count(), 40);
     assert_eq!(short_reason("no data directory"), "no data directory");
+    assert_eq!(
+        short_reason("HEAD https://github.com/x/hymns.zip: something odd"),
+        "HEAD"
+    );
+    assert_eq!(
+        short_reason("https://github.com/x/hymns.zip: something odd"),
+        ""
+    );
+    assert_eq!(short_reason("saw http://a and https://b"), "saw");
 }
