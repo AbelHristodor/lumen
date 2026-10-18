@@ -165,7 +165,7 @@ fn theme_card<'a>(app: &'a App, i: usize, theme: &'a Theme, now: f32) -> Element
 
 fn theme_list(app: &App) -> Element<'_, Msg> {
     let s = &app.core.strings;
-    let now = app.themes.preview_started.elapsed().as_secs_f32();
+    let now = app.themes.clock.elapsed().as_secs_f32();
     let ghost = |label: &str, msg: Option<Msg>| {
         button(text(label.to_string()).size(13))
             .padding([6, 12])

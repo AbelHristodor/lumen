@@ -62,6 +62,11 @@ fn check<'a>(lbl: &'a str, on: bool, f: impl Fn(bool) -> DraftEdit + 'a) -> Elem
         .into()
 }
 
+/// A bare checkbox for rows whose label already names the property.
+fn toggle_box<'a>(on: bool, f: fn(bool) -> DraftEdit) -> Element<'a, Msg> {
+    checkbox(on).size(16).on_toggle(move |b| edit(f(b))).into()
+}
+
 /// A labeled row with an Inherit checkbox after the control. The control
 /// shows only when the property is set, so every control starts at the same
 /// column.
@@ -245,11 +250,7 @@ fn text_section<'a>(app: &'a App, d: &'a Theme) -> Element<'a, Msg> {
         _ => check(&s.theme_auto_size, true, DraftEdit::SizeAuto),
     };
 
-    let bold = check(
-        &s.theme_bold_label,
-        matches!(t.bold, Prop::Set(true)),
-        DraftEdit::Bold,
-    );
+    let bold = toggle_box(matches!(t.bold, Prop::Set(true)), DraftEdit::Bold);
     let color = color_field(
         app,
         ColorField::Text,
@@ -288,13 +289,9 @@ fn text_section<'a>(app: &'a App, d: &'a Theme) -> Element<'a, Msg> {
         Prop::Inherit => 0.06,
     };
 
-    let mut shadow = row![check(
-        &s.theme_shadow,
-        t.shadow.is_some(),
-        DraftEdit::ShadowOn
-    )]
-    .spacing(ui_theme::SPACING)
-    .align_y(Alignment::Center);
+    let mut shadow = row![toggle_box(t.shadow.is_some(), DraftEdit::ShadowOn)]
+        .spacing(ui_theme::SPACING)
+        .align_y(Alignment::Center);
     if let Some(sh) = t.shadow {
         shadow = shadow
             .push(color_field(app, ColorField::Shadow, sh.color))
@@ -306,13 +303,9 @@ fn text_section<'a>(app: &'a App, d: &'a Theme) -> Element<'a, Msg> {
                 DraftEdit::ShadowOffset,
             ));
     }
-    let mut outline = row![check(
-        &s.theme_outline,
-        t.outline.is_some(),
-        DraftEdit::OutlineOn
-    )]
-    .spacing(ui_theme::SPACING)
-    .align_y(Alignment::Center);
+    let mut outline = row![toggle_box(t.outline.is_some(), DraftEdit::OutlineOn)]
+        .spacing(ui_theme::SPACING)
+        .align_y(Alignment::Center);
     if let Some(o) = t.outline {
         outline = outline
             .push(color_field(app, ColorField::Outline, o.color))
@@ -582,7 +575,7 @@ fn transition_section<'a>(app: &'a App, d: &'a Theme) -> Element<'a, Msg> {
     section(
         &s.theme_transition,
         vec![
-            field(&s.theme_transition, kind),
+            kind.into(),
             field(&s.theme_duration, duration),
             field(&s.theme_easing, easing),
         ],

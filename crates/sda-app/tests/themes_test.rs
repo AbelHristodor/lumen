@@ -211,6 +211,72 @@ fn draft_edits_change_the_background_and_transition() {
 }
 
 #[test]
+fn save_refuses_rename_onto_another_theme() {
+    let dir = tempfile::tempdir().unwrap();
+    let themes_dir = dir.path().join("themes");
+    let mut app = App::for_test_with_dirs(themes_dir.clone());
+    let _ = app.update(Msg::Tab(Tab::Themes));
+    send(&mut app, ThemesMsg::New);
+    send(&mut app, ThemesMsg::Draft(DraftEdit::Name("A".into())));
+    send(
+        &mut app,
+        ThemesMsg::Draft(DraftEdit::BgKind(BgKind::Gradient)),
+    );
+    send(&mut app, ThemesMsg::Save);
+    let path = themes_dir.join("A.json");
+    let first = std::fs::read_to_string(&path).unwrap();
+
+    send(&mut app, ThemesMsg::New);
+    assert_ne!(app.themes.draft.name, "A");
+    send(&mut app, ThemesMsg::Draft(DraftEdit::Name("A".into())));
+    send(&mut app, ThemesMsg::Save);
+    assert!(app.themes.error.is_some(), "rename onto A is refused");
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), first);
+    assert_eq!(app.core.themes.iter().filter(|t| t.name == "A").count(), 1);
+
+    // Two names that differ only in a character the file stem replaces.
+    send(&mut app, ThemesMsg::Draft(DraftEdit::Name("A/B".into())));
+    send(&mut app, ThemesMsg::Save);
+    let shared = themes_dir.join("A_B.json");
+    let second = std::fs::read_to_string(&shared).unwrap();
+    send(&mut app, ThemesMsg::New);
+    send(&mut app, ThemesMsg::Draft(DraftEdit::Name("A?B".into())));
+    send(&mut app, ThemesMsg::Save);
+    assert!(app.themes.error.is_some(), "same file stem is refused");
+    assert_eq!(std::fs::read_to_string(&shared).unwrap(), second);
+    assert!(!app.core.themes.iter().any(|t| t.name == "A?B"));
+}
+
+#[test]
+fn inherit_toggle_restores_last_set_value() {
+    let mut app = themes_app();
+    let red = Rgba::new(255, 0, 0, 255);
+    send(&mut app, ThemesMsg::Draft(DraftEdit::ColorInherit(false)));
+    send(&mut app, ThemesMsg::Hex(ColorField::Text, "#FF0000".into()));
+    assert_eq!(app.themes.draft.text.color, Prop::Set(red));
+    send(&mut app, ThemesMsg::Draft(DraftEdit::ColorInherit(true)));
+    assert_eq!(app.themes.draft.text.color, Prop::Inherit);
+    assert_eq!(app.themes.hex_edit, None, "inherit clears the hex text");
+    send(&mut app, ThemesMsg::Draft(DraftEdit::ColorInherit(false)));
+    assert_eq!(app.themes.draft.text.color, Prop::Set(red));
+    send(&mut app, ThemesMsg::Hex(ColorField::BgSolid, "#12".into()));
+    send(
+        &mut app,
+        ThemesMsg::Draft(DraftEdit::BgKind(BgKind::Gradient)),
+    );
+    assert_eq!(app.themes.hex_edit, None, "kind change clears the hex text");
+}
+
+#[test]
+fn thumbnail_clock_does_not_reset_on_flip() {
+    let mut app = themes_app();
+    let before = app.themes.clock;
+    app.themes.preview_started = Instant::now() - Duration::from_secs(4);
+    send(&mut app, ThemesMsg::Tick);
+    assert_eq!(app.themes.clock, before);
+}
+
+#[test]
 fn themes_tab_renders_list_and_form() {
     let app = themes_app();
     let s = &app.core.strings;

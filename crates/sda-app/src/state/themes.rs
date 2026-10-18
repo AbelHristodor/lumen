@@ -27,14 +27,31 @@ pub const PREVIEW_SAMPLE: &str = "Cerul, pământul se vor topi!";
 pub const PREVIEW_PERIOD: Duration = Duration::from_secs(3);
 const TICK: Duration = Duration::from_millis(16);
 
+/// The last Set value of each inheritable text property. Restored when the
+/// user turns Inherit back off, so a toggle does not lose the value.
+#[derive(Default)]
+pub struct InheritStash {
+    pub font: Option<Font>,
+    pub size: Option<TextSize>,
+    pub bold: Option<bool>,
+    pub color: Option<Rgba>,
+    pub h_align: Option<HAlign>,
+    pub line_spacing: Option<f32>,
+    pub margin: Option<f32>,
+}
+
 pub struct ThemesState {
     pub draft: Theme,
     /// Position of the draft in `sorted_themes`.
     pub draft_index: usize,
     /// Font family names found on this machine, for the font picker.
     pub fonts: Vec<String>,
+    /// When the preview last swapped its sample slides.
     pub preview_started: Instant,
     pub preview_flip: bool,
+    /// Never reset. Drives animated thumbnails so they do not jump.
+    pub clock: Instant,
+    pub stash: InheritStash,
     /// Plays the draft with two sample slides so the transition loops.
     pub preview: LiveState,
     /// The color field being typed into and its raw text.
@@ -57,6 +74,8 @@ impl Default for ThemesState {
             fonts: Vec::new(),
             preview_started: Instant::now(),
             preview_flip: false,
+            clock: Instant::now(),
+            stash: InheritStash::default(),
             preview,
             hex_edit: None,
             ticking: false,
@@ -168,22 +187,33 @@ pub fn bg_kind(bg: &Background) -> BgKind {
     }
 }
 
-fn toggle<T>(p: &mut Prop<T>, inherit: bool, fallback: T) {
+/// Flip Inherit on a property. The Set value goes into `stash` and comes
+/// back on the next flip. `fallback` is used only when nothing was stashed.
+fn toggle<T: Clone>(p: &mut Prop<T>, stash: &mut Option<T>, inherit: bool, fallback: T) {
     if inherit {
-        *p = Prop::Inherit;
+        if let Prop::Set(v) = std::mem::replace(p, Prop::Inherit) {
+            *stash = Some(v);
+        }
     } else if matches!(p, Prop::Inherit) {
-        *p = Prop::Set(fallback);
+        *p = Prop::Set(stash.take().unwrap_or(fallback));
     }
 }
 
 /// Apply one form edit to the draft.
-pub fn apply(d: &mut Theme, e: DraftEdit) {
+pub fn apply(st: &mut ThemesState, e: DraftEdit) {
+    let d = &mut st.draft;
     let t = &mut d.text;
+    let stash = &mut st.stash;
     match e {
         DraftEdit::Name(n) => d.name = n,
-        DraftEdit::FontInherit(i) => toggle(&mut t.font, i, Font::Bundled(BundledFont::Inter)),
+        DraftEdit::FontInherit(i) => toggle(
+            &mut t.font,
+            &mut stash.font,
+            i,
+            Font::Bundled(BundledFont::Inter),
+        ),
         DraftEdit::Font(f) => t.font = Prop::Set(f),
-        DraftEdit::SizeInherit(i) => toggle(&mut t.size, i, TextSize::Auto),
+        DraftEdit::SizeInherit(i) => toggle(&mut t.size, &mut stash.size, i, TextSize::Auto),
         DraftEdit::SizeAuto(auto) => {
             t.size = Prop::Set(if auto {
                 TextSize::Auto
@@ -192,16 +222,23 @@ pub fn apply(d: &mut Theme, e: DraftEdit) {
             })
         }
         DraftEdit::SizePt(pt) => t.size = Prop::Set(TextSize::Pt(pt)),
-        DraftEdit::BoldInherit(i) => toggle(&mut t.bold, i, false),
+        DraftEdit::BoldInherit(i) => toggle(&mut t.bold, &mut stash.bold, i, false),
         DraftEdit::Bold(b) => t.bold = Prop::Set(b),
-        DraftEdit::ColorInherit(i) => toggle(&mut t.color, i, Rgba::WHITE),
+        DraftEdit::ColorInherit(i) => {
+            toggle(&mut t.color, &mut stash.color, i, Rgba::WHITE);
+            st.hex_edit = None;
+        }
         DraftEdit::Color(c) => t.color = Prop::Set(c),
-        DraftEdit::HAlignInherit(i) => toggle(&mut t.h_align, i, HAlign::Center),
+        DraftEdit::HAlignInherit(i) => {
+            toggle(&mut t.h_align, &mut stash.h_align, i, HAlign::Center)
+        }
         DraftEdit::HAlign(a) => t.h_align = Prop::Set(a),
         DraftEdit::VAlign(a) => t.v_align = a,
-        DraftEdit::SpacingInherit(i) => toggle(&mut t.line_spacing, i, 1.1),
+        DraftEdit::SpacingInherit(i) => {
+            toggle(&mut t.line_spacing, &mut stash.line_spacing, i, 1.1)
+        }
         DraftEdit::Spacing(v) => t.line_spacing = Prop::Set(v),
-        DraftEdit::MarginInherit(i) => toggle(&mut t.margin, i, 0.06),
+        DraftEdit::MarginInherit(i) => toggle(&mut t.margin, &mut stash.margin, i, 0.06),
         DraftEdit::Margin(v) => t.margin = Prop::Set(v),
         DraftEdit::Opacity(v) => t.opacity = v,
         DraftEdit::ShadowOn(on) => {
@@ -209,7 +246,8 @@ pub fn apply(d: &mut Theme, e: DraftEdit) {
                 color: Rgba::BLACK,
                 offset: (2.0, 2.0),
                 blur: 4.0,
-            })
+            });
+            st.hex_edit = None;
         }
         DraftEdit::ShadowColor(c) => {
             if let Some(sh) = &mut t.shadow {
@@ -225,7 +263,8 @@ pub fn apply(d: &mut Theme, e: DraftEdit) {
             t.outline = on.then_some(Outline {
                 color: Rgba::BLACK,
                 width: 2.0,
-            })
+            });
+            st.hex_edit = None;
         }
         DraftEdit::OutlineColor(c) => {
             if let Some(o) = &mut t.outline {
@@ -240,6 +279,7 @@ pub fn apply(d: &mut Theme, e: DraftEdit) {
         DraftEdit::BgKind(k) => {
             if bg_kind(&d.background) != k {
                 d.background = background_of_kind(k, &d.background);
+                st.hex_edit = None;
             }
         }
         DraftEdit::BgSolid(c) => match &mut d.background {
@@ -369,6 +409,7 @@ fn reload_and_select(app: &mut App, name: &str) {
     app.themes.draft = theme;
     app.themes.draft_index = i;
     app.themes.hex_edit = None;
+    app.themes.stash = InheritStash::default();
 }
 
 /// Write `theme` to disk and select it.
@@ -382,6 +423,38 @@ fn store_and_select(app: &mut App, theme: Theme) {
     }
 }
 
+/// Same rule as `theme::store` uses for the file name, so two names that
+/// map to one file are caught before the write.
+fn file_stem(name: &str) -> String {
+    name.chars()
+        .map(|c| {
+            if c.is_alphanumeric() || c == ' ' || c == '-' || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect()
+}
+
+/// True when saving `draft` under its name would land on another theme's
+/// file. `old` is the name the draft had when it was loaded.
+fn name_collides(core: &Core, draft: &Theme, old: Option<&str>) -> bool {
+    if old == Some(draft.name.as_str()) {
+        return false;
+    }
+    let stem = file_stem(&draft.name);
+    let taken_by_other = core
+        .themes
+        .iter()
+        .filter(|t| Some(t.name.as_str()) != old)
+        .any(|t| t.name == draft.name || file_stem(&t.name) == stem);
+    let old_stem = old.map(file_stem);
+    let on_disk = old_stem.as_deref() != Some(stem.as_str())
+        && core.paths.themes_dir.join(format!("{stem}.json")).exists();
+    taken_by_other || on_disk
+}
+
 /// Save the draft. A rename removes the old file. Saving the active theme
 /// applies it to the projector.
 fn save_draft(app: &mut App) {
@@ -393,6 +466,10 @@ fn save_draft(app: &mut App) {
     let old = sorted_themes(&app.core)
         .get(app.themes.draft_index)
         .map(|t| t.name.clone());
+    if name_collides(&app.core, &draft, old.as_deref()) {
+        app.themes.error = Some(format!("\"{}\" already exists", draft.name));
+        return;
+    }
     let was_active = app.core.active_theme.name == draft.name
         || old.as_deref() == Some(app.core.active_theme.name.as_str());
     if let Err(e) = store::save_theme(&app.core.paths.themes_dir, &draft) {
@@ -437,6 +514,7 @@ pub fn update(app: &mut App, msg: ThemesMsg) -> Task<Msg> {
                 app.themes.draft = t;
                 app.themes.draft_index = i;
                 app.themes.hex_edit = None;
+                app.themes.stash = InheritStash::default();
                 app.themes.error = None;
             }
             Task::none()
@@ -493,22 +571,22 @@ pub fn update(app: &mut App, msg: ThemesMsg) -> Task<Msg> {
             Task::none()
         }
         ThemesMsg::Draft(e) => {
-            apply(&mut app.themes.draft, e);
+            apply(&mut app.themes, e);
             Task::none()
         }
         ThemesMsg::Hex(field, text) => {
             if let Some(c) = Rgba::from_hex(text.trim()) {
-                apply(&mut app.themes.draft, field.edit(c));
+                apply(&mut app.themes, field.edit(c));
             }
             app.themes.hex_edit = Some((field, text));
             Task::none()
         }
         ThemesMsg::PickImage => {
-            apply(&mut app.themes.draft, DraftEdit::BgKind(BgKind::Image));
+            apply(&mut app.themes, DraftEdit::BgKind(BgKind::Image));
             pick_file(&app.core.strings.theme_bg_image, &["png", "jpg", "jpeg"])
         }
         ThemesMsg::PickVideo => {
-            apply(&mut app.themes.draft, DraftEdit::BgKind(BgKind::Video));
+            apply(&mut app.themes, DraftEdit::BgKind(BgKind::Video));
             pick_file(
                 &app.core.strings.theme_bg_video,
                 &["mp4", "mov", "mkv", "webm"],
