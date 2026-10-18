@@ -1,22 +1,36 @@
-//! Pure presentation state for the Control tab: which hymn is loaded, which
-//! slide is current, and whether output is blanked. No I/O, no UI — fully
-//! unit-testable. The GUI mirrors this into the presenter view and projector.
+//! Pure presentation state. Which content is loaded, which slide is current,
+//! and whether output is blanked. No I/O and no UI. The Live strip and the
+//! projector read only this struct.
 
+use crate::resolve::SlideContent;
+use std::path::PathBuf;
+
+/// Where the loaded content came from.
 #[derive(Debug, Clone, Default, PartialEq)]
-pub struct PresentationState {
-    pub number: Option<String>,
-    pub title: String,
-    pub slides: Vec<String>,
-    pub index: usize,
-    pub blank: bool,
+pub enum Source {
+    Hymn(PathBuf),
+    Bible { version: String, reference: String },
+    #[default]
+    None,
 }
 
-impl PresentationState {
-    /// Load a hymn for presentation: reset to the first slide, unblank.
-    pub fn load_hymn(&mut self, number: Option<String>, title: String, slides: Vec<String>) {
-        self.number = number;
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Presentation {
+    pub title: String,
+    pub subtitle: Option<String>,
+    pub slides: Vec<SlideContent>,
+    pub index: usize,
+    pub blank: bool,
+    pub source: Source,
+}
+
+impl Presentation {
+    /// Load new content. Resets to the first slide and unblanks.
+    pub fn load(&mut self, title: String, subtitle: Option<String>, slides: Vec<SlideContent>, source: Source) {
         self.title = title;
+        self.subtitle = subtitle;
         self.slides = slides;
+        self.source = source;
         self.index = 0;
         self.blank = false;
     }
@@ -25,17 +39,12 @@ impl PresentationState {
         self.slides.len()
     }
 
-    /// The current slide's text, or None if no hymn is loaded.
-    pub fn current_slide(&self) -> Option<&str> {
-        self.slides.get(self.index).map(|s| s.as_str())
+    /// The current slide, or None when nothing is loaded.
+    pub fn current(&self) -> Option<&SlideContent> {
+        self.slides.get(self.index)
     }
 
-    /// A peek at the next slide, or None if on the last (or no) slide.
-    pub fn next_slide(&self) -> Option<&str> {
-        self.slides.get(self.index + 1).map(|s| s.as_str())
-    }
-
-    /// Advance one slide, clamped at the last slide (no playlist roll-over).
+    /// Advance one slide, clamped at the last slide.
     pub fn next(&mut self) {
         if self.index + 1 < self.slides.len() {
             self.index += 1;
@@ -47,7 +56,18 @@ impl PresentationState {
         self.index = self.index.saturating_sub(1);
     }
 
+    /// Jump to slide `n`, 1 based. Out of range values are ignored.
+    pub fn jump(&mut self, n: usize) {
+        if (1..=self.slide_count()).contains(&n) {
+            self.index = n - 1;
+        }
+    }
+
     pub fn toggle_blank(&mut self) {
         self.blank = !self.blank;
+    }
+
+    pub fn is_loaded(&self) -> bool {
+        !self.slides.is_empty()
     }
 }
