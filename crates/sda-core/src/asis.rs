@@ -6,6 +6,9 @@ use anyhow::{bail, Context, Result};
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::atomic::{AtomicU64, Ordering};
+
+static SCRATCH_SEQ: AtomicU64 = AtomicU64::new(0);
 
 /// The external program that converts pptx files.
 #[derive(Debug, Clone, PartialEq)]
@@ -107,6 +110,10 @@ pub fn render(
     size: (u32, u32),
 ) -> Result<Vec<PathBuf>> {
     std::fs::create_dir_all(out_dir)?;
+    for p in sorted_pngs(out_dir) {
+        std::fs::remove_file(p)?;
+    }
+    std::fs::remove_file(out_dir.join(".done")).ok();
     match conv {
         Converter::LibreOffice(exe) => render_libreoffice(exe, pptx, out_dir, size)?,
         Converter::PowerPoint(_) => render_powerpoint(pptx, out_dir, size)?,
@@ -140,14 +147,12 @@ fn render_libreoffice(exe: &Path, pptx: &Path, out_dir: &Path, size: (u32, u32))
         .arg(pptx))?;
     let stem = pptx.file_stem().context("pptx has no file name")?;
     let pdf_path = out_dir.join(stem).with_extension("pdf");
-    pdf_to_pngs(&pdf_path, out_dir, size)?;
-    std::fs::remove_file(pdf_path).ok();
-    Ok(())
+    pdf_to_pngs(&pdf_path, out_dir, size)
 }
 
 /// Rasterize each page of the PDF to out_dir/<n>.png with width size.0.
 fn pdf_to_pngs(pdf_path: &Path, out_dir: &Path, size: (u32, u32)) -> Result<()> {
-    let bytes = std::fs::read(pdf_path)?;
+    let bytes = std::fs::read(pdf_path).with_context(|| pdf_path.display().to_string())?;
     // hayro 0.8 exposes the document as hayro::hayro_syntax::Pdf and a free
     // hayro::render function that returns a vello Pixmap with its own png
     // encoder, so the image crate is not needed on this path.
@@ -188,7 +193,8 @@ fn render_powerpoint(pptx: &Path, out_dir: &Path, size: (u32, u32)) -> Result<()
         let scratch = PathBuf::from(home)
             .join("Library/Containers/com.microsoft.Powerpoint/Data/tmp/sda-asis");
         std::fs::create_dir_all(&scratch)?;
-        let pdf_path = scratch.join(format!("{}.pdf", std::process::id()));
+        let n = SCRATCH_SEQ.fetch_add(1, Ordering::Relaxed);
+        let pdf_path = scratch.join(format!("{}-{n}.pdf", std::process::id()));
         let script = format!(
             r#"tell application "Microsoft PowerPoint"
     open POSIX file "{}"
@@ -200,23 +206,28 @@ end tell"#,
             esc(&pdf_path)
         );
         run(Command::new("osascript").arg("-e").arg(script))?;
-        pdf_to_pngs(&pdf_path, out_dir, size)?;
-        std::fs::remove_file(pdf_path).ok();
+        pdf_to_pngs(&pdf_path, out_dir, size)
     } else {
+        // PowerPoint is single instance, so the COM object may be the user
+        // session. Quit only when no presentation is left open. Export with
+        // width only so PowerPoint keeps the slide aspect like the pdf path.
         let script = format!(
             r#"$pp = New-Object -ComObject PowerPoint.Application
-$pres = $pp.Presentations.Open("{}", $true, $false, $false)
+$pres = $pp.Presentations.Open('{}', $true, $false, $false)
 $i = 1
-foreach ($s in $pres.Slides) {{ $s.Export("{}\$i.png", "PNG", {}, {}); $i++ }}
-$pres.Close(); $pp.Quit()"#,
-            pptx.display(),
-            out_dir.display(),
-            size.0,
-            size.1
+foreach ($s in $pres.Slides) {{ $s.Export((Join-Path '{}' "$i.png"), 'PNG', {}); $i++ }}
+$pres.Close()
+if ($pp.Presentations.Count -eq 0) {{ $pp.Quit() }}"#,
+            ps_quote(&pptx),
+            ps_quote(out_dir),
+            size.0
         );
-        run(Command::new("powershell").args(["-NoProfile", "-Command", &script]))?;
+        run(Command::new("powershell").args(["-NoProfile", "-Command", &script]))
     }
-    Ok(())
+}
+
+fn ps_quote(p: &Path) -> String {
+    p.to_string_lossy().replace('\'', "''")
 }
 
 fn esc(p: &Path) -> String {

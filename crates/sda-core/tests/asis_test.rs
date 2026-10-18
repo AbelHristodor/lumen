@@ -63,3 +63,34 @@ fn cached_requires_done_marker_and_sorts_numerically() {
         ["1.png", "2.png", "10.png"]
     );
 }
+
+#[cfg(unix)]
+#[test]
+fn render_clears_stale_output_and_scales_to_width() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = tempfile::tempdir().unwrap();
+    let pdf = "%PDF-1.4\n1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj\n3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 200 100] >> endobj\ntrailer << /Root 1 0 R >>\n";
+    std::fs::write(dir.path().join("fake.pdf"), pdf).unwrap();
+    let exe = dir.path().join("soffice");
+    std::fs::write(
+        &exe,
+        format!(
+            "#!/bin/sh\ncp '{}' \"$5/$(basename \"$6\" .pptx).pdf\"\n",
+            dir.path().join("fake.pdf").display()
+        ),
+    )
+    .unwrap();
+    std::fs::set_permissions(&exe, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let out = dir.path().join("out");
+    std::fs::create_dir(&out).unwrap();
+    std::fs::write(out.join("99.png"), "").unwrap();
+    std::fs::write(out.join(".done"), "").unwrap();
+    let pptx = dir.path().join("deck.pptx");
+    std::fs::write(&pptx, "").unwrap();
+    let v = render(&Converter::LibreOffice(exe), &pptx, &out, (400, 300)).unwrap();
+    assert_eq!(v, vec![out.join("1.png")]);
+    assert!(!out.join("99.png").exists());
+    assert!(!out.join("deck.pdf").exists());
+    let img = image::image_dimensions(&v[0]).unwrap();
+    assert_eq!(img, (400, 200));
+}
