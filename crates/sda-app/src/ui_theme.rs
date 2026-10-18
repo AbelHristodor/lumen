@@ -2,7 +2,7 @@
 //! corners, a 12 px grid. Every button and card goes through here.
 
 use iced::theme::{Palette, palette};
-use iced::widget::{button, container, rule};
+use iced::widget::{button, container, pick_list, rule, text_input};
 use iced::{Border, Color, Shadow, Theme, Vector};
 use std::sync::OnceLock;
 
@@ -101,9 +101,7 @@ pub fn accent_button(_theme: &Theme, status: button::Status) -> button::Style {
         button::Status::Active => button_base(ACCENT, Color::WHITE),
         button::Status::Hovered => button_base(lighten(ACCENT, 0.08), Color::WHITE),
         button::Status::Pressed => button_base(lighten(ACCENT, -0.06), Color::WHITE),
-        button::Status::Disabled => {
-            button_base(with_alpha(ACCENT, 0.35), with_alpha(Color::WHITE, 0.5))
-        }
+        button::Status::Disabled => button_base(SURFACE_HI, with_alpha(MUTED, 0.7)),
     }
 }
 
@@ -145,6 +143,28 @@ pub fn list_row(selected: bool) -> impl Fn(&Theme, button::Status) -> button::St
     }
 }
 
+/// A card in a picker. The selected one gets an accent outline and no fill,
+/// so a second marker such as an Active chip stays readable.
+pub fn outlined_row(selected: bool) -> impl Fn(&Theme, button::Status) -> button::Style {
+    move |_, status| {
+        let bg = if status == button::Status::Hovered {
+            SURFACE_HI
+        } else {
+            Color::TRANSPARENT
+        };
+        button::Style {
+            background: Some(bg.into()),
+            text_color: TEXT,
+            border: Border {
+                color: if selected { ACCENT } else { Color::TRANSPARENT },
+                width: 1.5,
+                radius: (RADIUS - 2.0).into(),
+            },
+            ..button::Style::default()
+        }
+    }
+}
+
 /// A small 16 by 9 tile. The active one gets an accent border.
 pub fn tile(active: bool) -> impl Fn(&Theme, button::Status) -> button::Style {
     move |_, _| button::Style {
@@ -169,9 +189,38 @@ pub fn tile_label(_theme: &Theme) -> container::Style {
     }
 }
 
-/// Section label above a group of controls.
-pub fn section_label<'a, M: 'a>(label: &'a str) -> iced::widget::Text<'a> {
-    iced::widget::text(label).size(12).font(BOLD).color(MUTED)
+/// Section label above a group of controls. Small, muted, upper case.
+pub fn section_label<'a, M: 'a>(label: &str) -> iced::widget::Text<'a> {
+    iced::widget::text(label.to_uppercase())
+        .size(11)
+        .font(BOLD)
+        .color(MUTED)
+}
+
+/// Text fields share the card corner radius.
+pub fn input(theme: &Theme, status: text_input::Status) -> text_input::Style {
+    let base = text_input::default(theme, status);
+    text_input::Style {
+        background: BG.into(),
+        border: Border {
+            radius: (RADIUS - 2.0).into(),
+            ..base.border
+        },
+        ..base
+    }
+}
+
+/// Pick lists match `input`.
+pub fn picker(theme: &Theme, status: pick_list::Status) -> pick_list::Style {
+    let base = pick_list::default(theme, status);
+    pick_list::Style {
+        background: BG.into(),
+        border: Border {
+            radius: (RADIUS - 2.0).into(),
+            ..base.border
+        },
+        ..base
+    }
 }
 
 /// One segment of a segmented control. The active segment is filled.
@@ -187,10 +236,19 @@ pub fn segment_button(active: bool) -> impl Fn(&Theme, button::Status) -> button
     }
 }
 
-/// The track behind a segmented control.
+/// The track behind a segmented control that sits on the window.
 pub fn segment_track(_theme: &Theme) -> container::Style {
     container::Style {
         background: Some(SURFACE.into()),
+        border: Border::default().rounded(RADIUS + 2.0),
+        ..container::Style::default()
+    }
+}
+
+/// The track behind a segmented control that sits on a card.
+pub fn segment_track_on_card(_theme: &Theme) -> container::Style {
+    container::Style {
+        background: Some(BG.into()),
         border: Border::default().rounded(RADIUS + 2.0),
         ..container::Style::default()
     }

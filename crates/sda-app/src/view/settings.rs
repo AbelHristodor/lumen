@@ -6,7 +6,7 @@ use crate::msg::{Msg, SettingsMsg};
 use crate::state::settings::{data_dir, installed_bibles};
 use crate::ui_theme;
 use crate::widgets::card::card;
-use crate::widgets::segmented::segmented;
+use crate::widgets::segmented::segmented_on_card;
 use iced::widget::{Column, button, column, container, pick_list, row, scrollable, text, toggler};
 use iced::{Alignment, Element, Fill};
 use sda_core::asis::Converter;
@@ -32,7 +32,7 @@ fn group<'a>(items: impl IntoIterator<Item = Element<'a, Msg>>) -> Element<'a, M
 }
 
 fn heading(label: &str) -> Element<'_, Msg> {
-    text(label).size(16).font(ui_theme::BOLD).into()
+    ui_theme::section_label::<Msg>(label).into()
 }
 
 fn hint(label: &str) -> Element<'_, Msg> {
@@ -47,19 +47,23 @@ fn ghost<'a>(label: &'a str, msg: Option<Msg>) -> Element<'a, Msg> {
         .into()
 }
 
-fn accent<'a>(label: &'a str, msg: Option<Msg>) -> Element<'a, Msg> {
-    button(text(label).size(13))
-        .padding([6, 14])
-        .style(ui_theme::accent_button)
-        .on_press_maybe(msg)
-        .into()
-}
-
 fn chip(label: String) -> Element<'static, Msg> {
     container(text(label).size(12))
         .padding([3, 8])
         .style(ui_theme::chip)
         .into()
+}
+
+/// A status chip with a colored dot, like the library chip in the top bar.
+fn dot_chip(label: &str, dot: iced::Color) -> Element<'_, Msg> {
+    container(
+        row![text("●").size(9).color(dot), text(label).size(12)]
+            .spacing(6)
+            .align_y(Alignment::Center),
+    )
+    .padding([3, 10])
+    .style(ui_theme::chip)
+    .into()
 }
 
 /// Keep the start and the end of a long path.
@@ -97,7 +101,7 @@ pub fn show(app: &App) -> Element<'_, Msg> {
         Section::About => about(app),
     };
     row![
-        container(nav).width(180),
+        card(nav).width(180).height(Fill),
         card(scrollable(body.spacing(ui_theme::SPACING * 2.0).width(Fill)).height(Fill))
             .width(Fill)
             .height(Fill),
@@ -110,28 +114,34 @@ pub fn show(app: &App) -> Element<'_, Msg> {
 
 fn general(app: &App) -> Column<'_, Msg> {
     let s = &app.core.strings;
-    let langs = segmented(
+    let langs = segmented_on_card(
         Language::all().into_iter().map(|l| (l.label(), l)),
         app.core.language,
         |l| m(SettingsMsg::Language(l)),
     );
     let checking = app.status.update.as_deref() == Some(s.update_checking.as_str());
-    let mut updates = row![accent(
+    let mut updates = row![ghost(
         &s.check_updates,
         (!checking).then_some(m(SettingsMsg::CheckUpdate)),
     )]
     .spacing(ui_theme::SPACING)
     .align_y(Alignment::Center);
     if let Some(u) = app.status.update.as_deref().filter(|u| !u.is_empty()) {
-        updates = updates.push(hint(u));
+        let palette = ui_theme::theme().palette();
+        let dot = if checking {
+            ui_theme::ACCENT
+        } else if app.status.update_staged {
+            palette.warning
+        } else if *u == s.update_failed {
+            palette.danger
+        } else {
+            palette.success
+        };
+        updates = updates.push(dot_chip(u, dot));
     }
-    let version = format!("{}{}", s.version_prefix, env!("CARGO_PKG_VERSION"));
     column![
         group([heading(&s.language_heading), langs]),
-        group([
-            text(version).size(16).font(ui_theme::BOLD).into(),
-            updates.into(),
-        ]),
+        group([updates.into()]),
     ]
 }
 
@@ -143,17 +153,17 @@ fn library_section(app: &App) -> Column<'_, Msg> {
     } else {
         &s.force_sync_button
     };
-    let status: Element<'_, Msg> = if app.status.library_error {
-        text(&app.status.library)
-            .size(13)
-            .color(ui_theme::theme().palette().danger)
-            .into()
+    let palette = ui_theme::theme().palette();
+    let dot = if app.status.library_error {
+        palette.danger
+    } else if busy {
+        ui_theme::ACCENT
     } else {
-        hint(&app.status.library)
+        palette.success
     };
     let sync_row = row![
         ghost(sync_label, (!busy).then_some(m(SettingsMsg::ForceSync))),
-        status,
+        dot_chip(&app.status.library, dot),
     ]
     .spacing(ui_theme::SPACING)
     .align_y(Alignment::Center);
@@ -207,7 +217,7 @@ fn library_section(app: &App) -> Column<'_, Msg> {
     let mut folders_group = vec![
         heading(&s.user_libraries_heading),
         table.into(),
-        accent(&s.add_folder_button, Some(m(SettingsMsg::AddFolder))),
+        ghost(&s.add_folder_button, Some(m(SettingsMsg::AddFolder))),
     ];
     if let Some(e) = &app.settings.folder_error {
         folders_group.push(
@@ -217,14 +227,15 @@ fn library_section(app: &App) -> Column<'_, Msg> {
                 .into(),
         );
     }
-    column![
-        group([
-            heading(&s.library_heading),
-            hint(&s.force_sync_description),
-            sync_row.into(),
-        ]),
-        group(folders_group),
-    ]
+    let mut sync_group = vec![
+        heading(&s.library_heading),
+        hint(&s.force_sync_description),
+        sync_row.into(),
+    ];
+    if let Some(detail) = &app.status.library_detail {
+        sync_group.push(hint(detail));
+    }
+    column![group(sync_group), group(folders_group)]
 }
 
 fn display(app: &App) -> Column<'_, Msg> {
@@ -237,6 +248,7 @@ fn display(app: &App) -> Column<'_, Msg> {
         m(SettingsMsg::DefaultDisplay(d.index))
     })
     .placeholder(s.display.as_str())
+    .style(ui_theme::picker)
     .text_size(13)
     .padding([6, 10]);
     let controls = row![
@@ -251,6 +263,7 @@ fn display(app: &App) -> Column<'_, Msg> {
     .align_y(Alignment::Center);
     let mut items = vec![
         heading(&s.settings_display),
+        hint(&s.settings_display_hint),
         container(picker)
             .padding(4)
             .style(|_| container::Style {
@@ -295,12 +308,17 @@ fn presenting(app: &App) -> Column<'_, Msg> {
         hint(&s.bible_version),
         pick_list(codes, chosen, |c| m(SettingsMsg::BibleDefault(c)))
             .placeholder(s.choose.as_str())
+            .style(ui_theme::picker)
             .text_size(13)
             .padding([6, 10]),
     ]
     .spacing(ui_theme::SPACING)
     .align_y(Alignment::Center);
     column![
+        group([
+            heading(&s.settings_presenting),
+            hint(&s.settings_presenting_hint),
+        ]),
         group([heading(&s.original), conv.into()]),
         group([heading(&s.tab_bible), bible.into()]),
     ]
@@ -313,7 +331,7 @@ fn about(app: &App) -> Column<'_, Msg> {
     column![
         group([
             heading(&s.app_title),
-            text(version).size(13).into(),
+            text(version).size(15).font(ui_theme::BOLD).into(),
             hint(&s.font_licenses),
         ]),
         group([

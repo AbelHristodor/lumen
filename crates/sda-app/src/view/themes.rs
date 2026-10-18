@@ -3,7 +3,7 @@
 
 use crate::app::App;
 use crate::msg::{Msg, ThemesMsg};
-use crate::state::themes::{PREVIEW_SAMPLE, sorted_themes, thumb_slide};
+use crate::state::themes::{PREVIEW_SAMPLE, sorted_themes, thumb_for};
 use crate::ui_theme;
 use crate::widgets::card::card;
 use crate::widgets::scene_view::{key, scene_view};
@@ -24,6 +24,11 @@ pub mod theme_form;
 const LIST_WIDTH: f32 = 300.0;
 const THUMB_W: f32 = 96.0;
 const THUMB_H: f32 = 54.0;
+/// The pinned preview frame, 16 by 9 like the projector.
+const PREVIEW_W: f32 = 480.0;
+const PREVIEW_H: f32 = 270.0;
+/// Scrollbar width plus margin, so the form never sits under the bar.
+const SCROLL_GUTTER: f32 = 10.0;
 
 pub fn show(app: &App) -> Element<'_, Msg> {
     row![theme_list(app), editor(app)]
@@ -69,7 +74,7 @@ fn background_state(bg: &Background) -> BackgroundState {
 /// The background a card thumbnail shows. A video or image already decoded
 /// for the projector or the preview is reused, so the card shows the real
 /// frame. `None` when the file is not loaded anywhere.
-fn thumb_background(app: &App, bg: &Background) -> Option<BackgroundState> {
+pub fn thumb_background(app: &App, bg: &Background) -> Option<BackgroundState> {
     let states = [&app.live, &app.themes.preview];
     match bg {
         Background::Video { path } => states
@@ -91,16 +96,33 @@ fn thumb_background(app: &App, bg: &Background) -> Option<BackgroundState> {
     }
 }
 
-fn thumb_scene(
+/// Video and image frames are dimmed to this at most so the sample text
+/// stays readable on a small tile.
+const THUMB_MEDIA_OPACITY: f32 = 0.55;
+/// Tile surface for a video or image that is not loaded anywhere. Not
+/// black, so it does not pass for a black theme.
+const MISSING_TILE: Rgba = Rgba::new(0x26, 0x2A, 0x33, 255);
+
+pub fn thumb_scene(
+    size: (u32, u32),
     background: BackgroundState,
     theme: &Theme,
     slide: Option<&Arc<ResolvedSlide>>,
     now: f32,
 ) -> Arc<Scene> {
-    Arc::new(Scene {
-        size: (THUMB_W as u32 * 2, THUMB_H as u32 * 2),
+    let media = matches!(
         background,
-        background_opacity: theme.background_opacity,
+        BackgroundState::Video(_) | BackgroundState::Image(_)
+    );
+    let opacity = if media {
+        theme.background_opacity.min(THUMB_MEDIA_OPACITY)
+    } else {
+        theme.background_opacity
+    };
+    Arc::new(Scene {
+        size,
+        background,
+        background_opacity: opacity,
         current: slide.map(|s| Layer::Text(s.clone())),
         outgoing: None,
         transition: theme.transition,
@@ -117,51 +139,67 @@ fn swatch_color(bg: &Background) -> Color {
     }
 }
 
+/// A theme tile of `w` by `h` points. Shows the shared sample slide over
+/// the theme background. A video or image not loaded anywhere gets a small
+/// kind label instead of a bare black tile.
+pub fn theme_tile<'a>(
+    app: &'a App,
+    theme: &'a Theme,
+    slide: Option<Arc<ResolvedSlide>>,
+    (w, h): (f32, f32),
+    key_name: &'static str,
+    now: f32,
+) -> Element<'a, Msg> {
+    let s = &app.core.strings;
+    let background = thumb_background(app, &theme.background);
+    let missing = background.is_none();
+    let scene = scene_view(
+        key((key_name, theme.name.as_str())),
+        thumb_scene(
+            (w as u32 * 2, h as u32 * 2),
+            background.unwrap_or(BackgroundState::Solid(MISSING_TILE)),
+            theme,
+            slide.as_ref(),
+            now,
+        ),
+    );
+    let mut layers = stack![scene];
+    if missing {
+        let kind = match &theme.background {
+            Background::Video { .. } => s.theme_bg_video.as_str(),
+            _ => s.theme_bg_image.as_str(),
+        };
+        layers = layers.push(
+            container(
+                container(text(kind).size(10))
+                    .padding([1, 5])
+                    .style(ui_theme::tile_label),
+            )
+            .width(Fill)
+            .height(Fill)
+            .padding(3)
+            .align_x(Alignment::End)
+            .align_y(Alignment::End),
+        );
+    }
+    container(layers)
+        .width(w)
+        .height(h)
+        .style(ui_theme::thumb_frame)
+        .into()
+}
+
 fn theme_card<'a>(app: &'a App, i: usize, theme: &'a Theme, now: f32) -> Element<'a, Msg> {
     let s = &app.core.strings;
     let thumb: Element<'a, Msg> = if app.gpu_ok {
-        // Before the first Themes message the cache is empty, so resolve here.
-        let slide = match app.themes.thumbs.get(&theme.cache_key()) {
-            Some(slide) => Some(slide.clone()),
-            None => thumb_slide(theme, s).map(Arc::new),
-        };
-        let background = thumb_background(app, &theme.background);
-        let missing = background.is_none();
-        let scene = scene_view(
-            key(("theme_card", theme.name.as_str())),
-            thumb_scene(
-                background.unwrap_or(BackgroundState::Solid(Rgba::BLACK)),
-                theme,
-                slide.as_ref(),
-                now,
-            ),
-        );
-        let mut layers = stack![scene];
-        if missing {
-            // The file is not loaded, so name the kind instead of showing
-            // a bare black tile.
-            let kind = match &theme.background {
-                Background::Video { .. } => s.theme_bg_video.as_str(),
-                _ => s.theme_bg_image.as_str(),
-            };
-            layers = layers.push(
-                container(
-                    container(text(kind).size(10))
-                        .padding([1, 5])
-                        .style(ui_theme::tile_label),
-                )
-                .width(Fill)
-                .height(Fill)
-                .padding(3)
-                .align_x(Alignment::End)
-                .align_y(Alignment::End),
-            );
-        }
-        container(layers)
-            .width(THUMB_W)
-            .height(THUMB_H)
-            .style(ui_theme::thumb_frame)
-            .into()
+        theme_tile(
+            app,
+            theme,
+            thumb_for(app, theme),
+            (THUMB_W, THUMB_H),
+            "theme_card",
+            now,
+        )
     } else {
         let color = swatch_color(&theme.background);
         container(space::horizontal())
@@ -195,7 +233,7 @@ fn theme_card<'a>(app: &'a App, i: usize, theme: &'a Theme, now: f32) -> Element
     )
     .width(Fill)
     .padding(6)
-    .style(ui_theme::list_row(selected))
+    .style(ui_theme::outlined_row(selected))
     .on_press(Msg::Themes(ThemesMsg::Select(i)))
     .into()
 }
@@ -227,9 +265,7 @@ fn theme_list(app: &App) -> Element<'_, Msg> {
         });
     card(
         column![
-            text(s.themes_heading.as_str())
-                .size(16)
-                .font(ui_theme::BOLD),
+            ui_theme::section_label::<Msg>(&s.themes_heading),
             toolbar,
             scrollable(cards).height(Fill),
         ]
@@ -247,15 +283,15 @@ fn preview(app: &App) -> Element<'_, Msg> {
             key("theme_preview"),
             app.themes.preview.scene((960, 540), Instant::now()),
         ))
-        .width(Fill)
-        .height(300)
+        .width(PREVIEW_W)
+        .height(PREVIEW_H)
         .style(ui_theme::thumb_frame)
         .into()
     } else {
         let color = swatch_color(&app.themes.draft.background);
         container(text(PREVIEW_SAMPLE).size(20).center())
-            .width(Fill)
-            .height(300)
+            .width(PREVIEW_W)
+            .height(PREVIEW_H)
             .center_x(Fill)
             .center_y(Fill)
             .style(move |_| container::Style {
@@ -268,11 +304,15 @@ fn preview(app: &App) -> Element<'_, Msg> {
     let draft = &app.themes.draft;
     let saved = app.core.theme_named(&draft.name).is_some();
     let is_active = app.core.active_theme.name == draft.name;
-    let mut toolbar = row![
+    let dirty = sorted_themes(&app.core)
+        .get(app.themes.draft_index)
+        .is_none_or(|t| *t != draft);
+    let can_save = dirty && !draft.is_builtin_default();
+    let mut toolbar = column![
         button(text(s.theme_save.as_str()).size(13))
             .padding([6, 14])
             .style(ui_theme::accent_button)
-            .on_press_maybe((!draft.is_builtin_default()).then_some(Msg::Themes(ThemesMsg::Save))),
+            .on_press_maybe(can_save.then_some(Msg::Themes(ThemesMsg::Save))),
         button(text(s.theme_set_active.as_str()).size(13))
             .padding([6, 14])
             .style(ui_theme::ghost_button)
@@ -289,15 +329,18 @@ fn preview(app: &App) -> Element<'_, Msg> {
             ),
     ]
     .spacing(ui_theme::SPACING)
-    .align_y(Alignment::Center);
+    .align_x(Alignment::Start);
     if let Some(e) = &app.themes.error {
         toolbar = toolbar.push(text(e.as_str()).size(12).color(ui_theme::MUTED));
     }
+    // The actions sit beside the frame, so the card stays short and the
+    // form below gets the room.
     card(
         column![
-            text(s.preview.as_str()).size(16).font(ui_theme::BOLD),
-            frame,
-            toolbar,
+            ui_theme::section_label::<Msg>(&s.preview),
+            row![frame, toolbar]
+                .spacing(ui_theme::SPACING)
+                .align_y(Alignment::Start),
         ]
         .spacing(ui_theme::SPACING),
     )
@@ -305,13 +348,22 @@ fn preview(app: &App) -> Element<'_, Msg> {
     .into()
 }
 
+/// The preview card stays put. Only the form scrolls under it.
 fn editor(app: &App) -> Element<'_, Msg> {
-    scrollable(
-        column![preview(app), theme_form::show(app)]
-            .spacing(ui_theme::SPACING)
-            .padding([0, ui_theme::SPACING as u16 + 4]),
+    let form = scrollable(
+        container(theme_form::show(app)).padding(iced::Padding::ZERO.right(SCROLL_GUTTER)),
     )
+    .direction(scrollable::Direction::Vertical(
+        scrollable::Scrollbar::new()
+            .width(6)
+            .margin(2)
+            .scroller_width(6),
+    ))
     .height(Fill)
-    .width(Fill)
-    .into()
+    .width(Fill);
+    column![preview(app), form]
+        .spacing(ui_theme::SPACING)
+        .height(Fill)
+        .width(Fill)
+        .into()
 }

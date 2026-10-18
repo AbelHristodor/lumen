@@ -80,6 +80,14 @@ fn download_events_drive_phase_and_history() {
         let mut ui = Simulator::new(app.view_operator());
         assert!(ui.find("Sample").is_ok());
     }
+    let _ = app.update(Msg::Videos(VideosMsg::Event(DownloadEvent::Done {
+        path: dir.clone(),
+    })));
+    assert_eq!(
+        app.core.downloads.len(),
+        1,
+        "the same file and title is one history row"
+    );
 
     let _ = app.update(Msg::Videos(VideosMsg::Event(DownloadEvent::Failed {
         message: "boom".into(),

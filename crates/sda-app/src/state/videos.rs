@@ -142,6 +142,10 @@ pub fn update(app: &mut App, msg: VideosMsg) -> Task<Msg> {
                 let at = std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
                     .map_or(0, |d| d.as_secs() as i64);
+                // One row per file. A repeat download moves it to the top.
+                app.core
+                    .downloads
+                    .retain(|r| r.path != path || r.title != v.title);
                 app.core.downloads.insert(
                     0,
                     DownloadRecord {

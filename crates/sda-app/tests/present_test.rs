@@ -54,7 +54,7 @@ fn recent_shows_on_empty_query() {
     let _ = app.update(Msg::GoLive);
     let _ = app.update(Msg::Search(String::new()));
     let mut ui = Simulator::new(app.view_operator());
-    assert!(ui.find(&*app.core.strings.recent).is_ok());
+    assert!(ui.find(&*app.core.strings.recent.to_uppercase()).is_ok());
 }
 
 #[test]

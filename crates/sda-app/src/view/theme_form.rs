@@ -4,6 +4,7 @@
 use crate::app::App;
 use crate::msg::Msg;
 use crate::msg::themes::{BgKind, ColorField, DraftEdit, ThemesMsg};
+use crate::state::present::selected_hymn;
 use crate::state::themes::{COLOR_INHERIT_ID, bg_kind};
 use crate::ui_theme;
 use crate::view::themes::to_color;
@@ -40,9 +41,48 @@ fn section<'a>(title: &'a str, rows: Vec<Element<'a, Msg>>) -> Element<'a, Msg> 
     let body = rows
         .into_iter()
         .fold(Column::new().spacing(ui_theme::SPACING), Column::push);
-    card(column![text(title).size(15).font(ui_theme::BOLD), body].spacing(ui_theme::SPACING))
+    card(column![ui_theme::section_label::<Msg>(title), body].spacing(ui_theme::SPACING))
         .width(Fill)
         .into()
+}
+
+/// What the selected hymn's first run carries for each inheritable
+/// property, as display text. Shown next to a checked Inherit box.
+#[derive(Default)]
+struct Inherited {
+    font: Option<String>,
+    size: Option<String>,
+    bold: Option<String>,
+    color: Option<String>,
+    h_align: Option<String>,
+    spacing: Option<String>,
+}
+
+fn inherited(app: &App) -> Inherited {
+    let s = &app.core.strings;
+    let Some(paragraph) = selected_hymn(app)
+        .and_then(|(_, h)| h.slides.first())
+        .and_then(|sl| sl.boxes.first())
+        .and_then(|b| b.paragraphs.first())
+    else {
+        return Inherited::default();
+    };
+    let run = paragraph.runs.first();
+    let align = |a: HAlign| match a {
+        HAlign::Left => s.align_left.clone(),
+        HAlign::Center => s.align_center.clone(),
+        HAlign::Right => s.align_right.clone(),
+    };
+    Inherited {
+        font: run.and_then(|r| r.font.clone()),
+        size: run.and_then(|r| r.size_pt).map(|pt| format!("{pt:.0}pt")),
+        bold: run
+            .and_then(|r| r.bold)
+            .map(|b| if b { "✓" } else { "✗" }.to_string()),
+        color: run.and_then(|r| r.color).map(|c| c.to_hex()),
+        h_align: paragraph.align.map(align),
+        spacing: paragraph.line_spacing.map(|v| format!("{v:.2}")),
+    }
 }
 
 fn field<'a>(lbl: &'a str, control: impl Into<Element<'a, Msg>>) -> Element<'a, Msg> {
@@ -69,7 +109,7 @@ fn toggle_box<'a>(on: bool, f: fn(bool) -> DraftEdit) -> Element<'a, Msg> {
 
 /// A labeled row with an Inherit checkbox after the control. The control
 /// shows only when the property is set, so every control starts at the same
-/// column.
+/// column. A checked box shows the value the file carries, when known.
 fn inherit_row<'a>(
     lbl: &'a str,
     s: &'a Strings,
@@ -77,6 +117,7 @@ fn inherit_row<'a>(
     on_inherit: fn(bool) -> DraftEdit,
     control: Element<'a, Msg>,
     id: Option<&'static str>,
+    file_value: Option<String>,
 ) -> Element<'a, Msg> {
     let mut check = container(
         checkbox(inherit)
@@ -96,7 +137,16 @@ fn inherit_row<'a>(
     if !inherit {
         r = r.push(control);
     }
-    r.push(check).into()
+    r = r.push(check);
+    if inherit && let Some(v) = file_value {
+        r = r.push(
+            text(format!("·  {v}"))
+                .size(13)
+                .color(ui_theme::MUTED)
+                .wrapping(text::Wrapping::None),
+        );
+    }
+    r.into()
 }
 
 fn slide<'a>(
@@ -138,6 +188,7 @@ fn color_field<'a>(app: &'a App, which: ColorField, current: Rgba) -> Element<'a
     row![
         text_input("#RRGGBB", &value)
             .on_input(move |t| Msg::Themes(ThemesMsg::Hex(which, t)))
+            .style(ui_theme::input)
             .size(13)
             .padding(6)
             .width(100),
@@ -222,6 +273,7 @@ const EASINGS: [Easing; 3] = [Easing::Linear, Easing::EaseInOut, Easing::EaseOut
 fn text_section<'a>(app: &'a App, d: &'a Theme) -> Element<'a, Msg> {
     let s = &app.core.strings;
     let t = &d.text;
+    let file = inherited(app);
 
     let fonts: Vec<FontChoice> = BundledFont::all()
         .into_iter()
@@ -239,6 +291,7 @@ fn text_section<'a>(app: &'a App, d: &'a Theme) -> Element<'a, Msg> {
     };
     let font = pick_list(fonts, font_sel, |f| edit(DraftEdit::Font(f.0)))
         .placeholder(s.theme_font_label.as_str())
+        .style(ui_theme::picker)
         .text_size(13)
         .padding([4, 8])
         .into();
@@ -335,6 +388,7 @@ fn text_section<'a>(app: &'a App, d: &'a Theme) -> Element<'a, Msg> {
                 &s.theme_name_label,
                 text_input(s.theme_name_label.as_str(), &d.name)
                     .on_input(|n| edit(DraftEdit::Name(n)))
+                    .style(ui_theme::input)
                     .size(13)
                     .padding(6)
                     .width(260),
@@ -346,6 +400,7 @@ fn text_section<'a>(app: &'a App, d: &'a Theme) -> Element<'a, Msg> {
                 DraftEdit::FontInherit,
                 font,
                 None,
+                file.font,
             ),
             inherit_row(
                 &s.theme_size_label,
@@ -354,6 +409,7 @@ fn text_section<'a>(app: &'a App, d: &'a Theme) -> Element<'a, Msg> {
                 DraftEdit::SizeInherit,
                 size,
                 None,
+                file.size,
             ),
             inherit_row(
                 &s.theme_bold_label,
@@ -362,6 +418,7 @@ fn text_section<'a>(app: &'a App, d: &'a Theme) -> Element<'a, Msg> {
                 DraftEdit::BoldInherit,
                 bold,
                 None,
+                file.bold,
             ),
             inherit_row(
                 &s.theme_text_color_label,
@@ -370,6 +427,7 @@ fn text_section<'a>(app: &'a App, d: &'a Theme) -> Element<'a, Msg> {
                 DraftEdit::ColorInherit,
                 color,
                 Some(COLOR_INHERIT_ID),
+                file.color,
             ),
             inherit_row(
                 &s.theme_align_label,
@@ -378,6 +436,7 @@ fn text_section<'a>(app: &'a App, d: &'a Theme) -> Element<'a, Msg> {
                 DraftEdit::HAlignInherit,
                 h_align,
                 None,
+                file.h_align,
             ),
             field(&s.theme_valign_label, v_align),
             inherit_row(
@@ -393,6 +452,7 @@ fn text_section<'a>(app: &'a App, d: &'a Theme) -> Element<'a, Msg> {
                     DraftEdit::Spacing,
                 ),
                 None,
+                file.spacing,
             ),
             inherit_row(
                 &s.theme_margin_label,
@@ -406,6 +466,7 @@ fn text_section<'a>(app: &'a App, d: &'a Theme) -> Element<'a, Msg> {
                     format!("{:.0} %", margin_v * 100.0),
                     DraftEdit::Margin,
                 ),
+                None,
                 None,
             ),
             field(
@@ -567,6 +628,7 @@ fn transition_section<'a>(app: &'a App, d: &'a Theme) -> Element<'a, Msg> {
     let kind = pick_list(kinds, Some(choice(tr.kind, kind_label(s, tr.kind))), |k| {
         edit(DraftEdit::TransitionKind(k.value))
     })
+    .style(ui_theme::picker)
     .text_size(13)
     .padding([4, 8]);
     let easings: Vec<Choice<Easing>> = EASINGS
@@ -578,6 +640,7 @@ fn transition_section<'a>(app: &'a App, d: &'a Theme) -> Element<'a, Msg> {
         Some(choice(tr.easing, easing_label(s, tr.easing))),
         |e| edit(DraftEdit::Easing(e.value)),
     )
+    .style(ui_theme::picker)
     .text_size(13)
     .padding([4, 8]);
     let duration = row![

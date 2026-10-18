@@ -240,6 +240,8 @@ pub struct Strings {
     pub bible_pick_chapter: String,
     pub theme_kind: String,
     pub bible_search_empty: String,
+    pub settings_display_hint: String,
+    pub settings_presenting_hint: String,
 }
 
 impl Strings {
@@ -429,6 +431,8 @@ impl Strings {
             &self.bible_pick_chapter,
             &self.theme_kind,
             &self.bible_search_empty,
+            &self.settings_display_hint,
+            &self.settings_presenting_hint,
         ]
     }
 
@@ -609,6 +613,8 @@ impl Strings {
             bible_pick_chapter: "Pick a book and a chapter to see the verses.".into(),
             theme_kind: "Kind".into(),
             bible_search_empty: "Type a word above to search the whole Bible.".into(),
+            settings_display_hint: "Pick the screen the projector opens on.".into(),
+            settings_presenting_hint: "How hymns and verses are shown on the projector.".into(),
         }
     }
 
@@ -789,6 +795,8 @@ impl Strings {
             bible_pick_chapter: "Scegli un libro e un capitolo per vedere i versetti.".into(),
             theme_kind: "Tipo".into(),
             bible_search_empty: "Scrivi una parola qui sopra per cercare in tutta la Bibbia.".into(),
+            settings_display_hint: "Scegli lo schermo su cui si apre il proiettore.".into(),
+            settings_presenting_hint: "Come inni e versetti vengono mostrati sul proiettore.".into(),
         }
     }
 
@@ -969,6 +977,8 @@ impl Strings {
             bible_pick_chapter: "Alege o carte și un capitol pentru a vedea versetele.".into(),
             theme_kind: "Tip".into(),
             bible_search_empty: "Scrie un cuvânt mai sus pentru a căuta în toată Biblia.".into(),
+            settings_display_hint: "Alege ecranul pe care se deschide proiectorul.".into(),
+            settings_presenting_hint: "Cum apar imnurile și versetele pe proiector.".into(),
         }
     }
 }

@@ -78,12 +78,14 @@ fn top_row(app: &App) -> Element<'_, Msg> {
         .and_then(|v| choices.iter().find(|c| c.code == v).cloned());
     let picker = pick_list(choices, selected, |c| b(BibleMsg::Version(c.code)))
         .placeholder(s.bible_version.as_str())
+        .style(ui_theme::picker)
         .text_size(13)
-        .padding([6, 10]);
+        .padding([7, 10]);
     let reference = text_input(&s.bible_reference_hint, &st.reference_input)
         .id(REFERENCE_ID)
         .on_input(|t| b(BibleMsg::Reference(t)))
         .on_submit(b(BibleMsg::Reference(st.reference_input.clone())))
+        .style(ui_theme::input)
         .padding([6, 10])
         .size(14)
         .width(Fill);
@@ -125,6 +127,8 @@ fn heading(label: &str) -> Element<'_, Msg> {
 
 /// Room for the scrollbar so rows and the grid never sit under it.
 const SCROLL_GUTTER: f32 = 10.0;
+/// Room under the last row so it is never cut by the card edge.
+const SCROLL_TAIL: f32 = ui_theme::SPACING;
 
 fn thin_scrollbar() -> scrollable::Direction {
     scrollable::Direction::Vertical(
@@ -137,7 +141,7 @@ fn thin_scrollbar() -> scrollable::Direction {
 
 fn gutter<'a>(content: impl Into<Element<'a, Msg>>) -> Element<'a, Msg> {
     container(content)
-        .padding(iced::Padding::ZERO.right(SCROLL_GUTTER))
+        .padding(iced::Padding::ZERO.right(SCROLL_GUTTER).bottom(SCROLL_TAIL))
         .into()
 }
 
@@ -232,12 +236,29 @@ fn verses_pane(app: &App) -> Element<'_, Msg> {
     let last = st.selected.last().copied();
     let rows = Column::with_children(st.chapter_verses().into_iter().map(|(n, verse)| {
         let checked = st.selected.contains(&n);
+        // The box sits on the first line of the verse, so a long verse does
+        // not pull it down to the middle. The text toggles too.
+        let body = mouse_area(
+            row![
+                text(n.to_string())
+                    .size(12)
+                    .font(ui_theme::BOLD)
+                    .color(ui_theme::MUTED)
+                    .width(26),
+                text(verse).size(14).width(Fill),
+            ]
+            .spacing(4)
+            .align_y(Alignment::Start),
+        )
+        .on_press(b(BibleMsg::ToggleVerse(n)));
         let mut line = row![
-            checkbox(checked)
-                .label(format!("{n} {verse}"))
-                .text_size(14)
-                .width(Fill)
-                .on_toggle(move |_| b(BibleMsg::ToggleVerse(n)))
+            container(
+                checkbox(checked)
+                    .size(16)
+                    .on_toggle(move |_| b(BibleMsg::ToggleVerse(n)))
+            )
+            .padding(iced::Padding::ZERO.top(2)),
+            body,
         ]
         .spacing(ui_theme::SPACING / 2.0)
         .align_y(Alignment::Start);
@@ -274,6 +295,7 @@ fn search_pane(app: &App) -> Element<'_, Msg> {
     let field = text_input(&s.bible_search_hint, &st.query)
         .id(SEARCH_ID)
         .on_input(|t| b(BibleMsg::Search(t)))
+        .style(ui_theme::input)
         .padding([6, 10])
         .size(13)
         .width(Fill);

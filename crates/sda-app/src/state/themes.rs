@@ -6,6 +6,7 @@ use crate::msg::themes::{BgKind, ColorField, DraftEdit};
 use crate::msg::{BgTarget, Msg, Tab, ThemesMsg};
 use crate::state::core::Core;
 use crate::state::live::LiveState;
+use crate::state::present;
 use crate::workers;
 use iced::Task;
 use sda_core::i18n::{Language, Strings};
@@ -63,12 +64,20 @@ pub struct ThemesState {
     pub error: Option<String>,
     /// Resolved sample slide per theme cache key, for the list thumbnails.
     pub thumbs: HashMap<u64, Arc<ResolvedSlide>>,
+    /// Which sample `thumbs` were resolved for. A change clears them.
+    thumbs_for: SampleKey,
 }
+
+/// Identifies the slide the previews show: a hymn path and slide index, or
+/// `None` for the fixed sample line.
+type SampleKey = Option<(PathBuf, usize)>;
 
 impl Default for ThemesState {
     fn default() -> Self {
         let mut preview = LiveState::new(Theme::default());
-        preview.go(sample_presentation(&Strings::for_language(Language::En)));
+        preview.go(fixed_sample_presentation(&Strings::for_language(
+            Language::En,
+        )));
         ThemesState {
             draft: Theme::default(),
             draft_index: 0,
@@ -82,6 +91,7 @@ impl Default for ThemesState {
             ticking: false,
             error: None,
             thumbs: HashMap::new(),
+            thumbs_for: None,
         }
     }
 }
@@ -94,7 +104,7 @@ pub fn sorted_themes(core: &Core) -> Vec<&Theme> {
     v
 }
 
-fn sample_slide(text: &str) -> SlideContent {
+pub fn sample_slide(text: &str) -> SlideContent {
     SlideContent::Styled(Slide {
         background: None,
         boxes: vec![TextBox {
@@ -112,7 +122,7 @@ fn sample_slide(text: &str) -> SlideContent {
     })
 }
 
-fn sample_presentation(s: &Strings) -> Presentation {
+fn fixed_sample_presentation(s: &Strings) -> Presentation {
     let mut p = Presentation::default();
     p.load(
         s.theme_preview_sample.clone(),
@@ -126,10 +136,65 @@ fn sample_presentation(s: &Strings) -> Presentation {
     p
 }
 
-/// The sample slide resolved under `theme`, for a thumbnail.
-pub fn thumb_slide(theme: &Theme, s: &Strings) -> Option<ResolvedSlide> {
-    let footer = theme.footer.then_some(s.theme_preview_sample.as_str());
-    resolve(theme, &sample_slide(PREVIEW_SAMPLE), footer)
+/// What every theme preview shows: the previewed hymn's current slide and
+/// its title when a hymn is selected, else the fixed sample line. The
+/// Present theme picker and the Themes tab both draw this.
+pub fn sample(app: &App) -> (SlideContent, String, SampleKey) {
+    if let Some((_, hymn)) = present::selected_hymn(app) {
+        let i = app
+            .present
+            .preview_slide
+            .min(hymn.slides.len().saturating_sub(1));
+        if let Some(slide) = hymn.slides.get(i) {
+            return (
+                SlideContent::Styled(slide.clone()),
+                present::title_of(hymn),
+                Some((hymn.path.clone(), i)),
+            );
+        }
+    }
+    (
+        sample_slide(PREVIEW_SAMPLE),
+        app.core.strings.theme_preview_sample.clone(),
+        None,
+    )
+}
+
+/// `content` resolved under `theme` with `title` as the footer when the
+/// theme shows one.
+pub fn thumb_slide(theme: &Theme, content: &SlideContent, title: &str) -> Option<ResolvedSlide> {
+    resolve(theme, content, theme.footer.then_some(title))
+}
+
+/// The list thumbnail slide for `theme`, from the cache when it is there.
+pub fn thumb_for(app: &App, theme: &Theme) -> Option<Arc<ResolvedSlide>> {
+    if let Some(slide) = app.themes.thumbs.get(&theme.cache_key()) {
+        return Some(slide.clone());
+    }
+    let (content, title, _) = sample(app);
+    thumb_slide(theme, &content, &title).map(Arc::new)
+}
+
+/// The preview player's presentation for the current sample. A hymn plays
+/// its own slides, the sample plays two lines so the transition loops.
+fn sample_presentation(app: &App) -> Presentation {
+    let s = &app.core.strings;
+    let Some((_, hymn)) = present::selected_hymn(app) else {
+        return fixed_sample_presentation(s);
+    };
+    let mut p = Presentation::default();
+    p.load(
+        present::title_of(hymn),
+        None,
+        hymn.slides
+            .iter()
+            .cloned()
+            .map(SlideContent::Styled)
+            .collect(),
+        Source::Hymn(hymn.path.clone()),
+    );
+    p.jump(app.present.preview_slide + 1);
+    p
 }
 
 /// A name no loaded theme uses, built from `base` with a counter.
@@ -350,19 +415,27 @@ fn preview_theme(draft: &Theme) -> Theme {
 /// and the loaded themes. Returns the background worker when the preview
 /// needs a file loaded.
 fn sync_preview(app: &mut App) -> Task<Msg> {
-    let s = &app.core.strings;
+    let (content, title, sample_key) = sample(app);
+    let presentation = sample_presentation(app);
     let t = &mut app.themes;
     let shown = preview_theme(&t.draft);
     if t.preview.theme != shown {
         t.preview.set_theme(shown);
     }
+    if t.preview.present.source != presentation.source || t.preview.present.title != title {
+        t.preview.go(presentation);
+    }
     t.preview.adopt_video(&app.live);
+    if t.thumbs_for != sample_key {
+        t.thumbs.clear();
+        t.thumbs_for = sample_key;
+    }
     let keys: Vec<u64> = app.core.themes.iter().map(Theme::cache_key).collect();
     t.thumbs.retain(|k, _| keys.contains(k));
     for theme in &app.core.themes {
         let key = theme.cache_key();
         if !t.thumbs.contains_key(&key)
-            && let Some(slide) = thumb_slide(theme, s)
+            && let Some(slide) = thumb_slide(theme, &content, &title)
         {
             t.thumbs.insert(key, Arc::new(slide));
         }

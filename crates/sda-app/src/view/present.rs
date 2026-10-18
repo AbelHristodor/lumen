@@ -7,6 +7,7 @@ use crate::msg::{Msg, ThemesMsg};
 use crate::state::present::{self as st, MAX_THUMBS, RECENT_COUNT};
 use crate::ui_theme::{self, SPACING};
 use crate::view::shell::shorten;
+use crate::view::themes::theme_tile;
 use crate::widgets::card::card;
 use crate::widgets::scene_view::{key, scene_view};
 use iced::widget::{
@@ -26,6 +27,8 @@ const ROW_H: f32 = 36.0;
 /// Longest title in a result row before the ellipsis.
 const TITLE_CHARS: usize = 28;
 const THUMB: (f32, f32) = (128.0, 72.0);
+/// Inset between the tile border and the slide, so the border shows.
+const THUMB_PAD: f32 = 3.0;
 const THEME_THUMB: (f32, f32) = (96.0, 54.0);
 /// Theme rows shown before the picker scrolls.
 const THEME_ROWS: f32 = 6.0;
@@ -53,6 +56,7 @@ fn search_panel(app: &App) -> Element<'_, Msg> {
             .id(Id::new(SEARCH_ID))
             .on_input(Msg::Search)
             .on_submit(Msg::GoLive)
+            .style(ui_theme::input)
             .padding(10)
             .size(14),
     )
@@ -98,8 +102,7 @@ fn search_panel(app: &App) -> Element<'_, Msg> {
         ))
         .height(Fill)
         .width(Fill);
-    column![search, results]
-        .spacing(SPACING)
+    card(column![search, results].spacing(SPACING).height(Fill))
         .height(Fill)
         .into()
 }
@@ -127,6 +130,7 @@ fn hymn_row(hymn: &Hymn, selected: bool, show_library: bool, pos: usize) -> Elem
             .wrapping(text::Wrapping::None),
     ]
     .spacing(4)
+    .height(Fill)
     .align_y(Alignment::Center);
     if show_library {
         line = line.push(space::horizontal()).push(
@@ -145,32 +149,36 @@ fn hymn_row(hymn: &Hymn, selected: bool, show_library: bool, pos: usize) -> Elem
         .into()
 }
 
-/// Height the preview column needs besides the slide: heading, thumbnail
-/// strip with its scrollbar, the action row, and three gaps.
-const CHROME_H: f32 = 16.0 + THUMB.1 + 10.0 + 36.0 + 3.0 * SPACING;
+/// Height the preview card needs besides the slide: heading, thumbnail
+/// strip with its scrollbar, the action row, card padding, and the gaps.
+const CHROME_H: f32 =
+    16.0 + THUMB.1 + 2.0 * THUMB_PAD + 10.0 + 36.0 + 3.0 * SPACING + 2.0 * SPACING;
 
-/// Largest 16 by 9 slide that leaves room for the rest of the column.
+/// Largest 16 by 9 slide that leaves room for the rest of the card.
 fn slide_size(avail: Size) -> (f32, f32) {
-    let h = (avail.width * 9.0 / 16.0)
+    let h = ((avail.width - 2.0 * SPACING) * 9.0 / 16.0)
         .min(avail.height - CHROME_H)
         .max(90.0);
     (h * 16.0 / 9.0, h)
 }
 
+/// The card ends after the action row. `responsive` only measures the
+/// column so the slide can be capped by height on a short window.
 fn center_panel(app: &App) -> Element<'_, Msg> {
-    card(responsive(move |avail| {
+    responsive(move |avail| {
         let (w, h) = slide_size(avail);
-        column![
-            ui_theme::section_label::<Msg>(&app.core.strings.preview),
-            container(preview(app, w, h)).width(Fill).center_x(Fill),
-            thumbs(app),
-            actions(app),
-        ]
-        .spacing(SPACING)
+        card(
+            column![
+                ui_theme::section_label::<Msg>(&app.core.strings.preview),
+                container(preview(app, w, h)).width(Fill).center_x(Fill),
+                thumbs(app),
+                actions(app),
+            ]
+            .spacing(SPACING),
+        )
+        .width(Fill)
         .into()
-    }))
-    .width(Fill)
-    .height(Fill)
+    })
     .into()
 }
 
@@ -221,23 +229,23 @@ fn thumbs(app: &App) -> Element<'_, Msg> {
         } else {
             space::horizontal().into()
         };
-        let number = container(text((i + 1).to_string()).size(11))
-            .padding([1, 5])
+        let number = container(text((i + 1).to_string()).size(10))
+            .padding([0, 4])
             .style(ui_theme::tile_label);
         let tile = stack![
             inner,
             container(number)
                 .width(Fill)
                 .height(Fill)
-                .padding(4)
+                .padding(2)
                 .align_x(Alignment::Start)
-                .align_y(Alignment::End),
+                .align_y(Alignment::Start),
         ];
         strip = strip.push(
             button(tile)
-                .width(THUMB.0)
-                .height(THUMB.1)
-                .padding(0)
+                .width(THUMB.0 + 2.0 * THUMB_PAD)
+                .height(THUMB.1 + 2.0 * THUMB_PAD)
+                .padding(THUMB_PAD)
                 .style(ui_theme::tile(i == p.preview_slide))
                 .on_press(Msg::PreviewSlide(i)),
         );
@@ -309,42 +317,41 @@ fn actions(app: &App) -> Element<'_, Msg> {
 fn side_panel(app: &App) -> Element<'_, Msg> {
     let s = &app.core.strings;
     let active = app.core.active_theme.name.as_str();
+    let now = app.themes.clock.elapsed().as_secs_f32();
     let mut themes = column![].spacing(2);
     for t in &app.core.themes {
-        let thumb: Element<'_, Msg> = if app.gpu_ok {
-            match st::theme_scene(
-                app,
-                t,
-                &s.theme_preview_sample,
-                (THEME_THUMB.0 as u32 * 2, THEME_THUMB.1 as u32 * 2),
-            ) {
-                Some(scene) => scene_view(key(("theme", t.name.as_str())), scene),
-                None => space::horizontal().into(),
-            }
+        let frame: Element<'_, Msg> = if app.gpu_ok {
+            theme_tile(app, t, st::theme_slide(app, t), THEME_THUMB, "theme", now)
         } else {
-            space::horizontal().into()
+            container(space::horizontal())
+                .width(THEME_THUMB.0)
+                .height(THEME_THUMB.1)
+                .style(ui_theme::thumb_frame)
+                .into()
         };
-        let frame = container(thumb)
-            .width(THEME_THUMB.0)
-            .height(THEME_THUMB.1)
-            .style(ui_theme::thumb_frame);
+        let mut line = row![
+            frame,
+            text(&t.name)
+                .size(13)
+                .width(Fill)
+                .wrapping(text::Wrapping::None)
+        ]
+        .spacing(SPACING)
+        .align_y(Alignment::Center);
+        if t.name == active {
+            line = line.push(
+                container(text(&s.active_suffix).size(11))
+                    .padding([2, 8])
+                    .style(ui_theme::chip),
+            );
+        }
         themes = themes.push(
-            button(
-                row![
-                    frame,
-                    text(&t.name)
-                        .size(13)
-                        .width(Fill)
-                        .wrapping(text::Wrapping::None)
-                ]
-                .spacing(SPACING)
-                .align_y(Alignment::Center),
-            )
-            .height(THEME_ROW_H)
-            .padding([0, 6])
-            .width(Fill)
-            .style(ui_theme::list_row(t.name == active))
-            .on_press(Msg::Themes(ThemesMsg::SetActive(t.name.clone()))),
+            button(line)
+                .height(THEME_ROW_H)
+                .padding([0, 6])
+                .width(Fill)
+                .style(ui_theme::outlined_row(false))
+                .on_press(Msg::Themes(ThemesMsg::SetActive(t.name.clone()))),
         );
     }
     let theme_card = card(

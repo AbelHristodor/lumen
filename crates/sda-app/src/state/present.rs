@@ -9,7 +9,7 @@ use iced::Task;
 use iced::widget::{self, operation, scrollable::RelativeOffset};
 use sda_core::asis::{self, Converter};
 use sda_core::history::{self, HistoryEntry};
-use sda_core::model::{Hymn, Paragraph, Run, Slide, TextBox};
+use sda_core::model::Hymn;
 use sda_core::present::{Presentation, Source};
 use sda_core::resolve::{ResolvedSlide, SlideContent, resolve};
 use sda_core::theme::{Background, Rgba, Theme};
@@ -426,39 +426,22 @@ pub fn slide_scene(app: &App, slide: usize, size: (u32, u32)) -> Option<Arc<Scen
     Some(still(theme, &app.live.bitmaps, Layer::Text(resolved), size))
 }
 
-/// A still frame for the theme picker: the selected hymn's first slide
-/// under `theme`, or `sample` text when nothing is selected.
-pub fn theme_scene(app: &App, theme: &Theme, sample: &str, size: (u32, u32)) -> Option<Arc<Scene>> {
+/// The slide a theme picker row shows under `theme`: the previewed slide
+/// of the selected hymn, else the shared sample, both through a cache so
+/// the renderer sees one `Arc` per theme.
+pub fn theme_slide(app: &App, theme: &Theme) -> Option<Arc<ResolvedSlide>> {
     if let Some((_, hymn)) = selected_hymn(app) {
-        let resolved = resolve_slide(app, hymn, 0, theme)?;
-        return Some(still(theme, &app.live.bitmaps, Layer::Text(resolved), size));
+        return resolve_slide(app, hymn, app.present.preview_slide, theme);
     }
     let key = theme.cache_key();
     let mut cache = app.present.samples.lock().ok()?;
-    let resolved = match cache.get(&key) {
-        Some(r) => r.clone(),
-        None => {
-            let slide = Slide {
-                background: None,
-                boxes: vec![TextBox {
-                    frame: None,
-                    paragraphs: vec![Paragraph {
-                        align: None,
-                        line_spacing: None,
-                        runs: vec![Run {
-                            text: sample.to_string(),
-                            ..Run::default()
-                        }],
-                    }],
-                }],
-                notes: None,
-            };
-            let r = Arc::new(resolve(theme, &SlideContent::Styled(slide), None)?);
-            cache.insert(key, r.clone());
-            r
-        }
-    };
-    Some(still(theme, &app.live.bitmaps, Layer::Text(resolved), size))
+    if let Some(r) = cache.get(&key) {
+        return Some(r.clone());
+    }
+    let (content, title, _) = crate::state::themes::sample(app);
+    let r = Arc::new(crate::state::themes::thumb_slide(theme, &content, &title)?);
+    cache.insert(key, r.clone());
+    Some(r)
 }
 
 /// Position in `hits` of the hymn at `path`, for the Recent rows.

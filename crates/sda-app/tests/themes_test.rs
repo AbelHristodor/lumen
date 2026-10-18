@@ -283,7 +283,69 @@ fn themes_tab_renders_list_and_form() {
     let mut ui = tall(&app);
     assert!(ui.find(&*s.theme_new).is_ok());
     assert!(ui.find(&*s.theme_save).is_ok());
-    assert!(ui.find(&*s.theme_background).is_ok());
-    assert!(ui.find(&*s.theme_transition).is_ok());
+    assert!(ui.find(&*s.theme_background.to_uppercase()).is_ok());
+    assert!(ui.find(&*s.theme_transition.to_uppercase()).is_ok());
     assert!(ui.find("Default").is_ok());
+}
+
+#[test]
+fn save_enables_only_when_the_draft_changed() {
+    let mut app = themes_app();
+    send(&mut app, ThemesMsg::Duplicate);
+    assert!(!app.themes.draft.is_builtin_default());
+    let save = app.core.strings.theme_save.clone();
+    {
+        let mut ui = tall(&app);
+        ui.click(&*save).unwrap();
+        assert_eq!(
+            ui.into_messages().count(),
+            0,
+            "an unchanged draft has nothing to save"
+        );
+    }
+    send(&mut app, ThemesMsg::Draft(DraftEdit::Footer(false)));
+    let mut ui = tall(&app);
+    ui.click(&*save).unwrap();
+    assert!(
+        ui.into_messages()
+            .any(|m| matches!(m, Msg::Themes(ThemesMsg::Save))),
+        "a changed draft can be saved"
+    );
+}
+
+#[test]
+fn inherit_rows_show_the_file_value_and_previews_follow_the_hymn() {
+    let mut app = themes_app();
+    let _ = app.update(Msg::Search("150".into()));
+    let hymn = sda_app::state::present::selected_hymn(&app)
+        .map(|(_, h)| h.clone())
+        .expect("hymn 150 selected");
+    let run = hymn.slides[0].boxes[0].paragraphs[0].runs[0].clone();
+    let font = run.font.clone().expect("fixture carries a font");
+    send(&mut app, ThemesMsg::Draft(DraftEdit::Footer(true)));
+    {
+        let mut ui = tall(&app);
+        assert!(ui.find(&*format!("·  {font}")).is_ok());
+    }
+    let (content, title, _) = sda_app::state::themes::sample(&app);
+    assert_eq!(title, sda_app::state::present::title_of(&hymn));
+    assert!(matches!(
+        content,
+        sda_core::resolve::SlideContent::Styled(_)
+    ));
+    assert_eq!(
+        app.themes.preview.present.source,
+        sda_core::present::Source::Hymn(hymn.path.clone()),
+        "the Themes preview plays the selected hymn"
+    );
+
+    let _ = app.update(Msg::Search("zzzz-no-such-hymn".into()));
+    send(&mut app, ThemesMsg::Draft(DraftEdit::Footer(false)));
+    let (_, title, key) = sda_app::state::themes::sample(&app);
+    assert_eq!(title, app.core.strings.theme_preview_sample);
+    assert!(key.is_none());
+    assert_eq!(
+        app.themes.preview.present.source,
+        sda_core::present::Source::None
+    );
 }

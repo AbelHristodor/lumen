@@ -14,26 +14,25 @@ pub fn show(app: &App) -> Element<'_, Msg> {
     let live = &app.live;
     let loaded = live.present.is_loaded();
 
-    let thumb: Element<'_, Msg> = if app.gpu_ok && loaded {
-        container(scene_view(
-            key("live_strip"),
-            live.scene((160, 90), app.now),
-        ))
-        .width(160)
-        .height(90)
-        .style(ui_theme::thumb_frame)
-        .into()
+    // The frame is always 160 by 90 so the strip keeps one height on every
+    // tab, live or not.
+    let frame: Element<'_, Msg> = if app.gpu_ok && loaded {
+        scene_view(key("live_strip"), live.scene((160, 90), app.now))
     } else if loaded {
-        container(text(live.present.title.as_str()).size(12).center())
+        text(live.present.title.as_str()).size(12).center().into()
+    } else {
+        space::horizontal().into()
+    };
+    let thumb = column![
+        ui_theme::section_label::<Msg>(&s.live),
+        container(frame)
             .width(160)
             .height(90)
             .align_x(iced::Center)
             .align_y(iced::Center)
-            .style(ui_theme::thumb_frame)
-            .into()
-    } else {
-        text(&s.nothing_live).size(13).color(ui_theme::MUTED).into()
-    };
+            .style(ui_theme::thumb_frame),
+    ]
+    .spacing(4);
 
     let info: Element<'_, Msg> = if loaded {
         let counter = format!(
@@ -46,16 +45,25 @@ pub fn show(app: &App) -> Element<'_, Msg> {
             col = col.push(text(sub.as_str()).size(12).color(ui_theme::MUTED));
         }
         col.push(text(counter).size(12).color(ui_theme::MUTED))
+            .width(Fill)
             .into()
     } else {
-        space::horizontal().into()
+        text(&s.nothing_live)
+            .size(13)
+            .color(ui_theme::MUTED)
+            .width(Fill)
+            .into()
     };
 
     let ghost = |label: &str, msg: Option<Msg>| {
-        button(text(label.to_string()).size(13))
-            .padding([6, 12])
-            .style(ui_theme::ghost_button)
-            .on_press_maybe(msg)
+        button(
+            text(label.to_string())
+                .size(13)
+                .wrapping(text::Wrapping::None),
+        )
+        .padding([6, 12])
+        .style(ui_theme::ghost_button)
+        .on_press_maybe(msg)
     };
     let when = |m: Msg| loaded.then_some(m);
     let controls = row![
@@ -71,6 +79,7 @@ pub fn show(app: &App) -> Element<'_, Msg> {
         Msg::ProjectorDisplay(d.index)
     })
     .placeholder(s.display.as_str())
+    .style(ui_theme::picker)
     .text_size(13)
     .padding([6, 10]);
 
@@ -82,10 +91,14 @@ pub fn show(app: &App) -> Element<'_, Msg> {
     let enough =
         app.displays.len() >= 2 || (displays::single_display_allowed() && !app.displays.is_empty());
     let can_project = app.gpu_ok && (enough || app.projector.is_some());
-    let toggle = button(text(toggle_label.as_str()).size(13))
-        .padding([6, 14])
-        .style(ui_theme::accent_button)
-        .on_press_maybe(can_project.then_some(Msg::ProjectorToggle));
+    let toggle = button(
+        text(toggle_label.as_str())
+            .size(13)
+            .wrapping(text::Wrapping::None),
+    )
+    .padding([6, 14])
+    .style(ui_theme::accent_button)
+    .on_press_maybe(can_project.then_some(Msg::ProjectorToggle));
     let hint = if !app.gpu_ok {
         Some(&s.gpu_unavailable)
     } else if !can_project {
@@ -107,7 +120,7 @@ pub fn show(app: &App) -> Element<'_, Msg> {
     };
 
     container(
-        row![thumb, info, space::horizontal(), controls, picker, toggle]
+        row![thumb, info, controls, picker, toggle]
             .spacing(ui_theme::SPACING)
             .align_y(Alignment::Center),
     )
