@@ -87,3 +87,61 @@ fn download_events_drive_phase_and_history() {
     assert_eq!(app.videos.phase, Phase::Failed);
     assert!(app.videos.message.contains("boom"));
 }
+
+#[test]
+fn fetch_is_ignored_while_downloading() {
+    let mut app = probed_app();
+    let _ = app.update(Msg::Videos(VideosMsg::Event(DownloadEvent::Resolving)));
+    assert_eq!(app.videos.phase, Phase::Downloading);
+    let _ = app.update(Msg::Videos(VideosMsg::Url("https://youtu.be/other".into())));
+    let _ = app.update(Msg::Videos(VideosMsg::Fetch));
+    assert_eq!(app.videos.phase, Phase::Downloading);
+    assert!(app.videos.probe.is_some());
+    assert_eq!(app.videos.format_id.as_deref(), Some("299"));
+
+    let label = app.core.strings.videos_fetch.clone();
+    let mut ui = Simulator::new(app.view_operator());
+    ui.click(&*label).unwrap();
+    assert!(ui.into_messages().next().is_none());
+}
+
+#[test]
+fn stream_end_without_done_fails_the_download() {
+    let mut app = probed_app();
+    let _ = app.update(Msg::Videos(VideosMsg::Event(DownloadEvent::Resolving)));
+    let _ = app.update(Msg::Videos(VideosMsg::Ended));
+    assert_eq!(app.videos.phase, Phase::Failed);
+    assert!(
+        app.videos
+            .message
+            .starts_with(&app.core.strings.download_failed_prefix)
+    );
+
+    let dir = PathBuf::from("/tmp/vid");
+    let _ = app.update(Msg::Videos(VideosMsg::Event(DownloadEvent::Resolving)));
+    let _ = app.update(Msg::Videos(VideosMsg::Event(DownloadEvent::Done {
+        path: dir.clone(),
+    })));
+    let _ = app.update(Msg::Videos(VideosMsg::Ended));
+    assert_eq!(app.videos.phase, Phase::Done(dir));
+}
+
+#[test]
+fn thumbnail_bytes_are_shown_after_probe() {
+    let mut app = probed_app();
+    assert!(app.videos.thumbnail.is_none());
+    let png = {
+        let mut buf = std::io::Cursor::new(Vec::new());
+        image::RgbaImage::from_pixel(2, 2, image::Rgba([10, 20, 30, 255]))
+            .write_to(&mut buf, image::ImageFormat::Png)
+            .unwrap();
+        buf.into_inner()
+    };
+    let _ = app.update(Msg::Videos(VideosMsg::Thumbnail(None)));
+    assert!(app.videos.thumbnail.is_none());
+    let _ = app.update(Msg::Videos(VideosMsg::Thumbnail(Some(png))));
+    assert!(app.videos.thumbnail.is_some());
+    let _ = Simulator::new(app.view_operator());
+    let _ = app.update(Msg::Videos(VideosMsg::Fetch));
+    assert!(app.videos.thumbnail.is_none());
+}

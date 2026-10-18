@@ -5,8 +5,11 @@ use crate::app::App;
 use crate::msg::{Msg, VideosMsg};
 use iced::Task;
 use iced::futures::channel::mpsc;
+use iced::futures::{StreamExt, stream};
+use iced::widget::image;
 use sda_core::downloader::{self, DownloadEvent, DownloadRecord, Probe};
 use sda_core::library;
+use std::io::Read;
 use std::path::PathBuf;
 
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -33,6 +36,8 @@ pub struct VideosState {
     pub eta: String,
     pub title: String,
     pub message: String,
+    /// Decoded probe thumbnail. Empty until fetched or when the fetch failed.
+    pub thumbnail: Option<image::Handle>,
 }
 
 /// The folder downloads go to. Falls back to the config when `dir` is unset.
@@ -50,20 +55,33 @@ pub fn update(app: &mut App, msg: VideosMsg) -> Task<Msg> {
         VideosMsg::Url(u) => v.url = u,
         VideosMsg::Fetch => {
             let url = v.url.trim().to_string();
-            if url.is_empty() {
+            // A probe or a download is still running. Starting another probe
+            // would clear the state the running job reports into.
+            if url.is_empty() || matches!(v.phase, Phase::Probing | Phase::Downloading) {
                 return Task::none();
             }
             v.phase = Phase::Probing;
             v.probe = None;
             v.format_id = None;
+            v.thumbnail = None;
             v.message.clear();
             return probe(url);
         }
         VideosMsg::Probed(Ok(p)) => {
             v.format_id = p.qualities.first().map(|q| q.format_id.clone());
             v.title = p.title.clone();
+            let thumb = p.thumbnail.clone();
             v.probe = Some(p);
             v.phase = Phase::Ready;
+            if let Some(url) = thumb {
+                return thumbnail(url);
+            }
+        }
+        VideosMsg::Thumbnail(bytes) => {
+            // Drop a late thumbnail when the probe it belongs to is gone.
+            if v.probe.is_some() {
+                v.thumbnail = bytes.map(image::Handle::from_bytes);
+            }
         }
         VideosMsg::Probed(Err(e)) => {
             v.phase = Phase::Failed;
@@ -139,13 +157,21 @@ pub fn update(app: &mut App, msg: VideosMsg) -> Task<Msg> {
                 v.message = format!("{}{message}", app.core.strings.download_failed_prefix);
             }
         },
+        VideosMsg::Ended => {
+            // The worker went away without a Done or a Failed. Never leave the
+            // tab stuck on Downloading.
+            if v.phase == Phase::Downloading {
+                v.phase = Phase::Failed;
+                v.message = format!("{}yt-dlp", app.core.strings.download_failed_prefix);
+            }
+        }
         VideosMsg::Reveal(p) => {
             let target = if p.is_file() {
                 p.parent().map(PathBuf::from).unwrap_or(p)
             } else {
                 p
             };
-            if let Err(e) = open::that(&target) {
+            if let Err(e) = open::that_detached(&target) {
                 log::warn!("reveal failed for {}: {e}", target.display());
             }
         }
@@ -159,20 +185,58 @@ fn probe(url: String) -> Task<Msg> {
         async move {
             tokio::task::spawn_blocking(move || downloader::probe(&url).map_err(|e| e.to_string()))
                 .await
-                .map_err(|e| format!("worker failed: {e}"))
+                .map_err(|e| e.to_string())
                 .and_then(|r| r)
         },
         |r| Msg::Videos(VideosMsg::Probed(r)),
     )
 }
 
-/// Run yt-dlp on its own thread and stream every event into the app.
+/// Fetch the thumbnail bytes on a blocking thread. Any failure yields `None`.
+fn thumbnail(url: String) -> Task<Msg> {
+    Task::perform(
+        async move {
+            tokio::task::spawn_blocking(move || {
+                let mut bytes = Vec::new();
+                ureq::get(&url)
+                    .call()
+                    .ok()?
+                    .into_reader()
+                    .read_to_end(&mut bytes)
+                    .ok()?;
+                Some(bytes)
+            })
+            .await
+            .ok()
+            .flatten()
+        },
+        |b| Msg::Videos(VideosMsg::Thumbnail(b)),
+    )
+}
+
+/// Run yt-dlp on its own thread and stream every event into the app. A panic
+/// on the worker becomes a Failed event, and the end of the stream becomes
+/// `Ended` so the tab never waits on a dead worker.
 fn download(url: String, format_id: Option<String>, dir: PathBuf) -> Task<Msg> {
     let (tx, rx) = mpsc::unbounded();
     std::thread::spawn(move || {
-        let _ = downloader::start_download(&url, format_id.as_deref(), &dir, |ev| {
+        let emit = |ev| {
             let _ = tx.unbounded_send(ev);
+        };
+        let run = std::panic::AssertUnwindSafe(|| {
+            downloader::start_download(&url, format_id.as_deref(), &dir, emit)
         });
+        if let Err(payload) = std::panic::catch_unwind(run) {
+            let message = payload
+                .downcast_ref::<&str>()
+                .map(|s| s.to_string())
+                .or_else(|| payload.downcast_ref::<String>().cloned())
+                .unwrap_or_else(|| "panic".to_string());
+            let _ = tx.unbounded_send(DownloadEvent::Failed { message });
+        }
     });
-    Task::run(rx, |ev| Msg::Videos(VideosMsg::Event(ev)))
+    let events = rx
+        .map(|ev| Msg::Videos(VideosMsg::Event(ev)))
+        .chain(stream::once(async { Msg::Videos(VideosMsg::Ended) }));
+    Task::run(events, |m| m)
 }

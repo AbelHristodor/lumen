@@ -6,7 +6,7 @@ use crate::msg::{Msg, VideosMsg};
 use crate::state::videos::{self, Phase};
 use crate::ui_theme;
 use iced::widget::{
-    button, column, container, progress_bar, row, scrollable, space, text, text_input,
+    button, column, container, image, progress_bar, row, scrollable, space, text, text_input,
 };
 use iced::{Alignment, Element, Fill};
 
@@ -18,7 +18,7 @@ pub fn show(app: &App) -> Element<'_, Msg> {
     let url_row = row![
         text_input(&s.downloader_url_placeholder, &v.url)
             .on_input(|u| Msg::Videos(VideosMsg::Url(u)))
-            .on_submit(Msg::Videos(VideosMsg::Fetch))
+            .on_submit_maybe((!busy).then_some(Msg::Videos(VideosMsg::Fetch)))
             .padding(10)
             .width(Fill),
         button(text(&s.videos_fetch).size(13))
@@ -38,7 +38,11 @@ pub fn show(app: &App) -> Element<'_, Msg> {
     .spacing(ui_theme::SPACING);
 
     if let Some(p) = &v.probe {
-        card = card.push(text(&p.title).size(15));
+        let mut head = row![].spacing(ui_theme::SPACING).align_y(Alignment::Center);
+        if let Some(h) = &v.thumbnail {
+            head = head.push(image(h.clone()).width(160));
+        }
+        card = card.push(head.push(text(&p.title).size(15)));
         let mut qualities = row![text(&s.videos_quality).size(13).color(ui_theme::MUTED)]
             .spacing(ui_theme::SPACING / 2.0)
             .align_y(Alignment::Center);
