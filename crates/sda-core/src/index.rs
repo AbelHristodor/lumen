@@ -1,4 +1,4 @@
-use crate::model::HymnEntry;
+use crate::model::Hymn;
 use crate::pptx::extract;
 use log::warn;
 use std::collections::HashMap;
@@ -36,17 +36,17 @@ fn mtime_secs(path: &Path) -> i64 {
 /// changes in a way that makes previously-cached entries stale (e.g. improved
 /// title extraction). A mismatch makes `load_cache` return `None`, forcing a
 /// full re-parse even though the underlying .pptx mtimes are unchanged.
-pub const CACHE_VERSION: u32 = 7;
+pub const CACHE_VERSION: u32 = 8;
 
 #[derive(serde::Serialize, serde::Deserialize)]
 struct CacheFile {
     version: u32,
-    entries: Vec<HymnEntry>,
+    entries: Vec<Hymn>,
 }
 
 /// Load a cached index from `cache_path`. Returns `None` if missing, corrupt,
 /// or written by a different `CACHE_VERSION`.
-pub fn load_cache(cache_path: &Path) -> Option<Vec<HymnEntry>> {
+pub fn load_cache(cache_path: &Path) -> Option<Vec<Hymn>> {
     let bytes = std::fs::read(cache_path).ok()?;
     let cache: CacheFile = bincode::deserialize(&bytes).ok()?;
     if cache.version != CACHE_VERSION {
@@ -56,7 +56,7 @@ pub fn load_cache(cache_path: &Path) -> Option<Vec<HymnEntry>> {
 }
 
 /// Persist the index to `cache_path` (best-effort; errors are returned).
-pub fn save_cache(cache_path: &Path, entries: &[HymnEntry]) -> anyhow::Result<()> {
+pub fn save_cache(cache_path: &Path, entries: &[Hymn]) -> anyhow::Result<()> {
     let cache = CacheFile {
         version: CACHE_VERSION,
         entries: entries.to_vec(),
@@ -73,11 +73,11 @@ pub fn save_cache(cache_path: &Path, entries: &[HymnEntry]) -> anyhow::Result<()
 /// its path and mtime are unchanged; everything else is re-parsed in parallel.
 /// Unparseable files are logged and skipped so one bad file never aborts the
 /// crawl. Output follows crawl order.
-pub fn refresh_index(root: &Path, library: &str, cached: &[HymnEntry]) -> Vec<HymnEntry> {
-    let by_path: HashMap<&Path, &HymnEntry> =
+pub fn refresh_index(root: &Path, library: &str, cached: &[Hymn]) -> Vec<Hymn> {
+    let by_path: HashMap<&Path, &Hymn> =
         cached.iter().map(|e| (e.path.as_path(), e)).collect();
     let paths = crawl_pptx_paths(root);
-    let mut out: Vec<Option<HymnEntry>> = vec![None; paths.len()];
+    let mut out: Vec<Option<Hymn>> = vec![None; paths.len()];
     let mut misses: Vec<(usize, PathBuf, i64)> = Vec::new();
     for (i, path) in paths.into_iter().enumerate() {
         let mtime = mtime_secs(&path);
@@ -94,7 +94,7 @@ pub fn refresh_index(root: &Path, library: &str, cached: &[HymnEntry]) -> Vec<Hy
 
 /// Parse every miss, spreading the work over all CPUs. Unzipping and XML
 /// parsing hundreds of decks is the cold-start bottleneck.
-fn parse_all(misses: &[(usize, PathBuf, i64)], library: &str) -> Vec<(usize, Option<HymnEntry>)> {
+fn parse_all(misses: &[(usize, PathBuf, i64)], library: &str) -> Vec<(usize, Option<Hymn>)> {
     if misses.is_empty() {
         return Vec::new();
     }
@@ -109,9 +109,9 @@ fn parse_all(misses: &[(usize, PathBuf, i64)], library: &str) -> Vec<(usize, Opt
     })
 }
 
-fn parse_one(path: &Path, mtime: i64, library: &str) -> Option<HymnEntry> {
+fn parse_one(path: &Path, mtime: i64, library: &str) -> Option<Hymn> {
     match extract(path) {
-        Ok(parsed) => Some(HymnEntry {
+        Ok(parsed) => Some(Hymn {
             number: parsed.number,
             title: parsed.title,
             slides: parsed.slides,

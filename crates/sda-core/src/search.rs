@@ -1,5 +1,5 @@
 use crate::fold::fold;
-use crate::model::{HymnEntry, MatchField, SearchHit};
+use crate::model::{Hymn, MatchField, SearchHit};
 use nucleo_matcher::pattern::{CaseMatching, Normalization, Pattern};
 use nucleo_matcher::{Config, Matcher, Utf32String};
 
@@ -20,7 +20,7 @@ impl Field {
 }
 
 struct Indexed {
-    entry: HymnEntry,
+    entry: Hymn,
     label: String,
     fields: Vec<Field>,
 }
@@ -47,7 +47,7 @@ fn number_sort_key(number: Option<&str>) -> (u32, &str) {
 }
 
 /// One result row: "150  Cerul, pământul  · Imnuri".
-fn row_label(entry: &HymnEntry) -> String {
+fn row_label(entry: &Hymn) -> String {
     match &entry.number {
         Some(n) => format!("{n}  {}  · {}", entry.title, entry.library),
         None => format!("{}  · {}", entry.title, entry.library),
@@ -55,7 +55,7 @@ fn row_label(entry: &HymnEntry) -> String {
 }
 
 impl Searcher {
-    pub fn new(mut entries: Vec<HymnEntry>) -> Self {
+    pub fn new(mut entries: Vec<Hymn>) -> Self {
         entries.sort_by(|a, b| {
             number_sort_key(a.number.as_deref()).cmp(&number_sort_key(b.number.as_deref()))
         });
@@ -71,7 +71,7 @@ impl Searcher {
                     (MatchField::Number, 4, entry.number.clone().unwrap_or_default()),
                     (MatchField::Title, 3, fold(&entry.title)),
                     (MatchField::Filename, 2, fold(filename)),
-                    (MatchField::Body, 1, fold(&entry.slides.join("\n"))),
+                    (MatchField::Body, 1, fold(&entry.plain_slides().join("\n"))),
                 ]
                 .into_iter()
                 .filter(|(_, _, text)| !text.is_empty())
@@ -101,7 +101,7 @@ impl Searcher {
     }
 
     /// Look up an entry by the `index` carried on a [`SearchHit`].
-    pub fn entry(&self, index: usize) -> Option<&HymnEntry> {
+    pub fn entry(&self, index: usize) -> Option<&Hymn> {
         self.items.get(index).map(|it| &it.entry)
     }
 
@@ -116,7 +116,13 @@ impl Searcher {
     ///
     /// Hits borrow their entry from the searcher (no body cloning per keystroke).
     pub fn search(&mut self, query: &str) -> Vec<SearchHit<'_>> {
-        let q = fold(query);
+        // A query wrapped in double quotes must appear as an exact phrase in
+        // the folded body.
+        let trimmed = query.trim();
+        let (q, exact) = match trimmed.strip_prefix('"').and_then(|s| s.strip_suffix('"')) {
+            Some(inner) => (fold(inner), true),
+            None => (fold(query), false),
+        };
         if q.trim().is_empty() {
             return self
                 .items
@@ -138,6 +144,11 @@ impl Searcher {
             .iter()
             .enumerate()
             .filter_map(|(index, it)| {
+                if exact
+                    && !it.fields.iter().any(|f| f.kind == MatchField::Body && f.folded.contains(&q))
+                {
+                    return None;
+                }
                 let best = it
                     .fields
                     .iter()
@@ -157,10 +168,16 @@ impl Searcher {
                         Some((f.kind, raw * 10 + bonus + f.weight))
                     })
                     .max_by_key(|(_, score)| *score)?;
+                // The hymn whose number is the whole query always leads.
+                let number_bonus = if it.entry.number.as_deref() == Some(q.as_str()) {
+                    10_000
+                } else {
+                    0
+                };
                 Some(SearchHit {
                     index,
                     entry: &it.entry,
-                    score: best.1,
+                    score: best.1 + number_bonus,
                     field: best.0,
                 })
             })

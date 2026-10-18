@@ -7,7 +7,7 @@ use crate::library::{
     default_library, default_library_dir, hymns_stamp_path, index_cache_path, legacy_clone_dir,
     Config,
 };
-use crate::model::HymnEntry;
+use crate::model::Hymn;
 use crate::sync::{sync_hymns, SyncOutcome};
 use log::{debug, info, warn};
 use std::path::Path;
@@ -89,7 +89,7 @@ pub fn sync_default(cfg: &Config) -> Option<SyncOutcome> {
 
 /// Index from disk only. Use on boot for instant search; follow with
 /// [`sync_default`] and re-index when it reports a download.
-pub fn load_local(mut cfg: Config) -> Vec<HymnEntry> {
+pub fn load_local(mut cfg: Config) -> Vec<Hymn> {
     register_default_library(&mut cfg);
     index_enabled(&cfg, false)
 }
@@ -101,13 +101,13 @@ pub fn default_library_present() -> bool {
 
 /// Sync, then index every enabled library. `force` ignores the cache. Use for
 /// first run and force sync, not the fast boot path.
-pub fn load_library(mut cfg: Config, force: bool) -> Vec<HymnEntry> {
+pub fn load_library(mut cfg: Config, force: bool) -> Vec<Hymn> {
     let _ = sync_default(&cfg);
     register_default_library(&mut cfg);
     index_enabled(&cfg, force)
 }
 
-fn index_enabled(cfg: &Config, force: bool) -> Vec<HymnEntry> {
+fn index_enabled(cfg: &Config, force: bool) -> Vec<Hymn> {
     let cache = index_cache_path();
     let cached = if force {
         Vec::new()

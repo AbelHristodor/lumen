@@ -1,6 +1,32 @@
 use sda_core::index::refresh_index;
+use sda_core::model::{Hymn, Paragraph, Run, Slide, TextBox};
 use sda_core::search::Searcher;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+
+/// Build a hymn whose single slide holds one run per line.
+fn hymn(number: &str, title: &str, lines: &[&str]) -> Hymn {
+    let paragraphs = lines
+        .iter()
+        .map(|l| Paragraph {
+            align: None,
+            line_spacing: None,
+            runs: vec![Run { text: (*l).into(), ..Default::default() }],
+        })
+        .collect();
+    Hymn {
+        number: Some(number.into()),
+        title: title.into(),
+        slides: vec![Slide {
+            background: None,
+            boxes: vec![TextBox { frame: None, paragraphs }],
+            notes: None,
+        }],
+        path: PathBuf::from(format!("/x/{number}.pptx")),
+        library: "L".into(),
+        mtime: 0,
+    }
+}
+
 
 fn searcher() -> Searcher {
     let entries = refresh_index(Path::new("tests/fixtures"), "test-lib", &[]);
@@ -39,15 +65,8 @@ fn empty_query_returns_all_sorted_by_number() {
 
 #[test]
 fn lettered_number_sorts_numerically_then_by_suffix() {
-    use sda_core::model::{HymnEntry, MatchField};
-    let mk = |n: &str| HymnEntry {
-        number: Some(n.into()),
-        title: format!("hymn {n}"),
-        slides: vec![],
-        path: std::path::PathBuf::from(format!("/x/{n}.pptx")),
-        library: "L".into(),
-        mtime: 0,
-    };
+    use sda_core::model::MatchField;
+    let mk = |n: &str| hymn(n, &format!("hymn {n}"), &[]);
     // Deliberately unsorted, with a letter-suffixed number among integers.
     let mut s = Searcher::new(vec![mk("665"), mk("664b"), mk("70"), mk("664"), mk("664a")]);
     let order: Vec<String> = s
@@ -78,4 +97,29 @@ fn hit_index_resolves_to_same_entry() {
     let idx = h.index;
     drop(hits);
     assert_eq!(s.entry(idx).unwrap().number.as_deref(), Some("356"));
+}
+
+#[test]
+fn quoted_query_requires_exact_phrase() {
+    let mut s = searcher();
+    let hits = s.search("\"se vor topi\"");
+    assert_eq!(hits.len(), 1);
+    assert_eq!(hits[0].entry.number.as_deref(), Some("150"));
+    assert!(s.search("\"topi se vor\"").is_empty());
+}
+
+#[test]
+fn exact_number_ranks_first() {
+    let mut s = searcher();
+    let hits = s.search("1");
+    assert!(hits.len() >= 3, "150 and 664b also contain the digit");
+    assert_eq!(hits[0].entry.number.as_deref(), Some("1"));
+}
+
+#[test]
+fn body_search_uses_plain_text_of_styled_runs() {
+    let mut s = Searcher::new(vec![hymn("9", "Nine", &["Lumina lumii", "a doua"]), hymn("10", "Ten", &["altceva"])]);
+    let hits = s.search("lumina");
+    assert_eq!(hits.len(), 1);
+    assert_eq!(hits[0].entry.number.as_deref(), Some("9"));
 }

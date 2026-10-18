@@ -1,5 +1,31 @@
-use sda_core::index::{crawl_pptx_paths, refresh_index};
-use std::path::Path;
+use sda_core::index::{crawl_pptx_paths, load_cache, refresh_index, save_cache};
+use sda_core::model::{Hymn, Paragraph, Run, Slide, TextBox};
+use std::path::{Path, PathBuf};
+
+/// Build a hymn whose single slide holds one run per line.
+fn hymn(number: &str, title: &str, lines: &[&str]) -> Hymn {
+    let paragraphs = lines
+        .iter()
+        .map(|l| Paragraph {
+            align: None,
+            line_spacing: None,
+            runs: vec![Run { text: (*l).into(), ..Default::default() }],
+        })
+        .collect();
+    Hymn {
+        number: Some(number.into()),
+        title: title.into(),
+        slides: vec![Slide {
+            background: None,
+            boxes: vec![TextBox { frame: None, paragraphs }],
+            notes: None,
+        }],
+        path: PathBuf::from(format!("/x/{number}.pptx")),
+        library: "L".into(),
+        mtime: 0,
+    }
+}
+
 
 #[test]
 fn crawl_skips_lock_and_non_pptx_files() {
@@ -19,22 +45,12 @@ fn cold_refresh_parses_fixtures() {
     assert_eq!(one.library, "test-lib");
 }
 
-use sda_core::index::{load_cache, save_cache};
-use sda_core::model::HymnEntry;
-use std::path::PathBuf;
 
 #[test]
 fn cache_round_trips() {
     let dir = tempfile::tempdir().unwrap();
     let cache = dir.path().join("index.bin");
-    let entries = vec![HymnEntry {
-        number: Some("7".into()),
-        title: "T".into(),
-        slides: vec![],
-        path: PathBuf::from("/x/7.pptx"),
-        library: "L".into(),
-        mtime: 123,
-    }];
+    let entries = vec![Hymn { mtime: 123, ..hymn("7", "T", &["line one", "line two"]) }];
     save_cache(&cache, &entries).unwrap();
     let loaded = load_cache(&cache).unwrap();
     assert_eq!(loaded, entries);
@@ -50,20 +66,13 @@ fn refresh_reuses_unchanged_entries() {
 
 #[test]
 fn cache_with_wrong_version_is_ignored() {
-    // A cache written in a legacy/foreign format must not load — otherwise a
-    // parser change (e.g. better title extraction) would keep serving stale
-    // entries because the .pptx mtimes never changed.
+    // A cache written in a legacy format must not load. Otherwise a parser
+    // change would keep serving stale entries because the .pptx mtimes
+    // never changed.
     let dir = tempfile::tempdir().unwrap();
     let cache = dir.path().join("index.bin");
     // Write raw entries WITHOUT the version envelope (the pre-versioning format).
-    let legacy = vec![HymnEntry {
-        number: Some("1".into()),
-        title: "stale".into(),
-        slides: vec![],
-        path: PathBuf::from("/x/1.pptx"),
-        library: "L".into(),
-        mtime: 1,
-    }];
+    let legacy = vec![Hymn { mtime: 1, ..hymn("1", "stale", &[]) }];
     std::fs::write(&cache, bincode::serialize(&legacy).unwrap()).unwrap();
     assert!(
         load_cache(&cache).is_none(),
