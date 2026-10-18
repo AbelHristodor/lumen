@@ -18,6 +18,9 @@ directories = "5"
 walkdir = "2"
 ureq = "2"
 log = "0.4"
+hayro = "0.8"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif"] }
+sha2 = "0.10"
 # `ureq` selects the pure-Rust HTTP client backend (self_update 0.44 has no
 # default HTTP backend when `default-features = false`); combined with `rustls`
 # it uses rustls TLS and avoids any system OpenSSL dependency.
