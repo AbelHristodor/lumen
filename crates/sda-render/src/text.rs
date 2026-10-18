@@ -94,48 +94,53 @@ impl TextRaster {
             .max(1.0);
 
         // One span per run. Runs keep their index in `metadata` so painting
-        // can look up color, opacity, shadow, and outline per glyph.
-        let mut spans: Vec<(&str, Attrs)> = Vec::new();
-        let mut idx = 0;
-        for (li, line) in b.lines.iter().enumerate() {
-            if li > 0 {
-                spans.push(("\n", Attrs::new()));
-            }
-            for run in &line.runs {
-                let mut a = Attrs::new()
-                    .family(Family::Name(run.font.family()))
-                    .weight(if run.bold {
-                        Weight::BOLD
-                    } else {
-                        Weight::NORMAL
-                    })
-                    .style(if run.italic {
-                        Style::Italic
-                    } else {
-                        Style::Normal
-                    })
-                    .metadata(idx);
-                if !auto {
-                    let pt = match run.size {
-                        TextSize::Pt(p) => p * px_per_pt,
-                        TextSize::Auto => fixed_pt,
-                    };
-                    a = a.metrics(Metrics::new(pt, pt * line.spacing));
+        // can look up color, opacity, shadow, and outline per glyph. `k`
+        // scales every fixed size in the box by the same factor so mixed
+        // sizes keep their ratios.
+        let spans_at = |k: f32| -> Vec<(&str, Attrs)> {
+            let mut spans = Vec::new();
+            let mut idx = 0;
+            for (li, line) in b.lines.iter().enumerate() {
+                if li > 0 {
+                    spans.push(("\n", Attrs::new()));
                 }
-                spans.push((run.text.as_str(), a));
-                idx += 1;
+                for run in &line.runs {
+                    let mut a = Attrs::new()
+                        .family(Family::Name(run.font.family()))
+                        .weight(if run.bold {
+                            Weight::BOLD
+                        } else {
+                            Weight::NORMAL
+                        })
+                        .style(if run.italic {
+                            Style::Italic
+                        } else {
+                            Style::Normal
+                        })
+                        .metadata(idx);
+                    if !auto {
+                        let pt = match run.size {
+                            TextSize::Pt(p) => p * px_per_pt,
+                            TextSize::Auto => fixed_pt,
+                        } * k;
+                        a = a.metrics(Metrics::new(pt, pt * line.spacing));
+                    }
+                    spans.push((run.text.as_str(), a));
+                    idx += 1;
+                }
             }
-        }
+            spans
+        };
 
         let fs = &mut self.font_system;
         let mut buffer = Buffer::new(fs, Metrics::new(fixed_pt, fixed_pt * spacing));
-        buffer.set_rich_text(fs, spans, &Attrs::new(), Shaping::Advanced, None);
         buffer.set_size(fs, Some(rect.w), None);
         // Auto boxes keep the author's line breaks and let width bound the
         // size. Fixed sizes wrap so a long line stays on screen.
         buffer.set_wrap(fs, if auto { Wrap::None } else { Wrap::Word });
-        let pt = if auto {
-            sda_core::fit::fit_size(
+        if auto {
+            buffer.set_rich_text(fs, spans_at(1.0), &Attrs::new(), Shaping::Advanced, None);
+            let pt = sda_core::fit::fit_size(
                 |pt| {
                     buffer.set_metrics(fs, Metrics::new(pt, pt * spacing));
                     buffer.shape_until_scroll(fs, false);
@@ -144,22 +149,41 @@ impl TextRaster {
                 (rect.w, rect.h),
                 (AUTO_MIN_PT * px_per_pt).max(AUTO_MIN_PX),
                 AUTO_MAX_PT,
-            )
+            );
+            buffer.set_metrics(fs, Metrics::new(pt, pt * spacing));
         } else {
-            fixed_pt
-        };
-        buffer.set_metrics(fs, Metrics::new(pt, pt * spacing));
+            // Fixed sizes shrink as one block when the wrapped text is
+            // taller than the box or a word is wider. Never grow above the
+            // author's size. The search runs in percent because `fit_size`
+            // stops at half a unit.
+            let mut lay = |pct: f32| {
+                let k = pct / 100.0;
+                buffer.set_rich_text(fs, spans_at(k), &Attrs::new(), Shaping::Advanced, None);
+                let pt = fixed_pt * k;
+                buffer.set_metrics(fs, Metrics::new(pt, pt * spacing));
+                buffer.shape_until_scroll(fs, false);
+                measure(&buffer)
+            };
+            let pct = sda_core::fit::fit_size(&mut lay, (rect.w, rect.h), 20.0, 100.0);
+            lay(pct);
+        }
         buffer.shape_until_scroll(fs, false);
 
         let (_, total_h) = measure(&buffer);
+        // A block still taller than the box sits on the top edge so the
+        // first line is never clipped.
+        let offset = if total_h > rect.h {
+            0.0
+        } else {
+            match b.v_align {
+                VAlign::Top => 0.0,
+                VAlign::Middle => (rect.h - total_h) / 2.0,
+                VAlign::Bottom => rect.h - total_h,
+            }
+        };
         let placed = Rect {
             x: rect.x,
-            y: rect.y
-                + match b.v_align {
-                    VAlign::Top => 0.0,
-                    VAlign::Middle => (rect.h - total_h) / 2.0,
-                    VAlign::Bottom => rect.h - total_h,
-                },
+            y: rect.y + offset,
             w: rect.w,
             h: rect.h,
         };

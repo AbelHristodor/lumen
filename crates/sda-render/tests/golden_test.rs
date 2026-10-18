@@ -423,3 +423,61 @@ fn scissor_limits_the_draw_but_not_the_mapping() {
     assert_eq!(img.get_pixel(230, 60).0, [0, 0, 255, 255]);
     assert_eq!(img.get_pixel(10, 10).0, [0, 0, 255, 255]);
 }
+
+/// Bounding box of bright pixels as (left, top, right, bottom), inclusive.
+fn bright_bbox(img: &image::RgbaImage) -> Option<(u32, u32, u32, u32)> {
+    let mut b: Option<(u32, u32, u32, u32)> = None;
+    for (x, y, p) in img.enumerate_pixels() {
+        if p[0] > 200 {
+            b = Some(match b {
+                None => (x, y, x, y),
+                Some((l, t, r, d)) => (l.min(x), t.min(y), r.max(x), d.max(y)),
+            });
+        }
+    }
+    b
+}
+
+fn tall_pt_scene() -> Scene {
+    let mut s = base();
+    s.current = Some(Layer::Text(styled(
+        "Cerul şi pământul\nse vor topi\nca fumul",
+        HAlign::Center,
+        TextSize::Pt(120.0),
+        None,
+    )));
+    s
+}
+
+#[test]
+fn text_pt_shrinks_to_fit() {
+    let s = tall_pt_scene();
+    let Some(img) = headless::render_to_image(&s) else {
+        return;
+    };
+    let (l, t, r, d) = bright_bbox(&img).expect("text drawn");
+    let (bl, bt) = ((0.06 * 320.0) as u32, (0.06 * 180.0) as u32);
+    let (br, bd) = ((0.94 * 320.0) as u32, (0.94 * 180.0) as u32);
+    assert!(l + 2 >= bl && r <= br + 2, "x span {l}..{r} outside box {bl}..{br}");
+    assert!(t + 2 >= bt && d <= bd + 2, "y span {t}..{d} outside box {bt}..{bd}");
+    assert!(t > bt, "first row {t} must sit below the box top {bt}");
+    check("text_pt_shrinks_to_fit", &s);
+}
+
+#[test]
+fn text_pt_keeps_full_size_on_projector() {
+    let small = tall_pt_scene();
+    let mut large = small.clone();
+    large.size = (1920, 1080);
+    let (Some(a), Some(b)) = (
+        headless::render_to_image(&small),
+        headless::render_to_image(&large),
+    ) else {
+        return;
+    };
+    let ha = bright_bbox(&a).map_or(0, |(_, t, _, d)| d - t + 1) as f32;
+    let hb = bright_bbox(&b).map_or(0, |(_, t, _, d)| d - t + 1) as f32;
+    assert!(ha > 0.0, "small render drew nothing");
+    let ratio = hb / ha;
+    assert!(ratio > 4.0, "ratio {ratio}, {ha} vs {hb}");
+}
