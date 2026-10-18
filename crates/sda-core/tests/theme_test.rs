@@ -28,11 +28,31 @@ fn v2_flat_theme_json_loads_as_set_values() {
 
 #[test]
 fn theme_json_round_trips_every_background() {
-    for bg in [Background::Solid(Rgba::new(1, 2, 3, 255)),
-               Background::Gradient { stops: vec![(0.0, Rgba::new(0,0,0,255)), (1.0, Rgba::new(9,9,9,255))], angle: 45.0, drift: 0.2 },
-               Background::Particles { base: Rgba::new(0,0,0,255), color: Rgba::new(255,255,255,255), count: 80, speed: 0.5 },
-               Background::Image("/x.png".into()), Background::Video { path: "/x.mp4".into() }] {
-        let t = Theme { background: bg, ..Theme::default() };
+    for bg in [
+        Background::Solid(Rgba::new(1, 2, 3, 255)),
+        Background::Gradient {
+            stops: vec![
+                (0.0, Rgba::new(0, 0, 0, 255)),
+                (1.0, Rgba::new(9, 9, 9, 255)),
+            ],
+            angle: 45.0,
+            drift: 0.2,
+        },
+        Background::Particles {
+            base: Rgba::new(0, 0, 0, 255),
+            color: Rgba::new(255, 255, 255, 255),
+            count: 80,
+            speed: 0.5,
+        },
+        Background::Image("/x.png".into()),
+        Background::Video {
+            path: "/x.mp4".into(),
+        },
+    ] {
+        let t = Theme {
+            background: bg,
+            ..Theme::default()
+        };
         assert_eq!(Theme::from_json(&t.to_json().unwrap()).unwrap(), t);
     }
 }
@@ -55,8 +75,10 @@ fn easing_endpoints() {
 #[test]
 fn cache_key_changes_with_background_and_text() {
     let a = Theme::default();
-    let mut b = a.clone(); b.text.opacity = 0.5;
-    let mut c = a.clone(); c.background = Background::Solid(Rgba::new(1,1,1,255));
+    let mut b = a.clone();
+    b.text.opacity = 0.5;
+    let mut c = a.clone();
+    c.background = Background::Solid(Rgba::new(1, 1, 1, 255));
     assert_ne!(a.cache_key(), b.cache_key());
     assert_ne!(a.cache_key(), c.cache_key());
 }
@@ -64,11 +86,30 @@ fn cache_key_changes_with_background_and_text() {
 #[test]
 fn background_animation_and_labels() {
     assert!(!Background::Solid(Rgba::new(0, 0, 0, 255)).is_animated());
-    assert!(!Background::Gradient { stops: vec![], angle: 0.0, drift: 0.0 }.is_animated());
-    assert!(Background::Gradient { stops: vec![], angle: 0.0, drift: 0.1 }.is_animated());
-    assert!(Background::Particles { base: Rgba::new(0, 0, 0, 255), color: Rgba::new(0, 0, 0, 255), count: 1, speed: 1.0 }.is_animated());
+    assert!(!Background::Gradient {
+        stops: vec![],
+        angle: 0.0,
+        drift: 0.0
+    }
+    .is_animated());
+    assert!(Background::Gradient {
+        stops: vec![],
+        angle: 0.0,
+        drift: 0.1
+    }
+    .is_animated());
+    assert!(Background::Particles {
+        base: Rgba::new(0, 0, 0, 255),
+        color: Rgba::new(0, 0, 0, 255),
+        count: 1,
+        speed: 1.0
+    }
+    .is_animated());
     assert!(!Background::Image("/x.png".into()).is_animated());
-    assert!(Background::Video { path: "/x.mp4".into() }.is_animated());
+    assert!(Background::Video {
+        path: "/x.mp4".into()
+    }
+    .is_animated());
     assert_eq!(Background::Image("/x.png".into()).kind_label(), "Image");
 }
 
@@ -76,7 +117,10 @@ fn background_animation_and_labels() {
 fn font_families_and_labels() {
     assert_eq!(BundledFont::all().len(), 4);
     assert_eq!(BundledFont::NotoSerif.label(), "Noto Serif");
-    assert_eq!(Font::Bundled(BundledFont::RobotoSlab).family(), "Roboto Slab");
+    assert_eq!(
+        Font::Bundled(BundledFont::RobotoSlab).family(),
+        "Roboto Slab"
+    );
     assert_eq!(Font::System("Georgia".into()).family(), "Georgia");
 }
 
@@ -85,7 +129,10 @@ fn rgba_hex_round_trips() {
     let c = Rgba::new(11, 31, 58, 255);
     assert_eq!(c.to_hex(), "#0B1F3A");
     assert_eq!(Rgba::from_hex("#0B1F3A"), Some(Rgba::new(11, 31, 58, 255)));
-    assert_eq!(Rgba::from_hex("ffffff"), Some(Rgba::new(255, 255, 255, 255)));
+    assert_eq!(
+        Rgba::from_hex("ffffff"),
+        Some(Rgba::new(255, 255, 255, 255))
+    );
     assert_eq!(Rgba::from_hex("#FF"), None);
     assert_eq!(Rgba::from_hex("#GGGGGG"), None);
 }

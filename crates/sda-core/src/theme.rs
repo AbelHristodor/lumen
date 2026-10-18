@@ -87,7 +87,12 @@ pub enum BundledFont {
 impl BundledFont {
     /// Every bundled font in display order.
     pub fn all() -> [BundledFont; 4] {
-        [BundledFont::Inter, BundledFont::NotoSerif, BundledFont::Lora, BundledFont::RobotoSlab]
+        [
+            BundledFont::Inter,
+            BundledFont::NotoSerif,
+            BundledFont::Lora,
+            BundledFont::RobotoSlab,
+        ]
     }
 
     /// Human readable font name.
@@ -237,10 +242,21 @@ impl Hash for TextStyle {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Background {
     Solid(Rgba),
-    Gradient { stops: Vec<(f32, Rgba)>, angle: f32, drift: f32 },
-    Particles { base: Rgba, color: Rgba, count: u32, speed: f32 },
+    Gradient {
+        stops: Vec<(f32, Rgba)>,
+        angle: f32,
+        drift: f32,
+    },
+    Particles {
+        base: Rgba,
+        color: Rgba,
+        count: u32,
+        speed: f32,
+    },
     Image(PathBuf),
-    Video { path: PathBuf },
+    Video {
+        path: PathBuf,
+    },
 }
 
 impl Background {
@@ -271,7 +287,11 @@ impl Hash for Background {
                 0u8.hash(h);
                 c.hash(h);
             }
-            Background::Gradient { stops, angle, drift } => {
+            Background::Gradient {
+                stops,
+                angle,
+                drift,
+            } => {
                 1u8.hash(h);
                 for (pos, c) in stops {
                     pos.to_bits().hash(h);
@@ -280,7 +300,12 @@ impl Hash for Background {
                 angle.to_bits().hash(h);
                 drift.to_bits().hash(h);
             }
-            Background::Particles { base, color, count, speed } => {
+            Background::Particles {
+                base,
+                color,
+                count,
+                speed,
+            } => {
                 2u8.hash(h);
                 base.hash(h);
                 color.hash(h);
@@ -344,7 +369,11 @@ pub struct Transition {
 
 impl Default for Transition {
     fn default() -> Self {
-        Transition { kind: TransitionKind::Fade, duration_ms: 400, easing: Easing::EaseInOut }
+        Transition {
+            kind: TransitionKind::Fade,
+            duration_ms: 400,
+            easing: Easing::EaseInOut,
+        }
     }
 }
 
@@ -366,7 +395,12 @@ pub struct VerseLayout {
 
 impl Default for VerseLayout {
     fn default() -> Self {
-        VerseLayout { per_slide: 1, show_reference: true, show_numbers: true, reference_at: RefPos::Bottom }
+        VerseLayout {
+            per_slide: 1,
+            show_reference: true,
+            show_numbers: true,
+            reference_at: RefPos::Bottom,
+        }
     }
 }
 
@@ -573,7 +607,13 @@ pub mod store {
     /// space, hyphen, and underscore.
     fn file_stem(name: &str) -> String {
         name.chars()
-            .map(|c| if c.is_alphanumeric() || c == ' ' || c == '-' || c == '_' { c } else { '_' })
+            .map(|c| {
+                if c.is_alphanumeric() || c == ' ' || c == '-' || c == '_' {
+                    c
+                } else {
+                    '_'
+                }
+            })
             .collect()
     }
 
@@ -587,7 +627,10 @@ pub mod store {
                 if path.extension().and_then(|e| e.to_str()) != Some("json") {
                     continue;
                 }
-                match std::fs::read_to_string(&path).ok().and_then(|s| Theme::from_json(&s).ok()) {
+                match std::fs::read_to_string(&path)
+                    .ok()
+                    .and_then(|s| Theme::from_json(&s).ok())
+                {
                     Some(t) if !t.is_builtin_default() => out.push(t),
                     Some(_) => {}
                     None => log::warn!("skip corrupt theme {}", path.display()),

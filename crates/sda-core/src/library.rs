@@ -76,9 +76,7 @@ impl Config {
     pub fn load(path: &Path) -> anyhow::Result<Config> {
         match std::fs::read_to_string(path) {
             Ok(text) => Config::from_toml(&text),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                Ok(Config::default())
-            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Config::default()),
             Err(e) => Err(e.into()),
         }
     }
@@ -175,7 +173,11 @@ pub fn downloads_dir(cfg: &Config) -> PathBuf {
         return PathBuf::from(d);
     }
     directories::UserDirs::new()
-        .and_then(|u| u.download_dir().map(Path::to_path_buf).or_else(|| Some(u.home_dir().to_path_buf())))
+        .and_then(|u| {
+            u.download_dir()
+                .map(Path::to_path_buf)
+                .or_else(|| Some(u.home_dir().to_path_buf()))
+        })
         .unwrap_or_else(|| PathBuf::from("."))
 }
 
@@ -244,8 +246,7 @@ pub fn add_user_library(cfg: &mut Config, path: &Path) -> anyhow::Result<()> {
 /// `managed_by_git` entry (the default library is locked against removal).
 /// No-op if no matching removable library is found.
 pub fn remove_user_library(cfg: &mut Config, path: &str) {
-    cfg.libraries
-        .retain(|l| l.managed_by_git || l.path != path);
+    cfg.libraries.retain(|l| l.managed_by_git || l.path != path);
 }
 
 #[cfg(test)]
@@ -294,7 +295,9 @@ mod tests {
 
     #[test]
     fn old_config_with_git_url_still_parses() {
-        let cfg = Config::from_toml("default_repo_url = \"https://example.com/x.git\"\nlibraries = []\n").unwrap();
+        let cfg =
+            Config::from_toml("default_repo_url = \"https://example.com/x.git\"\nlibraries = []\n")
+                .unwrap();
         assert_eq!(cfg.hymns_url, DEFAULT_HYMNS_URL);
     }
 
@@ -352,7 +355,10 @@ mod tests {
         let mut cfg = Config {
             hymns_url: "x".into(),
             libraries: vec![Library {
-                name: "U".into(), path: "/tmp/u".into(), enabled: true, managed_by_git: false,
+                name: "U".into(),
+                path: "/tmp/u".into(),
+                enabled: true,
+                managed_by_git: false,
             }],
             download_dir: None,
             language: None,
@@ -371,7 +377,10 @@ mod tests {
         let mut cfg = Config {
             hymns_url: "x".into(),
             libraries: vec![Library {
-                name: "Default".into(), path: "/data/default".into(), enabled: true, managed_by_git: true,
+                name: "Default".into(),
+                path: "/data/default".into(),
+                enabled: true,
+                managed_by_git: true,
             }],
             download_dir: None,
             language: None,
@@ -424,7 +433,10 @@ mod tests {
 
     #[test]
     fn bible_version_round_trips() {
-        let cfg = Config { bible_version: Some("kjv".into()), ..Config::default() };
+        let cfg = Config {
+            bible_version: Some("kjv".into()),
+            ..Config::default()
+        };
         let back = Config::from_toml(&cfg.to_toml().unwrap()).unwrap();
         assert_eq!(back.bible_version, Some("kjv".into()));
     }
@@ -434,8 +446,18 @@ mod tests {
         let mut cfg = Config {
             hymns_url: "x".into(),
             libraries: vec![
-                Library { name: "Default".into(), path: "/data/default".into(), enabled: true, managed_by_git: true },
-                Library { name: "Mine".into(), path: "/tmp/mine".into(), enabled: true, managed_by_git: false },
+                Library {
+                    name: "Default".into(),
+                    path: "/data/default".into(),
+                    enabled: true,
+                    managed_by_git: true,
+                },
+                Library {
+                    name: "Mine".into(),
+                    path: "/tmp/mine".into(),
+                    enabled: true,
+                    managed_by_git: false,
+                },
             ],
             download_dir: None,
             language: None,

@@ -5,7 +5,12 @@ use std::path::Path;
 
 /// Plain text of every slide joined by a newline.
 fn body(parsed: &pptx::ParsedPptx) -> String {
-    parsed.slides.iter().map(|s| s.plain_text()).collect::<Vec<_>>().join("\n")
+    parsed
+        .slides
+        .iter()
+        .map(|s| s.plain_text())
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 #[test]
@@ -56,7 +61,9 @@ fn preserves_text_per_slide() {
     // Hymn 1 has 5 slides.
     assert_eq!(parsed.slides.len(), 5);
     // The first slide holds the title.
-    assert!(parsed.slides[0].plain_text().contains("Plecaţi-vă lui Dumnezeu"));
+    assert!(parsed.slides[0]
+        .plain_text()
+        .contains("Plecaţi-vă lui Dumnezeu"));
 }
 
 #[test]
@@ -70,13 +77,18 @@ fn strips_slide_chrome_footer_counter_and_imnul() {
     assert!(!all.contains("Imnul"), "'Imnul X' marker must be stripped");
     // No bare "N/M" counter lines remain.
     assert!(
-        !parsed.slides.iter().any(|s| s.plain_text().lines().any(is_counter_line)),
+        !parsed
+            .slides
+            .iter()
+            .any(|s| s.plain_text().lines().any(is_counter_line)),
         "counter lines like '1/300' must be stripped"
     );
     // Real lyrics survive.
     assert!(all.contains("Popoare-oriunde"));
     // The title is still intact on slide 0.
-    assert!(parsed.slides[0].plain_text().contains("Plecaţi-vă lui Dumnezeu"));
+    assert!(parsed.slides[0]
+        .plain_text()
+        .contains("Plecaţi-vă lui Dumnezeu"));
 }
 
 /// A line that is only digits and slashes, e.g. "1/300" or "150/920".
@@ -208,6 +220,11 @@ fn paragraph_alignment_and_notes_are_read() {
     assert_eq!(para.runs[0].italic, Some(true));
     assert_eq!(para.runs[0].underline, Some(true));
     assert_eq!(para.runs[0].color, None);
-    assert_eq!(slide.notes.as_deref(), Some("Sing it softly
-Twice"));
+    assert_eq!(
+        slide.notes.as_deref(),
+        Some(
+            "Sing it softly
+Twice"
+        )
+    );
 }

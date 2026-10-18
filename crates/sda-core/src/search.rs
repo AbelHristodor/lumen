@@ -15,7 +15,12 @@ struct Field {
 impl Field {
     fn new(kind: MatchField, weight: u32, folded: String) -> Self {
         let utf32 = Utf32String::from(folded.as_str());
-        Field { kind, weight, folded, utf32 }
+        Field {
+            kind,
+            weight,
+            folded,
+            utf32,
+        }
     }
 }
 
@@ -68,7 +73,11 @@ impl Searcher {
                     .and_then(|s| s.to_str())
                     .unwrap_or("");
                 let fields = [
-                    (MatchField::Number, 4, entry.number.clone().unwrap_or_default()),
+                    (
+                        MatchField::Number,
+                        4,
+                        entry.number.clone().unwrap_or_default(),
+                    ),
                     (MatchField::Title, 3, fold(&entry.title)),
                     (MatchField::Filename, 2, fold(filename)),
                     (MatchField::Body, 1, fold(&entry.plain_slides().join("\n"))),
@@ -145,7 +154,10 @@ impl Searcher {
             .enumerate()
             .filter_map(|(index, it)| {
                 if exact
-                    && !it.fields.iter().any(|f| f.kind == MatchField::Body && f.folded.contains(&q))
+                    && !it
+                        .fields
+                        .iter()
+                        .any(|f| f.kind == MatchField::Body && f.folded.contains(&q))
                 {
                     return None;
                 }

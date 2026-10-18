@@ -31,10 +31,8 @@ pub fn extract(path: &Path) -> Result<ParsedPptx> {
         .and_then(|s| s.to_str())
         .map(hymn_number_from_stem);
 
-    let file = std::fs::File::open(path)
-        .with_context(|| format!("open {}", path.display()))?;
-    let mut zip = ZipArchive::new(file)
-        .with_context(|| format!("read zip {}", path.display()))?;
+    let file = std::fs::File::open(path).with_context(|| format!("open {}", path.display()))?;
+    let mut zip = ZipArchive::new(file).with_context(|| format!("read zip {}", path.display()))?;
 
     let slide_size = read_opt(&mut zip, "ppt/presentation.xml")
         .and_then(|xml| parse_slide_size(&xml))
@@ -66,14 +64,16 @@ pub fn extract(path: &Path) -> Result<ParsedPptx> {
         let layout_bg = rel_target(&rels, "/slideLayout")
             .and_then(|t| read_opt(&mut zip, &t))
             .and_then(|xml| parse_background(&xml, &scheme));
-        let background = parse_background(&xml, &scheme)
-            .or(layout_bg)
-            .or(master_bg);
+        let background = parse_background(&xml, &scheme).or(layout_bg).or(master_bg);
         let notes = rel_target(&rels, "/notesSlide")
             .and_then(|t| read_opt(&mut zip, &t))
             .and_then(|xml| notes_text(&xml));
 
-        slides.push(Slide { background, boxes, notes });
+        slides.push(Slide {
+            background,
+            boxes,
+            notes,
+        });
     }
 
     let first_lines: Vec<String> = slides
@@ -81,7 +81,11 @@ pub fn extract(path: &Path) -> Result<ParsedPptx> {
         .map(|s| s.plain_text().lines().map(str::to_string).collect())
         .unwrap_or_default();
     let title = pick_title(&first_lines);
-    Ok(ParsedPptx { number, title, slides })
+    Ok(ParsedPptx {
+        number,
+        title,
+        slides,
+    })
 }
 
 /// Read one zip entry as a string. Missing or unreadable entries give `None`.
@@ -161,7 +165,11 @@ fn rgb_to_hsl(c: Rgba) -> (f32, f32, f32) {
         return (0.0, 0.0, l);
     }
     let d = max - min;
-    let s = if l > 0.5 { d / (2.0 - max - min) } else { d / (max + min) };
+    let s = if l > 0.5 {
+        d / (2.0 - max - min)
+    } else {
+        d / (max + min)
+    };
     let h = if max == r {
         (g - b) / d + if g < b { 6.0 } else { 0.0 }
     } else if max == g {
@@ -178,7 +186,11 @@ fn hsl_to_rgb(h: f32, s: f32, l: f32) -> (u8, u8, u8) {
         let v = to_byte(l);
         return (v, v, v);
     }
-    let q = if l < 0.5 { l * (1.0 + s) } else { l + s - l * s };
+    let q = if l < 0.5 {
+        l * (1.0 + s)
+    } else {
+        l + s - l * s
+    };
     let p = 2.0 * l - q;
     let hue = |mut t: f32| {
         if t < 0.0 {
@@ -250,9 +262,10 @@ fn parse_clr_scheme(xml: &str) -> HashMap<String, Rgba> {
                     }
                 }
                 b"sysClr" if in_scheme => {
-                    if let (Some(name), Some(c)) =
-                        (&current, attr(&e, b"lastClr").and_then(|v| Rgba::from_hex(&v)))
-                    {
+                    if let (Some(name), Some(c)) = (
+                        &current,
+                        attr(&e, b"lastClr").and_then(|v| Rgba::from_hex(&v)),
+                    ) {
                         out.insert(name.clone(), c);
                     }
                 }
@@ -465,7 +478,12 @@ struct SlideWalk {
 }
 
 fn paragraph_text(p: &Paragraph) -> String {
-    p.runs.iter().map(|r| r.text.as_str()).collect::<String>().trim().to_string()
+    p.runs
+        .iter()
+        .map(|r| r.text.as_str())
+        .collect::<String>()
+        .trim()
+        .to_string()
 }
 
 /// Parse the text boxes of one slide. Frames are fractions of `slide_size`.
@@ -495,7 +513,10 @@ fn slide_start(w: &mut SlideWalk, e: &BytesStart) {
     let name = e.local_name();
     match name.as_ref() {
         b"sp" => {
-            w.text_box = Some(TextBox { frame: None, paragraphs: Vec::new() });
+            w.text_box = Some(TextBox {
+                frame: None,
+                paragraphs: Vec::new(),
+            });
             w.off = None;
             w.ext = None;
         }
@@ -503,7 +524,11 @@ fn slide_start(w: &mut SlideWalk, e: &BytesStart) {
         b"off" if w.in_xfrm => w.off = attr_f32(e, b"x").zip(attr_f32(e, b"y")),
         b"ext" if w.in_xfrm => w.ext = attr_f32(e, b"cx").zip(attr_f32(e, b"cy")),
         b"p" if w.text_box.is_some() => {
-            w.para = Some(Paragraph { align: None, line_spacing: None, runs: Vec::new() });
+            w.para = Some(Paragraph {
+                align: None,
+                line_spacing: None,
+                runs: Vec::new(),
+            });
         }
         b"pPr" if w.para.is_some() => {
             let align = match attr(e, b"algn").as_deref() {
@@ -613,8 +638,7 @@ fn is_marker(line: &str) -> bool {
     let l = line.trim();
     l.starts_with("Imnul")
         || l.chars().all(|c| c.is_ascii_digit())
-        || (l.contains('/')
-            && l.chars().all(|c| c.is_ascii_digit() || c == '/'))
+        || (l.contains('/') && l.chars().all(|c| c.is_ascii_digit() || c == '/'))
 }
 
 /// True for slide chrome that should never appear in the preview or search

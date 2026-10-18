@@ -4,7 +4,8 @@
 
 use crate::model::{Frame, Slide, TextBox};
 use crate::theme::{
-    Background, BundledFont, Font, HAlign, Outline, Prop, RefPos, Rgba, Shadow, TextSize, TextStyle, Theme, VAlign,
+    Background, BundledFont, Font, HAlign, Outline, Prop, RefPos, Rgba, Shadow, TextSize,
+    TextStyle, Theme, VAlign,
 };
 use std::path::PathBuf;
 
@@ -12,7 +13,10 @@ use std::path::PathBuf;
 #[derive(Debug, Clone, PartialEq)]
 pub enum SlideContent {
     Styled(Slide),
-    Verses { reference: String, verses: Vec<(u32, String)> },
+    Verses {
+        reference: String,
+        verses: Vec<(u32, String)>,
+    },
     Bitmap(PathBuf),
 }
 
@@ -59,13 +63,21 @@ const REFERENCE_SCALE: f32 = 0.6;
 
 /// Resolve `content` under `theme`. Returns `None` for bitmaps, which the
 /// renderer draws as they are.
-pub fn resolve(theme: &Theme, content: &SlideContent, footer: Option<&str>) -> Option<ResolvedSlide> {
+pub fn resolve(
+    theme: &Theme,
+    content: &SlideContent,
+    footer: Option<&str>,
+) -> Option<ResolvedSlide> {
     let footer = footer.map(str::to_string);
     match content {
         SlideContent::Bitmap(_) => None,
         SlideContent::Styled(slide) => Some(ResolvedSlide {
             background: solid_background(theme, slide.background),
-            boxes: slide.boxes.iter().map(|b| resolve_box(&theme.text, b)).collect(),
+            boxes: slide
+                .boxes
+                .iter()
+                .map(|b| resolve_box(&theme.text, b))
+                .collect(),
             footer,
         }),
         SlideContent::Verses { reference, verses } => Some(ResolvedSlide {
@@ -85,7 +97,12 @@ fn solid_background(theme: &Theme, slide: Option<Rgba>) -> Rgba {
 
 fn margin_frame(text: &TextStyle) -> Frame {
     let m = text.margin.resolve(None, FALLBACK_MARGIN);
-    Frame { x: m, y: m, w: 1.0 - 2.0 * m, h: 1.0 - 2.0 * m }
+    Frame {
+        x: m,
+        y: m,
+        w: 1.0 - 2.0 * m,
+        h: 1.0 - 2.0 * m,
+    }
 }
 
 fn resolve_box(text: &TextStyle, b: &TextBox) -> ResolvedBox {
@@ -104,8 +121,13 @@ fn resolve_box(text: &TextStyle, b: &TextBox) -> ResolvedBox {
                 .iter()
                 .map(|r| ResolvedRun {
                     text: r.text.clone(),
-                    font: text.font.resolve(r.font.clone().map(Font::System), Font::Bundled(BundledFont::Inter)),
-                    size: text.size.resolve(r.size_pt.map(TextSize::Pt), TextSize::Auto),
+                    font: text.font.resolve(
+                        r.font.clone().map(Font::System),
+                        Font::Bundled(BundledFont::Inter),
+                    ),
+                    size: text
+                        .size
+                        .resolve(r.size_pt.map(TextSize::Pt), TextSize::Auto),
                     bold: text.bold.resolve(r.bold, false),
                     italic: r.italic.unwrap_or(false),
                     color: text.color.resolve(r.color, FALLBACK_COLOR),
@@ -116,7 +138,11 @@ fn resolve_box(text: &TextStyle, b: &TextBox) -> ResolvedBox {
                 .collect(),
         })
         .collect();
-    ResolvedBox { frame, v_align: text.v_align, lines }
+    ResolvedBox {
+        frame,
+        v_align: text.v_align,
+        lines,
+    }
 }
 
 fn resolve_verses(theme: &Theme, reference: &str, verses: &[(u32, String)]) -> ResolvedBox {
@@ -141,7 +167,11 @@ fn resolve_verses(theme: &Theme, reference: &str, verses: &[(u32, String)]) -> R
     let mut lines: Vec<ResolvedLine> = verses
         .iter()
         .map(|(n, v)| {
-            let s = if theme.verses.show_numbers { format!("{n} {v}") } else { v.clone() };
+            let s = if theme.verses.show_numbers {
+                format!("{n} {v}")
+            } else {
+                v.clone()
+            };
             line(run(s, size))
         })
         .collect();
@@ -156,5 +186,9 @@ fn resolve_verses(theme: &Theme, reference: &str, verses: &[(u32, String)]) -> R
             RefPos::Bottom => lines.push(r),
         }
     }
-    ResolvedBox { frame: margin_frame(text), v_align: text.v_align, lines }
+    ResolvedBox {
+        frame: margin_frame(text),
+        v_align: text.v_align,
+        lines,
+    }
 }

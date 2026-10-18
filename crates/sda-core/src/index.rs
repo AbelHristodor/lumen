@@ -74,8 +74,7 @@ pub fn save_cache(cache_path: &Path, entries: &[Hymn]) -> anyhow::Result<()> {
 /// Unparseable files are logged and skipped so one bad file never aborts the
 /// crawl. Output follows crawl order.
 pub fn refresh_index(root: &Path, library: &str, cached: &[Hymn]) -> Vec<Hymn> {
-    let by_path: HashMap<&Path, &Hymn> =
-        cached.iter().map(|e| (e.path.as_path(), e)).collect();
+    let by_path: HashMap<&Path, &Hymn> = cached.iter().map(|e| (e.path.as_path(), e)).collect();
     let paths = crawl_pptx_paths(root);
     let mut out: Vec<Option<Hymn>> = vec![None; paths.len()];
     let mut misses: Vec<(usize, PathBuf, i64)> = Vec::new();
@@ -98,14 +97,25 @@ fn parse_all(misses: &[(usize, PathBuf, i64)], library: &str) -> Vec<(usize, Opt
     if misses.is_empty() {
         return Vec::new();
     }
-    let threads = std::thread::available_parallelism().map_or(1, |n| n.get()).min(misses.len());
+    let threads = std::thread::available_parallelism()
+        .map_or(1, |n| n.get())
+        .min(misses.len());
     let chunk = misses.len().div_ceil(threads);
     std::thread::scope(|scope| {
         let handles: Vec<_> = misses
             .chunks(chunk)
-            .map(|part| scope.spawn(move || part.iter().map(|(i, p, m)| (*i, parse_one(p, *m, library))).collect::<Vec<_>>()))
+            .map(|part| {
+                scope.spawn(move || {
+                    part.iter()
+                        .map(|(i, p, m)| (*i, parse_one(p, *m, library)))
+                        .collect::<Vec<_>>()
+                })
+            })
             .collect();
-        handles.into_iter().flat_map(|h| h.join().expect("parse thread panicked")).collect()
+        handles
+            .into_iter()
+            .flat_map(|h| h.join().expect("parse thread panicked"))
+            .collect()
     })
 }
 

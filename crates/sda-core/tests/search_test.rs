@@ -10,7 +10,10 @@ fn hymn(number: &str, title: &str, lines: &[&str]) -> Hymn {
         .map(|l| Paragraph {
             align: None,
             line_spacing: None,
-            runs: vec![Run { text: (*l).into(), ..Default::default() }],
+            runs: vec![Run {
+                text: (*l).into(),
+                ..Default::default()
+            }],
         })
         .collect();
     Hymn {
@@ -18,7 +21,10 @@ fn hymn(number: &str, title: &str, lines: &[&str]) -> Hymn {
         title: title.into(),
         slides: vec![Slide {
             background: None,
-            boxes: vec![TextBox { frame: None, paragraphs }],
+            boxes: vec![TextBox {
+                frame: None,
+                paragraphs,
+            }],
             notes: None,
         }],
         path: PathBuf::from(format!("/x/{number}.pptx")),
@@ -26,7 +32,6 @@ fn hymn(number: &str, title: &str, lines: &[&str]) -> Hymn {
         mtime: 0,
     }
 }
-
 
 fn searcher() -> Searcher {
     let entries = refresh_index(Path::new("tests/fixtures"), "test-lib", &[]);
@@ -82,7 +87,9 @@ fn lettered_number_sorts_numerically_then_by_suffix() {
 #[test]
 fn label_is_number_title_library() {
     let s = searcher();
-    let idx = (0..s.len()).find(|&i| s.entry(i).unwrap().number.as_deref() == Some("150")).unwrap();
+    let idx = (0..s.len())
+        .find(|&i| s.entry(i).unwrap().number.as_deref() == Some("150"))
+        .unwrap();
     let label = s.label(idx).unwrap();
     assert!(label.starts_with("150  Cerul, pământul"), "{label}");
     assert!(label.ends_with("  · test-lib"), "{label}");
@@ -118,7 +125,10 @@ fn exact_number_ranks_first() {
 
 #[test]
 fn body_search_uses_plain_text_of_styled_runs() {
-    let mut s = Searcher::new(vec![hymn("9", "Nine", &["Lumina lumii", "a doua"]), hymn("10", "Ten", &["altceva"])]);
+    let mut s = Searcher::new(vec![
+        hymn("9", "Nine", &["Lumina lumii", "a doua"]),
+        hymn("10", "Ten", &["altceva"]),
+    ]);
     let hits = s.search("lumina");
     assert_eq!(hits.len(), 1);
     assert_eq!(hits[0].entry.number.as_deref(), Some("9"));

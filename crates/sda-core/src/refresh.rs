@@ -23,7 +23,11 @@ pub fn force_clean_paths(
         info!("force_clean: removing {}", dir.display());
         std::fs::remove_dir_all(dir)?;
     }
-    for file in [stamp, cache_file].into_iter().flatten().filter(|f| f.exists()) {
+    for file in [stamp, cache_file]
+        .into_iter()
+        .flatten()
+        .filter(|f| f.exists())
+    {
         info!("force_clean: removing {}", file.display());
         std::fs::remove_file(file)?;
     }
@@ -50,7 +54,10 @@ pub fn register_default_library(cfg: &mut Config) -> bool {
     match cfg.libraries.iter_mut().find(|l| l.managed_by_git) {
         Some(managed) => {
             if managed.path != default.path {
-                debug!("repairing default library path {} -> {}", managed.path, default.path);
+                debug!(
+                    "repairing default library path {} -> {}",
+                    managed.path, default.path
+                );
                 managed.path = default.path;
                 managed.name = default.name;
             }
@@ -112,7 +119,10 @@ fn index_enabled(cfg: &Config, force: bool) -> Vec<Hymn> {
     let cached = if force {
         Vec::new()
     } else {
-        cache.as_ref().and_then(|p| load_cache(p)).unwrap_or_default()
+        cache
+            .as_ref()
+            .and_then(|p| load_cache(p))
+            .unwrap_or_default()
     };
     debug!("loaded {} cached entries (force={force})", cached.len());
 
@@ -120,10 +130,18 @@ fn index_enabled(cfg: &Config, force: bool) -> Vec<Hymn> {
     for lib in cfg.libraries.iter().filter(|l| l.enabled) {
         let before = entries.len();
         entries.extend(refresh_index(Path::new(&lib.path), &lib.name, &cached));
-        info!("indexed '{}' at {} -> {} hymns", lib.name, lib.path, entries.len() - before);
+        info!(
+            "indexed '{}' at {} -> {} hymns",
+            lib.name,
+            lib.path,
+            entries.len() - before
+        );
     }
     if entries.is_empty() && !force {
-        warn!("no entries indexed; falling back to {} cached", cached.len());
+        warn!(
+            "no entries indexed; falling back to {} cached",
+            cached.len()
+        );
         entries = cached;
     }
     info!("total {} hymns indexed", entries.len());

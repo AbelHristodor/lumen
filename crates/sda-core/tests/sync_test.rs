@@ -41,7 +41,8 @@ fn zip_with(files: &[(&str, &[u8])]) -> Vec<u8> {
     {
         let mut w = zip::ZipWriter::new(&mut buf);
         for (name, data) in files {
-            w.start_file(*name, zip::write::SimpleFileOptions::default()).unwrap();
+            w.start_file(*name, zip::write::SimpleFileOptions::default())
+                .unwrap();
             w.write_all(data).unwrap();
         }
         w.finish().unwrap();
@@ -51,7 +52,10 @@ fn zip_with(files: &[(&str, &[u8])]) -> Vec<u8> {
 
 fn read(path: &std::path::Path) -> Vec<u8> {
     let mut v = Vec::new();
-    std::fs::File::open(path).unwrap().read_to_end(&mut v).unwrap();
+    std::fs::File::open(path)
+        .unwrap()
+        .read_to_end(&mut v)
+        .unwrap();
     v
 }
 
@@ -63,14 +67,23 @@ fn downloads_then_reports_unchanged_then_redownloads_on_new_etag() {
     let dest = tmp.path().join("hymns");
     let stamp = tmp.path().join("hymns.etag");
 
-    assert_eq!(sync_hymns(&url, &dest, &stamp).unwrap(), SyncOutcome::Downloaded);
+    assert_eq!(
+        sync_hymns(&url, &dest, &stamp).unwrap(),
+        SyncOutcome::Downloaded
+    );
     assert_eq!(read(&dest.join("1-99/001.pptx")), b"one");
     assert_eq!(std::fs::read_to_string(&stamp).unwrap(), "\"v1\"");
 
-    assert_eq!(sync_hymns(&url, &dest, &stamp).unwrap(), SyncOutcome::Unchanged);
+    assert_eq!(
+        sync_hymns(&url, &dest, &stamp).unwrap(),
+        SyncOutcome::Unchanged
+    );
 
     *etag.lock().unwrap() = "\"v2\"".to_string();
-    assert_eq!(sync_hymns(&url, &dest, &stamp).unwrap(), SyncOutcome::Downloaded);
+    assert_eq!(
+        sync_hymns(&url, &dest, &stamp).unwrap(),
+        SyncOutcome::Downloaded
+    );
     assert_eq!(std::fs::read_to_string(&stamp).unwrap(), "\"v2\"");
 }
 
@@ -83,7 +96,10 @@ fn missing_library_folder_redownloads_even_with_matching_stamp() {
     let stamp = tmp.path().join("hymns.etag");
     std::fs::write(&stamp, "\"same\"").unwrap();
 
-    assert_eq!(sync_hymns(&url, &dest, &stamp).unwrap(), SyncOutcome::Downloaded);
+    assert_eq!(
+        sync_hymns(&url, &dest, &stamp).unwrap(),
+        SyncOutcome::Downloaded
+    );
     assert!(dest.join("a.pptx").is_file());
     assert!(!tmp.path().join("hymns.zip.part").exists());
     assert!(!tmp.path().join("hymns.tmp").exists());
@@ -98,15 +114,24 @@ fn sync_file_downloads_then_unchanged() {
     let dest = tmp.path().join("bibles").join("kjv.json");
     let stamp = tmp.path().join("bibles").join("kjv.etag");
 
-    assert_eq!(sync_file(&url, &dest, &stamp).unwrap(), SyncOutcome::Downloaded);
+    assert_eq!(
+        sync_file(&url, &dest, &stamp).unwrap(),
+        SyncOutcome::Downloaded
+    );
     assert_eq!(read(&dest), body);
     assert_eq!(std::fs::read_to_string(&stamp).unwrap(), "\"f1\"");
     assert!(!dest.with_extension("part").exists());
 
-    assert_eq!(sync_file(&url, &dest, &stamp).unwrap(), SyncOutcome::Unchanged);
+    assert_eq!(
+        sync_file(&url, &dest, &stamp).unwrap(),
+        SyncOutcome::Unchanged
+    );
 
     std::fs::remove_file(&dest).unwrap();
-    assert_eq!(sync_file(&url, &dest, &stamp).unwrap(), SyncOutcome::Downloaded);
+    assert_eq!(
+        sync_file(&url, &dest, &stamp).unwrap(),
+        SyncOutcome::Downloaded
+    );
     assert_eq!(read(&dest), body);
 }
 

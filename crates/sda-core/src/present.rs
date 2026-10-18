@@ -9,7 +9,10 @@ use std::path::PathBuf;
 #[derive(Debug, Clone, Default, PartialEq)]
 pub enum Source {
     Hymn(PathBuf),
-    Bible { version: String, reference: String },
+    Bible {
+        version: String,
+        reference: String,
+    },
     #[default]
     None,
 }
@@ -26,7 +29,13 @@ pub struct Presentation {
 
 impl Presentation {
     /// Load new content. Resets to the first slide and unblanks.
-    pub fn load(&mut self, title: String, subtitle: Option<String>, slides: Vec<SlideContent>, source: Source) {
+    pub fn load(
+        &mut self,
+        title: String,
+        subtitle: Option<String>,
+        slides: Vec<SlideContent>,
+        source: Source,
+    ) {
         self.title = title;
         self.subtitle = subtitle;
         self.slides = slides;

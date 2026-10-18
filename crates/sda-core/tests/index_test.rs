@@ -9,7 +9,10 @@ fn hymn(number: &str, title: &str, lines: &[&str]) -> Hymn {
         .map(|l| Paragraph {
             align: None,
             line_spacing: None,
-            runs: vec![Run { text: (*l).into(), ..Default::default() }],
+            runs: vec![Run {
+                text: (*l).into(),
+                ..Default::default()
+            }],
         })
         .collect();
     Hymn {
@@ -17,7 +20,10 @@ fn hymn(number: &str, title: &str, lines: &[&str]) -> Hymn {
         title: title.into(),
         slides: vec![Slide {
             background: None,
-            boxes: vec![TextBox { frame: None, paragraphs }],
+            boxes: vec![TextBox {
+                frame: None,
+                paragraphs,
+            }],
             notes: None,
         }],
         path: PathBuf::from(format!("/x/{number}.pptx")),
@@ -25,7 +31,6 @@ fn hymn(number: &str, title: &str, lines: &[&str]) -> Hymn {
         mtime: 0,
     }
 }
-
 
 #[test]
 fn crawl_skips_lock_and_non_pptx_files() {
@@ -40,17 +45,22 @@ fn crawl_skips_lock_and_non_pptx_files() {
 #[test]
 fn cold_refresh_parses_fixtures() {
     let entries = refresh_index(Path::new("tests/fixtures"), "test-lib", &[]);
-    let one = entries.iter().find(|e| e.number.as_deref() == Some("1")).unwrap();
+    let one = entries
+        .iter()
+        .find(|e| e.number.as_deref() == Some("1"))
+        .unwrap();
     assert!(one.title.contains("Plecaţi-vă"));
     assert_eq!(one.library, "test-lib");
 }
-
 
 #[test]
 fn cache_round_trips() {
     let dir = tempfile::tempdir().unwrap();
     let cache = dir.path().join("index.bin");
-    let entries = vec![Hymn { mtime: 123, ..hymn("7", "T", &["line one", "line two"]) }];
+    let entries = vec![Hymn {
+        mtime: 123,
+        ..hymn("7", "T", &["line one", "line two"])
+    }];
     save_cache(&cache, &entries).unwrap();
     let loaded = load_cache(&cache).unwrap();
     assert_eq!(loaded, entries);
@@ -72,7 +82,10 @@ fn cache_with_wrong_version_is_ignored() {
     let dir = tempfile::tempdir().unwrap();
     let cache = dir.path().join("index.bin");
     // Write raw entries WITHOUT the version envelope (the pre-versioning format).
-    let legacy = vec![Hymn { mtime: 1, ..hymn("1", "stale", &[]) }];
+    let legacy = vec![Hymn {
+        mtime: 1,
+        ..hymn("1", "stale", &[])
+    }];
     std::fs::write(&cache, bincode::serialize(&legacy).unwrap()).unwrap();
     assert!(
         load_cache(&cache).is_none(),
@@ -83,7 +96,10 @@ fn cache_with_wrong_version_is_ignored() {
 #[test]
 fn cold_refresh_preserves_crawl_order() {
     let root = Path::new("tests/fixtures");
-    let paths: Vec<_> = refresh_index(root, "L", &[]).into_iter().map(|e| e.path).collect();
+    let paths: Vec<_> = refresh_index(root, "L", &[])
+        .into_iter()
+        .map(|e| e.path)
+        .collect();
     assert_eq!(paths, crawl_pptx_paths(root));
 }
 

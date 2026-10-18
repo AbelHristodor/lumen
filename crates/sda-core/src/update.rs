@@ -12,7 +12,9 @@ const BIN_NAME: &str = "sda-manager";
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum UpdateOutcome {
     UpToDate,
-    Updated { version: String },
+    Updated {
+        version: String,
+    },
     /// The check could not be performed for a transient reason (offline,
     /// GitHub API rate limit / 403, timeout). Not a real error — try later.
     CheckUnavailable,

@@ -5,13 +5,27 @@ use sda_core::resolve::SlideContent;
 fn slides() -> Vec<SlideContent> {
     ["title", "verse 1", "verse 2"]
         .iter()
-        .map(|_| SlideContent::Styled(Slide { background: None, boxes: vec![], notes: None }))
+        .map(|_| {
+            SlideContent::Styled(Slide {
+                background: None,
+                boxes: vec![],
+                notes: None,
+            })
+        })
         .collect()
 }
 
 fn loaded() -> Presentation {
-    let mut p = Presentation { blank: true, ..Presentation::default() };
-    p.load("T".into(), Some("150".into()), slides(), Source::Hymn("/a.pptx".into()));
+    let mut p = Presentation {
+        blank: true,
+        ..Presentation::default()
+    };
+    p.load(
+        "T".into(),
+        Some("150".into()),
+        slides(),
+        Source::Hymn("/a.pptx".into()),
+    );
     p
 }
 
