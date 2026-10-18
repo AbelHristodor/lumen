@@ -2,9 +2,128 @@
 //! parsed progress events through a callback. Pure logic lives here so it can
 //! be unit-tested without a GUI or network access.
 
+use std::collections::BTreeMap;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+
+use serde::{Deserialize, Serialize};
+
+/// One selectable video quality from a probe.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Quality {
+    /// Display label like `1080p`.
+    pub label: String,
+    pub height: u32,
+    /// The yt-dlp format id to pass with `-f`.
+    pub format_id: String,
+    /// Exact or approximate size when yt-dlp reports one.
+    pub size_bytes: Option<u64>,
+}
+
+/// Metadata for a video before downloading it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Probe {
+    pub title: String,
+    pub thumbnail: Option<String>,
+    pub duration_secs: Option<u64>,
+    /// Video qualities, one per height, tallest first.
+    pub qualities: Vec<Quality>,
+}
+
+/// A finished download kept in the history list.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DownloadRecord {
+    pub title: String,
+    pub path: PathBuf,
+    /// Unix seconds when the download finished.
+    pub at: i64,
+}
+
+/// Parse the JSON printed by `yt-dlp -J` into a `Probe`.
+/// Keeps formats that carry video and a numeric height. At equal height the
+/// format with the largest reported size wins.
+pub fn parse_probe(json: &str) -> anyhow::Result<Probe> {
+    let v: serde_json::Value = serde_json::from_str(json)?;
+    let obj = v
+        .as_object()
+        .ok_or_else(|| anyhow::anyhow!("probe output is not a JSON object"))?;
+    let title = obj
+        .get("title")
+        .and_then(|t| t.as_str())
+        .unwrap_or("")
+        .to_string();
+    let thumbnail = obj
+        .get("thumbnail")
+        .and_then(|t| t.as_str())
+        .map(str::to_string);
+    let duration_secs = obj
+        .get("duration")
+        .and_then(|d| d.as_f64())
+        .map(|d| d.max(0.0) as u64);
+
+    let mut by_height: BTreeMap<u32, Quality> = BTreeMap::new();
+    let formats = obj.get("formats").and_then(|f| f.as_array());
+    for f in formats.into_iter().flatten() {
+        let has_video = f.get("vcodec").and_then(|c| c.as_str()) != Some("none");
+        let Some(height) = f.get("height").and_then(|h| h.as_u64()) else {
+            continue;
+        };
+        let Some(format_id) = f.get("format_id").and_then(|i| i.as_str()) else {
+            continue;
+        };
+        if !has_video || height == 0 {
+            continue;
+        }
+        let height = height as u32;
+        let size_bytes = f
+            .get("filesize")
+            .and_then(|s| s.as_u64())
+            .or_else(|| f.get("filesize_approx").and_then(|s| s.as_u64()));
+        let candidate = Quality {
+            label: format!("{height}p"),
+            height,
+            format_id: format_id.to_string(),
+            size_bytes,
+        };
+        let replace = by_height
+            .get(&height)
+            .is_none_or(|cur| size_bytes.unwrap_or(0) > cur.size_bytes.unwrap_or(0));
+        if replace {
+            by_height.insert(height, candidate);
+        }
+    }
+    let qualities = by_height.into_values().rev().collect();
+    Ok(Probe {
+        title,
+        thumbnail,
+        duration_secs,
+        qualities,
+    })
+}
+
+/// Ask yt-dlp for the metadata of `url` without downloading it. Blocks on the
+/// child process, so call it on a worker thread.
+pub fn probe(url: &str) -> anyhow::Result<Probe> {
+    let ytdlp = ensure_ytdlp()?;
+    let out = Command::new(ytdlp)
+        .args(["-J", "--no-warnings", "--no-playlist"])
+        .args(["--extractor-args", "youtube:player_client=default"])
+        .arg(url)
+        .stdin(Stdio::null())
+        .output()?;
+    if !out.status.success() {
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        let msg = stderr
+            .lines()
+            .rev()
+            .find(|l| l.contains("ERROR"))
+            .map(str::to_string)
+            .unwrap_or_else(|| format!("yt-dlp exited with {}", out.status));
+        anyhow::bail!(msg);
+    }
+    parse_probe(&String::from_utf8_lossy(&out.stdout))
+}
 
 /// A single progress update parsed from yt-dlp's output.
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -323,26 +442,37 @@ const PROGRESS_TEMPLATE: &str =
     "download:PROGRESS|%(progress._percent_str)s|%(progress._speed_str)s|%(progress._eta_str)s|%(info.title)s";
 
 /// Download a single video from `url` into `dir`, reporting `DownloadEvent`s
-/// to `emit`. Blocks until the child process exits, so call it on a worker thread.
-pub fn download(url: &str, dir: &Path, mut emit: impl FnMut(DownloadEvent)) {
-    emit(DownloadEvent::Resolving);
-    let ytdlp = match ensure_ytdlp() {
-        Ok(p) => p,
-        Err(e) => {
+/// to `emit`. `format_id` picks one quality from a `Probe`. Blocks until the
+/// child process exits, so call it on a worker thread. Failures are both
+/// emitted as `DownloadEvent::Failed` and returned as `Err`.
+pub fn start_download(
+    url: &str,
+    format_id: Option<&str>,
+    dir: &Path,
+    mut emit: impl FnMut(DownloadEvent),
+) -> anyhow::Result<()> {
+    match run_download(url, format_id, dir, &mut emit) {
+        Ok(()) => Ok(()),
+        Err(message) => {
             emit(DownloadEvent::Failed {
-                message: format!("Could not set up downloader: {e}"),
+                message: message.clone(),
             });
-            return;
+            Err(anyhow::anyhow!(message))
         }
-    };
+    }
+}
+
+fn run_download(
+    url: &str,
+    format_id: Option<&str>,
+    dir: &Path,
+    emit: &mut impl FnMut(DownloadEvent),
+) -> Result<(), String> {
+    emit(DownloadEvent::Resolving);
+    let ytdlp = ensure_ytdlp().map_err(|e| format!("Could not set up downloader: {e}"))?;
 
     // Ensure a destination we can actually write to before doing any work.
-    if let Err(e) = std::fs::create_dir_all(dir) {
-        emit(DownloadEvent::Failed {
-            message: format!("Cannot use download folder: {e}"),
-        });
-        return;
-    }
+    std::fs::create_dir_all(dir).map_err(|e| format!("Cannot use download folder: {e}"))?;
 
     // Auto-download ffmpeg so we can merge best video+audio. If it can't be
     // obtained, fall back to the best pre-merged single-file format.
@@ -350,10 +480,10 @@ pub fn download(url: &str, dir: &Path, mut emit: impl FnMut(DownloadEvent)) {
     let have_ffmpeg = ffmpeg.is_ok();
     // Cap at 1080p: 4K streams are huge and far more likely to need a PO token
     // (and 403). Prefer merged best <=1080p, then any pre-merged fallback.
-    let format = if have_ffmpeg {
-        "bv*[height<=1080]+ba/b[height<=1080]/bv*+ba/b"
-    } else {
-        "b[height<=1080]/b"
+    let format = match format_id {
+        Some(id) => format!("{id}+bestaudio/best"),
+        None if have_ffmpeg => "bv*[height<=1080]+ba/b[height<=1080]/bv*+ba/b".to_string(),
+        None => "b[height<=1080]/b".to_string(),
     };
 
     let output_template = dir.join("%(title)s.%(ext)s");
@@ -369,7 +499,7 @@ pub fn download(url: &str, dir: &Path, mut emit: impl FnMut(DownloadEvent)) {
         // Be resilient to transient throttling/errors mid-download.
         .args(["--retries", "10"])
         .args(["--fragment-retries", "10"])
-        .args(["-f", format])
+        .args(["-f", &format])
         .args(["--progress-template", PROGRESS_TEMPLATE])
         .arg("-o")
         .arg(&output_template)
@@ -381,15 +511,9 @@ pub fn download(url: &str, dir: &Path, mut emit: impl FnMut(DownloadEvent)) {
         cmd.args(["--merge-output-format", "mp4"]);
     }
 
-    let mut child = match cmd.spawn() {
-        Ok(c) => c,
-        Err(e) => {
-            emit(DownloadEvent::Failed {
-                message: format!("Failed to start yt-dlp: {e}"),
-            });
-            return;
-        }
-    };
+    let mut child = cmd
+        .spawn()
+        .map_err(|e| format!("Failed to start yt-dlp: {e}"))?;
 
     // Drain stderr concurrently on its own thread to avoid a pipe-buffer
     // deadlock if yt-dlp fills stderr while we're blocked reading stdout.
@@ -428,21 +552,15 @@ pub fn download(url: &str, dir: &Path, mut emit: impl FnMut(DownloadEvent)) {
             emit(DownloadEvent::Done {
                 path: dir.to_path_buf(),
             });
+            Ok(())
         }
-        Ok(s) => {
-            let msg = stderr_tail
-                .lines()
-                .rev()
-                .find(|l| l.contains("ERROR"))
-                .map(|l| l.to_string())
-                .unwrap_or_else(|| format!("yt-dlp exited with {s}"));
-            emit(DownloadEvent::Failed { message: msg });
-        }
-        Err(e) => {
-            emit(DownloadEvent::Failed {
-                message: format!("yt-dlp did not run: {e}"),
-            });
-        }
+        Ok(s) => Err(stderr_tail
+            .lines()
+            .rev()
+            .find(|l| l.contains("ERROR"))
+            .map(|l| l.to_string())
+            .unwrap_or_else(|| format!("yt-dlp exited with {s}"))),
+        Err(e) => Err(format!("yt-dlp did not run: {e}")),
     }
 }
 
@@ -500,7 +618,11 @@ mod tests {
     #[test]
     fn resolves_binary_in_data_dir_first() {
         let dir = tempfile::tempdir().unwrap();
-        let name = if cfg!(windows) { "yt-dlp.exe" } else { "yt-dlp" };
+        let name = if cfg!(windows) {
+            "yt-dlp.exe"
+        } else {
+            "yt-dlp"
+        };
         let bin = dir.path().join(name);
         fs::write(&bin, b"#!/bin/sh\n").unwrap();
         let found = resolve_in_dir(dir.path(), "yt-dlp");
