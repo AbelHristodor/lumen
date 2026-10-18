@@ -1,4 +1,4 @@
-use sda_core::sync::{sync_file, sync_hymns, SyncOutcome};
+use sda_core::sync::{short_reason, sync_file, sync_hymns, SyncOutcome};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpListener;
 use std::sync::{Arc, Mutex};
@@ -176,4 +176,19 @@ fn download_replaces_previous_library_contents() {
     sync_hymns(&url, &dest, &tmp.path().join("hymns.etag")).unwrap();
     assert!(!dest.join("old.pptx").exists());
     assert!(dest.join("new.pptx").is_file());
+}
+
+#[test]
+fn short_reason_hides_urls_and_names_the_failure() {
+    let chain = "HEAD https://github.com/AbelHristodor/sda_manager/releases/latest/download/hymns.zip: https://github.com/AbelHristodor/sda_manager/releases/latest/download/hymns.zip: status code 404";
+    assert_eq!(short_reason(chain), "HTTP 404");
+    let dns = "HEAD https://github.com/x/hymns.zip: https://github.com/x/hymns.zip: Dns Failed: resolve dns name 'github.com:443': failed to lookup address information";
+    assert_eq!(short_reason(dns), "network");
+    assert_eq!(
+        short_reason("HEAD https://a/b: Connection Failed: tcp connect error"),
+        "network"
+    );
+    let other = "a".repeat(60);
+    assert_eq!(short_reason(&other).chars().count(), 40);
+    assert_eq!(short_reason("no data directory"), "no data directory");
 }

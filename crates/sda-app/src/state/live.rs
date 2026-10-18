@@ -23,6 +23,12 @@ pub struct LiveState {
     pub video: Option<Arc<FrameSource>>,
     /// Decoded images for bitmap slides and image backgrounds.
     pub bitmaps: HashMap<PathBuf, Arc<RgbaImage>>,
+    /// The background a worker is loading right now. Blocks a second worker
+    /// for the same file until the result lands.
+    started_for: Option<Background>,
+    /// The background whose worker failed. Not retried until the theme
+    /// moves to another background.
+    failed_for: Option<Background>,
     epoch: Instant,
     /// The outgoing slide resolved once when it left, so it never collides
     /// with the cache of the presentation that replaced it.
@@ -42,6 +48,8 @@ impl LiveState {
             ffmpeg: None,
             video: None,
             bitmaps: HashMap::new(),
+            started_for: None,
+            failed_for: None,
             epoch: Instant::now(),
             outgoing_layer: None,
             resolved: Mutex::new(HashMap::new()),
@@ -55,15 +63,22 @@ impl LiveState {
     pub fn set_theme(&mut self, theme: Theme) {
         if theme.background != self.theme.background {
             self.video = None;
+            self.started_for = None;
+            self.failed_for = None;
         }
         self.theme = theme;
         self.clear_cache();
     }
 
     /// True when the background needs a worker: a video with no decoder
-    /// and no still yet, or an image not decoded yet.
+    /// and no still yet, or an image not decoded yet. False while a worker
+    /// runs for it or after one failed for it.
     pub fn background_pending(&self) -> bool {
-        match &self.theme.background {
+        let bg = &self.theme.background;
+        if self.started_for.as_ref() == Some(bg) || self.failed_for.as_ref() == Some(bg) {
+            return false;
+        }
+        match bg {
             Background::Video { path } => {
                 self.video.is_none()
                     && !self.bitmaps.contains_key(path)
@@ -76,12 +91,27 @@ impl LiveState {
         }
     }
 
+    /// A worker was started for the current background.
+    pub fn background_started(&mut self) {
+        self.started_for = Some(self.theme.background.clone());
+    }
+
+    /// The worker for `for_background` failed. Ignored when the theme moved
+    /// on, else the file is not retried until the background changes.
+    pub fn background_failed(&mut self, for_background: &Background) {
+        if self.theme.background == *for_background {
+            self.started_for = None;
+            self.failed_for = Some(for_background.clone());
+        }
+    }
+
     /// Put a worker result in place. Ignored when the theme moved on to a
     /// different background while the worker ran.
     pub fn install_background(&mut self, for_background: &Background, asset: BackgroundAsset) {
         if self.theme.background != *for_background {
             return;
         }
+        self.started_for = None;
         match asset {
             BackgroundAsset::Video(src) => {
                 // Two workers for one path can both land. The first decoder

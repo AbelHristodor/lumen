@@ -27,6 +27,8 @@ pub struct Status {
     pub library: String,
     /// True when `library` reports a failure. The chip shows a danger dot.
     pub library_error: bool,
+    /// The full error behind a short `library` line, for the tooltip.
+    pub library_detail: Option<String>,
     pub sync_busy: bool,
     pub update: Option<String>,
     /// True when a new version was staged. The chip shows a short label.
@@ -144,7 +146,7 @@ impl App {
         let task = Task::batch([
             open.discard(),
             workers::gpu_probe(),
-            workers::background(BgTarget::Live, &app.live),
+            workers::background(BgTarget::Live, &mut app.live),
             workers::boot(&app.core),
             Task::perform(async { displays::list() }, Msg::DisplaysListed),
         ]);
@@ -314,6 +316,7 @@ impl App {
                     if let Some(n) = self.install_searcher(&h) {
                         self.status.library = s.status_indexed_fmt.replace("{}", &n.to_string());
                         self.status.library_error = false;
+                        self.status.library_detail = None;
                     }
                 }
                 Err(e) => {
@@ -329,12 +332,15 @@ impl App {
                         if let Some(n) = self.install_searcher(&h) {
                             self.status.library = s.status_synced_fmt.replace("{}", &n.to_string());
                             self.status.library_error = false;
+                            self.status.library_detail = None;
                         }
                     }
                     Ok(None) => {}
                     Err(e) => {
-                        self.status.library = s.status_sync_failed_fmt.replace("{}", &e);
+                        let reason = sda_core::sync::short_reason(&e);
+                        self.status.library = s.status_sync_failed_fmt.replace("{}", &reason);
                         self.status.library_error = true;
+                        self.status.library_detail = Some(e);
                     }
                 }
             }
@@ -363,7 +369,11 @@ impl App {
                     }
                     Err(e) => {
                         log::warn!("background load failed: {e}");
-                        if target == BgTarget::Live && self.live.theme.background == bg {
+                        if live.theme.background != bg {
+                            return Task::none();
+                        }
+                        live.background_failed(&bg);
+                        if target == BgTarget::Live {
                             self.status.notice = Some(s.background_failed_fmt.replace("{}", &e));
                         }
                     }
@@ -372,6 +382,7 @@ impl App {
             Msg::ForceSync => {
                 self.status.sync_busy = true;
                 self.status.library_error = false;
+                self.status.library_detail = None;
                 self.status.library = s.status_re_cloning;
                 return workers::force_sync(&self.core);
             }

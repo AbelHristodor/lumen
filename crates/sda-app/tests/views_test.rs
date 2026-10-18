@@ -389,6 +389,47 @@ fn preview_and_live_share_one_decoder_for_the_same_video() {
 }
 
 #[test]
+fn one_video_worker_in_flight_and_no_retry_after_a_failure() {
+    use sda_app::msg::themes::DraftEdit;
+    use sda_app::msg::{BgTarget, ThemesMsg};
+    use sda_core::theme::{Background, Theme};
+    use std::path::PathBuf;
+    let mut app = app();
+    let bg = Background::Video {
+        path: PathBuf::from("/tmp/bg.mp4"),
+    };
+    app.themes.draft = Theme {
+        background: bg.clone(),
+        ..Theme::default()
+    };
+    // Off the Themes tab the preview clock stays idle, so every task unit
+    // the update returns is one background worker.
+    let first = app.update(Msg::Themes(ThemesMsg::Draft(DraftEdit::BgOpacity(0.9))));
+    assert_eq!(first.units(), 1, "the first message spawns one worker");
+    assert!(!app.themes.preview.background_pending());
+    let second = app.update(Msg::Themes(ThemesMsg::Draft(DraftEdit::BgOpacity(0.8))));
+    assert_eq!(second.units(), 0, "a worker in flight blocks a second one");
+
+    let _ = app.update(Msg::BackgroundReady(
+        BgTarget::ThemePreview,
+        bg.clone(),
+        Err("ffmpeg not found".into()),
+    ));
+    assert!(
+        app.status.notice.is_none(),
+        "a preview error is not a notice"
+    );
+    let third = app.update(Msg::Themes(ThemesMsg::Draft(DraftEdit::BgOpacity(0.7))));
+    assert_eq!(third.units(), 0, "a failed file is not retried");
+
+    app.themes.draft.background = Background::Video {
+        path: PathBuf::from("/tmp/other.mp4"),
+    };
+    let fourth = app.update(Msg::Themes(ThemesMsg::Draft(DraftEdit::BgOpacity(0.6))));
+    assert_eq!(fourth.units(), 1, "a new file gets its own worker");
+}
+
+#[test]
 fn window_geometry_saves_only_the_latest_change_and_loads_back() {
     use iced::{Point, Size};
     use sda_app::app::WindowGeom;
@@ -444,6 +485,25 @@ fn status_chip_colors_follow_the_library_state_and_cuts_long_text() {
         ui.find(&*app.core.strings.update_available).is_ok(),
         "update button shows once the library is fine"
     );
+}
+
+#[test]
+fn sync_error_chip_shows_a_short_reason_and_keeps_the_full_error() {
+    let mut app = app();
+    let chain =
+        "HEAD https://github.com/x/hymns.zip: https://github.com/x/hymns.zip: status code 404";
+    let _ = app.update(Msg::Synced(Err(chain.into())));
+    assert_eq!(
+        app.status.library,
+        app.core
+            .strings
+            .status_sync_failed_fmt
+            .replace("{}", "HTTP 404")
+    );
+    assert!(!app.status.library.contains("https"));
+    assert_eq!(app.status.library_detail.as_deref(), Some(chain));
+    let mut ui = Simulator::new(app.view_operator());
+    assert!(ui.find(&*app.status.library).is_ok());
 }
 
 #[test]

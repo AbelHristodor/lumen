@@ -69,3 +69,16 @@ fn review_fixes_landed() {
         assert!(!s.transition_blur.is_empty());
     }
 }
+
+#[test]
+fn romanian_uses_comma_below_not_cedilla() {
+    for lang in Language::all() {
+        let s = Strings::for_language(lang);
+        for (i, field) in s.as_fields().iter().enumerate() {
+            assert!(
+                !field.contains(['\u{015F}', '\u{0163}', '\u{015E}', '\u{0162}']),
+                "{lang:?} field {i} uses a cedilla: {field}"
+            );
+        }
+    }
+}

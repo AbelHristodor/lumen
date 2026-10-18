@@ -124,11 +124,13 @@ pub fn gpu_probe() -> Task<Msg> {
 }
 
 /// Load what `live`'s background needs from disk: start ffmpeg for a
-/// video, decode an image. `Task::none()` when nothing is pending.
-pub fn background(target: BgTarget, live: &LiveState) -> Task<Msg> {
+/// video, decode an image. `Task::none()` when nothing is pending or a
+/// worker already runs for this background.
+pub fn background(target: BgTarget, live: &mut LiveState) -> Task<Msg> {
     if !live.background_pending() {
         return Task::none();
     }
+    live.background_started();
     let bg = live.theme.background.clone();
     let work = bg.clone();
     Task::perform(blocking(move || load_background(&work)), move |r| {

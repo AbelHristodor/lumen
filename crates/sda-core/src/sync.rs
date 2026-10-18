@@ -98,6 +98,32 @@ pub fn sync_hymns(url: &str, dest_dir: &Path, stamp: &Path) -> Result<SyncOutcom
     result.map(|_| SyncOutcome::Downloaded)
 }
 
+/// A few words for a status chip out of a sync error chain. A status code
+/// becomes `HTTP 404`, a transport failure becomes `network`, anything else
+/// keeps its first 40 chars. Never a URL.
+pub fn short_reason(err: &str) -> String {
+    if let Some(code) = err
+        .split("status code ")
+        .nth(1)
+        .and_then(|rest| rest.split(|c: char| !c.is_ascii_digit()).next())
+        .filter(|c| !c.is_empty())
+    {
+        return format!("HTTP {code}");
+    }
+    let network = [
+        "Dns Failed",
+        "Connection Failed",
+        "Network Error",
+        "timed out",
+        "Too Many Redirects",
+    ];
+    if network.iter().any(|n| err.contains(n)) {
+        return "network".into();
+    }
+    let first_line = err.lines().next().unwrap_or_default().trim();
+    first_line.chars().take(40).collect()
+}
+
 /// Unpack `zip` into `dest`. Entry paths are sanitized by the `zip` crate, so
 /// an archive cannot write outside `dest`.
 pub fn extract_zip(zip: &Path, dest: &Path) -> Result<()> {

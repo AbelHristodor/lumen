@@ -83,8 +83,9 @@ fn status_chips(app: &App) -> Element<'_, Msg> {
         .spacing(8)
         .align_y(Alignment::Center),
     );
-    let mut chips =
-        row![with_tooltip(library, &st.library, truncated)].spacing(ui_theme::SPACING / 2.0);
+    let full = st.library_detail.as_deref().unwrap_or(&st.library);
+    let library = with_tooltip(library, full, truncated || st.library_detail.is_some());
+    let mut chips = row![library].spacing(ui_theme::SPACING / 2.0);
     if let Some(notice) = &st.notice {
         let short = shorten(notice, CHIP_CHARS);
         let cut = short != *notice;

@@ -367,7 +367,7 @@ fn sync_preview(app: &mut App) -> Task<Msg> {
             t.thumbs.insert(key, Arc::new(slide));
         }
     }
-    workers::background(BgTarget::ThemePreview, &t.preview)
+    workers::background(BgTarget::ThemePreview, &mut t.preview)
 }
 
 /// Make `theme` the live one and start its background worker if needed.
@@ -376,7 +376,7 @@ fn apply_live(app: &mut App, theme: Theme) -> Task<Msg> {
     app.live.set_theme(theme);
     app.live.adopt_video(&app.themes.preview);
     app.status.notice = None;
-    workers::background(BgTarget::Live, &app.live)
+    workers::background(BgTarget::Live, &mut app.live)
 }
 
 fn tick_later() -> Task<Msg> {
