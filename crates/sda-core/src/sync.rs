@@ -90,6 +90,11 @@ pub fn sync_hymns(url: &str, dest_dir: &Path, stamp: &Path) -> Result<SyncOutcom
     })();
     let _ = std::fs::remove_file(&zip_path);
     let _ = std::fs::remove_dir_all(&tmp_dir);
+    if result.is_err() {
+        // The stamp already holds the new ETag. Drop it so the next launch
+        // downloads again instead of keeping the old library.
+        let _ = std::fs::remove_file(stamp);
+    }
     result.map(|_| SyncOutcome::Downloaded)
 }
 

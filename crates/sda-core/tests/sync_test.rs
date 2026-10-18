@@ -6,6 +6,11 @@ use std::sync::{Arc, Mutex};
 /// Minimal HTTP/1.1 server answering HEAD and GET for one zip body. The ETag
 /// is shared so a test can change it between requests.
 fn serve(body: Vec<u8>, etag: Arc<Mutex<String>>) -> String {
+    serve_shared(Arc::new(Mutex::new(body)), etag)
+}
+
+/// Like `serve` but the body is shared so a test can swap it between requests.
+fn serve_shared(body: Arc<Mutex<Vec<u8>>>, etag: Arc<Mutex<String>>) -> String {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let url = format!("http://{}/hymns.zip", listener.local_addr().unwrap());
     std::thread::spawn(move || {
@@ -22,6 +27,7 @@ fn serve(body: Vec<u8>, etag: Arc<Mutex<String>>) -> String {
                 }
             }
             let etag = etag.lock().unwrap().clone();
+            let body = body.lock().unwrap().clone();
             let head = format!(
                 "HTTP/1.1 200 OK\r\nETag: {etag}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
                 body.len()
@@ -101,7 +107,7 @@ fn missing_library_folder_redownloads_even_with_matching_stamp() {
         SyncOutcome::Downloaded
     );
     assert!(dest.join("a.pptx").is_file());
-    assert!(!tmp.path().join("hymns.zip.part").exists());
+    assert!(!tmp.path().join("hymns.part").exists());
     assert!(!tmp.path().join("hymns.tmp").exists());
 }
 
@@ -133,6 +139,29 @@ fn sync_file_downloads_then_unchanged() {
         SyncOutcome::Downloaded
     );
     assert_eq!(read(&dest), body);
+}
+
+#[test]
+fn sync_hymns_failed_extract_leaves_no_stamp() {
+    let etag = Arc::new(Mutex::new("\"bad\"".to_string()));
+    let body = Arc::new(Mutex::new(b"this is not a zip".to_vec()));
+    let url = serve_shared(body.clone(), etag);
+    let tmp = tempfile::tempdir().unwrap();
+    let dest = tmp.path().join("hymns");
+    let stamp = tmp.path().join("hymns.etag");
+
+    assert!(sync_hymns(&url, &dest, &stamp).is_err());
+    assert!(!stamp.exists());
+    assert!(!dest.exists());
+    assert!(!tmp.path().join("hymns.zip").exists());
+
+    *body.lock().unwrap() = zip_with(&[("a.pptx", b"x")]);
+    assert_eq!(
+        sync_hymns(&url, &dest, &stamp).unwrap(),
+        SyncOutcome::Downloaded
+    );
+    assert!(dest.join("a.pptx").is_file());
+    assert_eq!(std::fs::read_to_string(&stamp).unwrap(), "\"bad\"");
 }
 
 #[test]

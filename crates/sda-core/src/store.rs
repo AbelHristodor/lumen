@@ -7,7 +7,8 @@ use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::path::Path;
 
-/// Read and parse `path`. Any error logs a warning and returns `T::default()`.
+/// Read and parse `path`. A missing file is silent. Any other error logs a
+/// warning. Both return `T::default()`.
 pub fn json_load<T: DeserializeOwned + Default>(path: &Path) -> T {
     let text = match std::fs::read_to_string(path) {
         Ok(t) => t,
