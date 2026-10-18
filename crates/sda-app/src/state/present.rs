@@ -3,6 +3,7 @@
 //! the functions here by name. Tab specific messages come through `update`.
 
 use crate::app::App;
+use crate::msg::present::Bitmap;
 use crate::msg::{Msg, PresentMsg};
 use iced::Task;
 use iced::widget::{self, operation, scrollable::RelativeOffset};
@@ -29,6 +30,10 @@ pub const RECENT_COUNT: usize = 10;
 /// Resolved slides kept for the preview before the cache is dropped.
 const RESOLVED_CAP: usize = 256;
 
+/// Cache key of a resolved preview slide: hymn path and mtime, slide
+/// index, theme key. Paths survive a searcher swap, indices do not.
+type ResolvedKey = (PathBuf, i64, usize, u64);
+
 pub struct PresentState {
     pub query: String,
     /// Searcher indices of the current hits, best first.
@@ -38,10 +43,14 @@ pub struct PresentState {
     pub preview_slide: usize,
     pub scroll: widget::Id,
     pub as_is_busy: bool,
-    /// Resolved slides by hymn index, slide index and theme key. The
-    /// renderer keys its textures by `Arc` address, so the view must hand
-    /// it the same `Arc` every frame.
-    resolved: Mutex<HashMap<(usize, usize, u64), Arc<ResolvedSlide>>>,
+    /// Why the last as is render or load failed. Shown under the toggle.
+    pub as_is_error: Option<String>,
+    /// A bitmap load `go_live` could not start itself. `pending_load`
+    /// turns it into a task.
+    pending: Option<(PathBuf, Vec<PathBuf>)>,
+    /// Resolved slides for the preview. The renderer keys its textures by
+    /// `Arc` address, so the view must hand it the same `Arc` every frame.
+    resolved: Mutex<HashMap<ResolvedKey, Arc<ResolvedSlide>>>,
     /// Sample slide per theme key for the theme picker thumbnails.
     samples: Mutex<HashMap<u64, Arc<ResolvedSlide>>>,
 }
@@ -55,9 +64,18 @@ impl Default for PresentState {
             preview_slide: 0,
             scroll: widget::Id::new("results"),
             as_is_busy: false,
+            as_is_error: None,
+            pending: None,
             resolved: Mutex::new(HashMap::new()),
             samples: Mutex::new(HashMap::new()),
         }
+    }
+}
+
+impl PresentState {
+    /// True when `go_live` queued a bitmap load that no task has started.
+    pub fn has_pending_load(&self) -> bool {
+        self.pending.is_some()
     }
 }
 
@@ -83,62 +101,109 @@ pub fn selected_hymn(app: &App) -> Option<(usize, &Hymn)> {
 }
 
 pub fn update(app: &mut App, msg: PresentMsg) -> Task<Msg> {
-    match msg {
+    let pending = pending_load(app);
+    let task = match msg {
         PresentMsg::AsIsToggle(on) => {
             let Some((_, hymn)) = selected_hymn(app) else {
-                return Task::none();
+                return pending;
             };
             let hymn = hymn.clone();
+            app.present.as_is_error = None;
             if on {
                 app.core.overrides.as_is.insert(hymn.path.clone(), true);
             } else {
                 app.core.overrides.as_is.remove(&hymn.path);
             }
             app.core.save_overrides();
-            if on
-                && asis_paths(app, &hymn).is_none()
-                && let Some(conv) = app.core.converter.clone()
-            {
-                app.present.as_is_busy = true;
-                let out = asis_dir(app, &hymn);
-                return asis_render(conv, hymn.path, out);
+            if !on || app.present.as_is_busy {
+                return pending;
             }
-            Task::none()
+            match asis_paths(app, &hymn) {
+                Some(pngs) if bitmaps_missing(app, &pngs) => {
+                    app.present.as_is_busy = true;
+                    asis_load(hymn.path, pngs)
+                }
+                Some(_) => Task::none(),
+                None => {
+                    let Some(conv) = app.core.converter.clone() else {
+                        return pending;
+                    };
+                    app.present.as_is_busy = true;
+                    let out = asis_dir(app, &hymn);
+                    asis_render(conv, hymn.path, out)
+                }
+            }
         }
         PresentMsg::AsIsRendered(result) => {
             app.present.as_is_busy = false;
             match result {
-                Ok((path, pngs)) => {
-                    ensure_bitmaps(app, &pngs);
-                    if app.live.present.source == Source::Hymn(path) {
+                Ok((path, bitmaps)) => {
+                    let pngs: Vec<PathBuf> = bitmaps.iter().map(|(p, _)| p.clone()).collect();
+                    app.live.bitmaps.extend(bitmaps);
+                    let still_on = app.core.overrides.as_is.get(&path) == Some(&true);
+                    if still_on && app.live.present.source == Source::Hymn(path) {
                         let live = &mut app.live.present;
                         live.slides = pngs.into_iter().map(SlideContent::Bitmap).collect();
                         live.index = live.index.min(live.slides.len().saturating_sub(1));
                     }
                 }
-                Err(e) => log::warn!("as is render failed: {e}"),
+                Err(e) => {
+                    log::warn!("as is render failed: {e}");
+                    app.present.as_is_error = Some(e);
+                }
             }
             Task::none()
         }
+    };
+    Task::batch([pending, task])
+}
+
+/// Start the bitmap load `go_live` queued, if any. `go_live` returns `()`
+/// so it cannot start a task itself. `app.rs` can return this after it.
+pub fn pending_load(app: &mut App) -> Task<Msg> {
+    match app.present.pending.take() {
+        Some((path, pngs)) => asis_load(path, pngs),
+        None => Task::none(),
     }
 }
 
-/// Render every slide of `pptx` into `out` on a blocking thread.
+/// Decode `pngs` in order. Any failure fails the whole load.
+fn decode(pngs: Vec<PathBuf>) -> Result<Vec<Bitmap>, String> {
+    pngs.into_iter()
+        .map(|p| {
+            image::open(&p)
+                .map(|img| (p.clone(), Arc::new(img.to_rgba8())))
+                .map_err(|e| format!("{}: {e}", p.display()))
+        })
+        .collect()
+}
+
+/// Wrap a worker result as `AsIsRendered` for `hymn`.
+fn rendered(hymn: PathBuf, r: Result<Result<Vec<Bitmap>, String>, String>) -> Msg {
+    Msg::Present(PresentMsg::AsIsRendered(
+        r.and_then(|inner| inner).map(|b| (hymn, b)),
+    ))
+}
+
+/// Render every slide of `pptx` into `out` and decode them on a blocking
+/// thread.
 fn asis_render(conv: Converter, pptx: PathBuf, out: PathBuf) -> Task<Msg> {
     let source = pptx.clone();
     Task::perform(
         blocking(move || {
             asis::render(&conv, &pptx, &out, ASIS_SIZE)
-                .map(|pngs| (pptx, pngs))
                 .map_err(|e| e.to_string())
+                .and_then(decode)
         }),
-        move |r| {
-            let r = r
-                .and_then(|inner| inner)
-                .map(|(_, pngs)| (source.clone(), pngs));
-            Msg::Present(PresentMsg::AsIsRendered(r))
-        },
+        move |r| rendered(source.clone(), r),
     )
+}
+
+/// Decode an existing cache for `pptx` on a blocking thread.
+fn asis_load(pptx: PathBuf, pngs: Vec<PathBuf>) -> Task<Msg> {
+    Task::perform(blocking(move || decode(pngs)), move |r| {
+        rendered(pptx.clone(), r)
+    })
 }
 
 fn asis_dir(app: &App, hymn: &Hymn) -> PathBuf {
@@ -164,26 +229,14 @@ pub fn asis_paths(app: &App, hymn: &Hymn) -> Option<Vec<PathBuf>> {
     asis::cached(&asis_dir(app, hymn))
 }
 
-/// Decode any PNG not yet in `app.live.bitmaps`.
-fn ensure_bitmaps(app: &mut App, pngs: &[PathBuf]) {
-    for p in pngs {
-        if app.live.bitmaps.contains_key(p) {
-            continue;
-        }
-        match image::open(p) {
-            Ok(img) => {
-                app.live.bitmaps.insert(p.clone(), Arc::new(img.to_rgba8()));
-            }
-            Err(e) => log::warn!("as is slide {} failed to load: {e}", p.display()),
-        }
-    }
+/// True when any of `pngs` is not decoded yet.
+fn bitmaps_missing(app: &App, pngs: &[PathBuf]) -> bool {
+    pngs.iter().any(|p| !app.live.bitmaps.contains_key(p))
 }
 
 /// Rank hymns against `app.present.query` and select the first hit.
 pub fn run_search(app: &mut App) {
-    if let Ok(mut c) = app.present.resolved.lock() {
-        c.clear();
-    }
+    app.present.as_is_error = None;
     let Some(searcher) = app.core.searcher.as_mut() else {
         app.present.hits.clear();
         app.present.selected = None;
@@ -202,6 +255,7 @@ pub fn select(app: &mut App, i: usize) {
     if i < app.present.hits.len() {
         app.present.selected = Some(i);
         app.present.preview_slide = 0;
+        app.present.as_is_error = None;
     }
 }
 
@@ -227,23 +281,34 @@ pub fn snap_to_selection(app: &App) -> Task<Msg> {
     operation::snap_to(app.present.scroll.clone(), RelativeOffset { x: 0.0, y })
 }
 
-/// Put the selected hymn live starting at `slide`.
+/// Put the selected hymn live starting at `slide`. With the Original
+/// override on and a finished cache whose PNGs are not decoded yet, the
+/// styled slides go live now and a bitmap load is queued. `AsIsRendered`
+/// swaps the slides when it lands.
 pub fn go_live(app: &mut App, slide: usize) {
     let Some((_, hymn)) = selected_hymn(app) else {
         return;
     };
     let hymn = hymn.clone();
-    let slides: Vec<SlideContent> = match asis_paths(app, &hymn) {
-        Some(pngs) => {
-            ensure_bitmaps(app, &pngs);
-            pngs.into_iter().map(SlideContent::Bitmap).collect()
-        }
-        None => hymn
-            .slides
+    let styled = || {
+        hymn.slides
             .iter()
             .cloned()
             .map(SlideContent::Styled)
-            .collect(),
+            .collect::<Vec<_>>()
+    };
+    let slides = match asis_paths(app, &hymn) {
+        Some(pngs) if !bitmaps_missing(app, &pngs) => {
+            pngs.into_iter().map(SlideContent::Bitmap).collect()
+        }
+        Some(pngs) => {
+            if !app.present.as_is_busy {
+                app.present.as_is_busy = true;
+                app.present.pending = Some((hymn.path.clone(), pngs));
+            }
+            styled()
+        }
+        None => styled(),
     };
     let mut p = Presentation::default();
     p.load(
@@ -322,7 +387,7 @@ fn still(
 
 /// A still frame of slide `slide` of the selected hymn under the live theme.
 pub fn slide_scene(app: &App, slide: usize, size: (u32, u32)) -> Option<Arc<Scene>> {
-    let (idx, hymn) = selected_hymn(app)?;
+    let (_, hymn) = selected_hymn(app)?;
     let theme = &app.live.theme;
     if let Some(pngs) = asis_paths(app, hymn)
         && let Some(bitmap) = pngs.get(slide).and_then(|p| app.live.bitmaps.get(p))
@@ -335,7 +400,7 @@ pub fn slide_scene(app: &App, slide: usize, size: (u32, u32)) -> Option<Arc<Scen
         ));
     }
     let content = SlideContent::Styled(hymn.slides.get(slide)?.clone());
-    let key = (idx, slide, theme.cache_key());
+    let key = (hymn.path.clone(), hymn.mtime, slide, theme.cache_key());
     let mut cache = app.present.resolved.lock().ok()?;
     if cache.len() > RESOLVED_CAP {
         cache.clear();

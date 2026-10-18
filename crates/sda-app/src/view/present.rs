@@ -258,17 +258,19 @@ fn center_panel(app: &App) -> Element<'_, Msg> {
     actions = actions.push(space::horizontal());
     if let (Some(hymn), Some(_)) = (selected, &app.core.converter) {
         let on = st::as_is_on(app, hymn);
-        actions = actions.push(
-            column![
-                toggler(on)
-                    .label(s.original.as_str())
-                    .text_size(13)
-                    .on_toggle(|b| Msg::Present(crate::msg::PresentMsg::AsIsToggle(b))),
-                text(&s.original_hint).size(11).color(ui_theme::MUTED),
-            ]
-            .spacing(2)
-            .align_x(Alignment::End),
-        );
+        let mut col = column![
+            toggler(on)
+                .label(s.original.as_str())
+                .text_size(13)
+                .on_toggle(|b| Msg::Present(crate::msg::PresentMsg::AsIsToggle(b))),
+            text(&s.original_hint).size(11).color(ui_theme::MUTED),
+        ]
+        .spacing(2)
+        .align_x(Alignment::End);
+        if let Some(err) = &p.as_is_error {
+            col = col.push(text(err).size(11).color(ui_theme::theme().palette().danger));
+        }
+        actions = actions.push(col);
     }
 
     let body = column![
