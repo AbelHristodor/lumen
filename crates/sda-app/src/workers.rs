@@ -1,0 +1,132 @@
+//! Background work. Every function returns a `Task` that runs the blocking
+//! core call on a tokio blocking thread and ends in exactly one `Msg`.
+
+use crate::msg::{Handoff, Msg, SettingsMsg};
+use crate::state::core::Core;
+use iced::Task;
+use sda_core::asis;
+use sda_core::library::Config;
+use sda_core::refresh;
+use sda_core::search::Searcher;
+use sda_core::sync::SyncOutcome;
+use sda_core::update::{self, UpdateOutcome};
+
+/// Run `f` off the UI thread. A panic inside becomes an `Err` string.
+async fn blocking<T: Send + 'static>(f: impl FnOnce() -> T + Send + 'static) -> Result<T, String> {
+    tokio::task::spawn_blocking(f)
+        .await
+        .map_err(|e| format!("worker failed: {e}"))
+}
+
+fn searcher(hymns: Vec<sda_core::model::Hymn>) -> Handoff<Searcher> {
+    Handoff::new(Searcher::new(hymns))
+}
+
+/// Index from disk, download the hymns zip if it changed, then check for a
+/// new app version. On a first run the library is downloaded before indexing.
+pub fn boot(core: &Core) -> Task<Msg> {
+    let cfg = core.cfg.clone();
+    let present = refresh::default_library_present();
+    let index = {
+        let cfg = cfg.clone();
+        Task::perform(
+            blocking(move || {
+                if present {
+                    refresh::load_local(cfg)
+                } else {
+                    refresh::load_library(cfg, false)
+                }
+            }),
+            |r| Msg::Indexed(r.map(searcher)),
+        )
+    };
+    let sync = if present {
+        Task::perform(blocking(move || sync_if_changed(&cfg)), |r| {
+            Msg::Synced(r.and_then(|inner| inner))
+        })
+    } else {
+        Task::none()
+    };
+    index
+        .chain(sync)
+        .chain(update_check(core))
+        .chain(converter_detect())
+        .chain(fonts_list())
+}
+
+/// Download when the ETag changed and reindex. `Ok(None)` means unchanged.
+fn sync_if_changed(cfg: &Config) -> Result<Option<Handoff<Searcher>>, String> {
+    match refresh::sync_default(cfg) {
+        Some(SyncOutcome::Downloaded) => Ok(Some(searcher(refresh::load_local(cfg.clone())))),
+        Some(SyncOutcome::Unchanged) => Ok(None),
+        None => Err("download failed".into()),
+    }
+}
+
+/// Wipe the built in library and cache, then download and index again.
+pub fn force_sync(core: &Core) -> Task<Msg> {
+    let cfg = core.cfg.clone();
+    Task::perform(
+        blocking(move || match refresh::force_clean() {
+            Ok(()) => Ok(Some(searcher(refresh::load_library(cfg, true)))),
+            Err(e) => Err(format!("force clean failed: {e}")),
+        }),
+        |r| Msg::Synced(r.and_then(|inner| inner)),
+    )
+}
+
+/// Reindex after the library folder list changed.
+pub fn reindex(core: &Core) -> Task<Msg> {
+    let cfg = core.cfg.clone();
+    Task::perform(blocking(move || refresh::load_local(cfg)), |r| {
+        Msg::Reindexed(r.map(searcher))
+    })
+}
+
+/// Ask GitHub for a newer release and stage it. The message is already
+/// translated so `update` only stores it.
+pub fn update_check(core: &Core) -> Task<Msg> {
+    let s = core.strings.clone();
+    Task::perform(blocking(update::check_and_stage_update), move |r| {
+        Msg::UpdateChecked(match r {
+            Ok(Ok(UpdateOutcome::UpToDate)) => s.update_up_to_date,
+            Ok(Ok(UpdateOutcome::Updated { version })) => {
+                s.update_staged_fmt.replace("{}", &version)
+            }
+            Ok(Ok(UpdateOutcome::CheckUnavailable)) => s.update_unavailable,
+            Ok(Err(e)) => {
+                log::warn!("update check failed: {e}");
+                s.update_failed
+            }
+            Err(e) => {
+                log::warn!("{e}");
+                s.update_failed
+            }
+        })
+    })
+}
+
+/// Find LibreOffice or PowerPoint for as is slides.
+pub fn converter_detect() -> Task<Msg> {
+    Task::perform(blocking(asis::detect), |r| {
+        Msg::Settings(SettingsMsg::Detected(r.ok().flatten()))
+    })
+}
+
+/// Sorted unique font family names on this machine, for the theme editor.
+pub fn fonts_list() -> Task<Msg> {
+    Task::perform(
+        blocking(|| {
+            let system = cosmic_text::FontSystem::new();
+            let mut names: Vec<String> = system
+                .db()
+                .faces()
+                .flat_map(|f| f.families.iter().map(|(name, _)| name.clone()))
+                .collect();
+            names.sort();
+            names.dedup();
+            names
+        }),
+        |r| Msg::FontsListed(r.unwrap_or_default()),
+    )
+}

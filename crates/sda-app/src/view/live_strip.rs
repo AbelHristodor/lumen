@@ -1,0 +1,94 @@
+//! The strip at the bottom of the operator window. Shows what is on the
+//! projector and holds the slide and projector controls.
+
+use crate::app::App;
+use crate::msg::Msg;
+use crate::ui_theme;
+use crate::widgets::scene_view::scene_view;
+use iced::widget::{button, column, container, pick_list, row, space, text};
+use iced::{Alignment, Element, Fill};
+use std::time::Instant;
+
+pub fn show(app: &App) -> Element<'_, Msg> {
+    let s = &app.core.strings;
+    let live = &app.live;
+    let loaded = live.present.is_loaded();
+
+    let thumb: Element<'_, Msg> = if app.gpu_ok && loaded {
+        container(scene_view(live.scene((160, 90), Instant::now())))
+            .width(160)
+            .height(90)
+            .style(ui_theme::thumb_frame)
+            .into()
+    } else if loaded {
+        container(text(live.present.title.as_str()).size(12).center())
+            .width(160)
+            .height(90)
+            .center_x(Fill)
+            .center_y(Fill)
+            .style(ui_theme::thumb_frame)
+            .into()
+    } else {
+        text(&s.nothing_live).size(13).color(ui_theme::MUTED).into()
+    };
+
+    let info: Element<'_, Msg> = if loaded {
+        let counter = format!(
+            "{} / {}",
+            live.present.index + 1,
+            live.present.slide_count()
+        );
+        let mut col = column![text(live.present.title.as_str()).size(15)].spacing(2);
+        if let Some(sub) = &live.present.subtitle {
+            col = col.push(text(sub.as_str()).size(12).color(ui_theme::MUTED));
+        }
+        col.push(text(counter).size(12).color(ui_theme::MUTED))
+            .into()
+    } else {
+        space::horizontal().into()
+    };
+
+    let ghost = |label: &str, msg: Option<Msg>| {
+        button(text(label.to_string()).size(13))
+            .padding([6, 12])
+            .style(ui_theme::ghost_button)
+            .on_press_maybe(msg)
+    };
+    let when = |m: Msg| loaded.then_some(m);
+    let controls = row![
+        ghost(&s.prev_slide, when(Msg::LivePrev)),
+        ghost(&s.next_slide, when(Msg::LiveNext)),
+        ghost(&s.blank, when(Msg::LiveBlank)),
+        ghost(&s.stop, when(Msg::LiveStop)),
+    ]
+    .spacing(ui_theme::SPACING / 2.0);
+
+    let selected = app.projector_display.and_then(|i| app.displays.get(i));
+    let picker = pick_list(app.displays.as_slice(), selected, |d| {
+        Msg::ProjectorDisplay(d.index)
+    })
+    .placeholder(s.display.as_str())
+    .text_size(13)
+    .padding([6, 10]);
+
+    let toggle_label = if app.projector.is_some() {
+        &s.projector_off
+    } else {
+        &s.projector_on
+    };
+    let can_project = app.gpu_ok && (app.displays.len() >= 2 || app.projector.is_some());
+    let toggle = button(text(toggle_label.as_str()).size(13))
+        .padding([6, 14])
+        .style(ui_theme::accent_button)
+        .on_press_maybe(can_project.then_some(Msg::ProjectorToggle));
+
+    container(
+        row![thumb, info, space::horizontal(), controls, picker, toggle]
+            .spacing(ui_theme::SPACING)
+            .align_y(Alignment::Center),
+    )
+    .padding(ui_theme::SPACING)
+    .width(Fill)
+    .style(ui_theme::card)
+    .into()
+}
