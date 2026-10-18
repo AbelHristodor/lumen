@@ -51,10 +51,12 @@ fn wave(x: f32) -> f32 {
 fn fs_main(in: Vertex) -> @location(0) vec4<f32> {
     let dir = vec2<f32>(cos(g.angle), sin(g.angle));
     // Project onto the axis so the corners map to 0 and 1, then slide by
-    // up to a quarter of the span in each direction.
+    // up to a quarter of the span in each direction. The wave is read a
+    // quarter period in so phase 0 sits at its midpoint and the ramp is not
+    // shifted at all. A theme with drift 0 shows every stop.
     let span = abs(dir.x) + abs(dir.y);
     var t = dot(in.uv - 0.5, dir) / span + 0.5;
-    t = t + (wave(g.phase) - 0.5) * 0.5;
+    t = t + (wave(g.phase + 0.25) - 0.5) * 0.5;
 
     var color = g.stops[0].rgb;
     if g.count == 0u {

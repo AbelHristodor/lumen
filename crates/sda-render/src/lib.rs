@@ -105,6 +105,10 @@ struct Prepared {
     layers: [UniformSlot; SLOTS],
     /// Draw list as layer slot index and texture cache key.
     draws: Vec<(usize, u64)>,
+    /// Cache key of the video frame this scene drew last. Replaced frames
+    /// are evicted at `trim`, not here, because another scene prepared this
+    /// frame may still draw the old one.
+    video_key: Option<u64>,
 }
 
 /// Owns every pipeline. Create once per device and reuse across frames.
@@ -119,11 +123,7 @@ pub struct Renderer {
     scenes: HashMap<u64, Prepared>,
     /// Bumped once per `trim`, which Iced calls at the end of every frame.
     generation: u64,
-    /// Cache key of the last uploaded frame per video source, keyed by the
-    /// source pointer. The previous frame is evicted at `trim` instead of
-    /// filling the LRU, and not earlier because another scene prepared this
-    /// frame may still draw it.
-    video_keys: HashMap<usize, u64>,
+    /// Video frame textures to evict at `trim`.
     stale: Vec<u64>,
 }
 
@@ -140,7 +140,6 @@ impl Renderer {
             lru: VecDeque::new(),
             scenes: HashMap::new(),
             generation: 0,
-            video_keys: HashMap::new(),
             stale: Vec::new(),
         }
     }
@@ -155,6 +154,7 @@ impl Renderer {
             particle_count: 0,
             layers: self.layer.slots(device),
             draws: Vec::new(),
+            video_key: None,
         }
     }
 
@@ -170,6 +170,12 @@ impl Renderer {
         p.generation = self.generation;
         p.draws.clear();
         let opacity = scene.background_opacity.clamp(0.0, 1.0);
+        // A key that stops showing video no longer pins its last frame.
+        if !matches!(scene.background, BackgroundState::Video(_))
+            && let Some(old) = p.video_key.take()
+        {
+            self.stale.push(old);
+        }
         p.bg = match &scene.background {
             BackgroundState::Solid(c) => {
                 self.solid.prepare(queue, &p.solid, *c, opacity);
@@ -217,8 +223,7 @@ impl Renderer {
                 Some(frame) => {
                     let key =
                         self.background_image(device, queue, &mut p, frame, opacity, scene.size);
-                    let ptr = Arc::as_ptr(src) as usize;
-                    if let Some(old) = self.video_keys.insert(ptr, key)
+                    if let Some(old) = p.video_key.replace(key)
                         && old != key
                     {
                         self.stale.push(old);
@@ -266,7 +271,14 @@ impl Renderer {
     pub fn trim(&mut self) {
         self.generation += 1;
         let keep_from = self.generation.saturating_sub(KEEP_GENERATIONS);
-        self.scenes.retain(|_, p| p.generation >= keep_from);
+        let stale = &mut self.stale;
+        self.scenes.retain(|_, p| {
+            let keep = p.generation >= keep_from;
+            if !keep {
+                stale.extend(p.video_key);
+            }
+            keep
+        });
         for old in self.stale.drain(..) {
             self.cache.remove(&old);
             self.lru.retain(|k| *k != old);
