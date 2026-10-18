@@ -305,3 +305,45 @@ fn verses() {
     s.current = Some(Layer::Text(Arc::new(slide)));
     check("verses", &s);
 }
+
+#[test]
+fn many_scenes_load_the_target() {
+    let mut red = base();
+    red.background = BackgroundState::Solid(Rgba::new(255, 0, 0, 255));
+    let mut green = base();
+    green.background = BackgroundState::Solid(Rgba::new(0, 255, 0, 255));
+    let blue = wgpu::Color {
+        r: 0.0,
+        g: 0.0,
+        b: 1.0,
+        a: 1.0,
+    };
+    let scenes = [
+        (
+            red,
+            Viewport {
+                x: 0,
+                y: 0,
+                w: 100,
+                h: 100,
+            },
+        ),
+        (
+            green,
+            Viewport {
+                x: 200,
+                y: 80,
+                w: 100,
+                h: 100,
+            },
+        ),
+    ];
+    let Some(img) = headless::render_many((320, 180), blue, &scenes) else {
+        return;
+    };
+    assert_eq!(img.get_pixel(50, 50).0, [255, 0, 0, 255]);
+    assert_eq!(img.get_pixel(99, 99).0, [255, 0, 0, 255]);
+    assert_eq!(img.get_pixel(250, 130).0, [0, 255, 0, 255]);
+    assert_eq!(img.get_pixel(150, 20).0, [0, 0, 255, 255]);
+    assert_eq!(img.get_pixel(100, 100).0, [0, 0, 255, 255]);
+}

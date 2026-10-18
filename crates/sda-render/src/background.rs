@@ -1,26 +1,28 @@
 //! Background pipelines: solid color, drifting gradient, and floating
 //! particles. All three are vertex buffer free passes that share one uniform
 //! block layout, so `UniformPass` holds the wgpu plumbing and each pipeline
-//! only fills its uniform.
+//! only fills its uniform. The uniform buffer itself lives in a `UniformSlot`
+//! owned by the caller, so many scenes can be prepared before any draws.
 
-use crate::srgb_constant;
+use crate::{UniformSlot, srgb_constant};
 use sda_core::theme::Rgba;
 
 /// Most stops a gradient can carry. Matches the array in `gradient.wgsl`.
 pub const MAX_STOPS: usize = 8;
 
-/// One pipeline plus one uniform buffer bound at group 0.
+/// One pipeline with a uniform block layout at group 0.
 struct UniformPass {
     pipeline: wgpu::RenderPipeline,
-    uniform: wgpu::Buffer,
-    bind_group: wgpu::BindGroup,
+    layout: wgpu::BindGroupLayout,
+    uniform_size: u64,
+    label: &'static str,
 }
 
 impl UniformPass {
     fn new(
         device: &wgpu::Device,
         format: wgpu::TextureFormat,
-        label: &str,
+        label: &'static str,
         source: &str,
         uniform_size: u64,
         blend: Option<wgpu::BlendState>,
@@ -28,12 +30,6 @@ impl UniformPass {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some(label),
             source: wgpu::ShaderSource::Wgsl(source.into()),
-        });
-        let uniform = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some(label),
-            size: uniform_size,
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
         });
         let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some(label),
@@ -46,14 +42,6 @@ impl UniformPass {
                     min_binding_size: None,
                 },
                 count: None,
-            }],
-        });
-        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some(label),
-            layout: &layout,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: uniform.as_entire_binding(),
             }],
         });
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -92,18 +80,23 @@ impl UniformPass {
         });
         UniformPass {
             pipeline,
-            uniform,
-            bind_group,
+            layout,
+            uniform_size,
+            label,
         }
     }
 
-    fn write<T: bytemuck::Pod>(&self, queue: &wgpu::Queue, value: &T) {
-        queue.write_buffer(&self.uniform, 0, bytemuck::bytes_of(value));
+    fn slot(&self, device: &wgpu::Device) -> UniformSlot {
+        UniformSlot::new(device, &self.layout, self.uniform_size, self.label)
     }
 
-    fn draw(&self, pass: &mut wgpu::RenderPass<'_>, vertices: u32) {
+    fn write<T: bytemuck::Pod>(&self, queue: &wgpu::Queue, slot: &UniformSlot, value: &T) {
+        queue.write_buffer(&slot.buffer, 0, bytemuck::bytes_of(value));
+    }
+
+    fn draw(&self, pass: &mut wgpu::RenderPass<'_>, slot: &UniformSlot, vertices: u32) {
         pass.set_pipeline(&self.pipeline);
-        pass.set_bind_group(0, &self.bind_group, &[]);
+        pass.set_bind_group(0, &slot.group, &[]);
         pass.draw(0..vertices, 0..1);
     }
 }
@@ -140,18 +133,23 @@ impl SolidPipeline {
         ))
     }
 
-    pub fn prepare(&self, queue: &wgpu::Queue, color: Rgba, opacity: f32) {
+    pub fn slot(&self, device: &wgpu::Device) -> UniformSlot {
+        self.0.slot(device)
+    }
+
+    pub fn prepare(&self, queue: &wgpu::Queue, slot: &UniformSlot, color: Rgba, opacity: f32) {
         self.0.write(
             queue,
+            slot,
             &SolidUniform {
                 color: encoded(color, opacity.clamp(0.0, 1.0)),
             },
         );
     }
 
-    /// Fill the whole viewport with the prepared color.
-    pub fn draw(&self, pass: &mut wgpu::RenderPass<'_>) {
-        self.0.draw(pass, 3);
+    /// Fill the whole viewport with the color prepared in `slot`.
+    pub fn draw(&self, pass: &mut wgpu::RenderPass<'_>, slot: &UniformSlot) {
+        self.0.draw(pass, slot, 3);
     }
 }
 
@@ -180,10 +178,15 @@ impl GradientPipeline {
         ))
     }
 
+    pub fn slot(&self, device: &wgpu::Device) -> UniformSlot {
+        self.0.slot(device)
+    }
+
     /// `angle` is in degrees. `phase` is drift times seconds.
     pub fn prepare(
         &self,
         queue: &wgpu::Queue,
+        slot: &UniformSlot,
         stops: &[(f32, Rgba)],
         angle: f32,
         phase: f32,
@@ -201,11 +204,11 @@ impl GradientPipeline {
         for (slot, (pos, c)) in u.stops.iter_mut().zip(sorted) {
             *slot = encoded(c, pos);
         }
-        self.0.write(queue, &u);
+        self.0.write(queue, slot, &u);
     }
 
-    pub fn draw(&self, pass: &mut wgpu::RenderPass<'_>) {
-        self.0.draw(pass, 3);
+    pub fn draw(&self, pass: &mut wgpu::RenderPass<'_>, slot: &UniformSlot) {
+        self.0.draw(pass, slot, 3);
     }
 }
 
@@ -221,10 +224,7 @@ struct ParticlesUniform {
 
 /// Points of light drawn over the solid base color. Call
 /// `SolidPipeline::draw` with the base first.
-pub struct ParticlesPipeline {
-    pass: UniformPass,
-    count: u32,
-}
+pub struct ParticlesPipeline(UniformPass);
 
 impl ParticlesPipeline {
     pub fn new(device: &wgpu::Device, format: wgpu::TextureFormat) -> Self {
@@ -236,33 +236,36 @@ impl ParticlesPipeline {
             },
             alpha: wgpu::BlendComponent::OVER,
         };
-        ParticlesPipeline {
-            pass: UniformPass::new(
-                device,
-                format,
-                "particles",
-                include_str!("../shaders/particles.wgsl"),
-                size_of::<ParticlesUniform>() as u64,
-                Some(additive),
-            ),
-            count: 0,
-        }
+        ParticlesPipeline(UniformPass::new(
+            device,
+            format,
+            "particles",
+            include_str!("../shaders/particles.wgsl"),
+            size_of::<ParticlesUniform>() as u64,
+            Some(additive),
+        ))
     }
 
+    pub fn slot(&self, device: &wgpu::Device) -> UniformSlot {
+        self.0.slot(device)
+    }
+
+    /// The particle count is not a uniform. The caller keeps it and passes
+    /// it to `draw`.
     #[allow(clippy::too_many_arguments)]
     pub fn prepare(
-        &mut self,
+        &self,
         queue: &wgpu::Queue,
+        slot: &UniformSlot,
         color: Rgba,
-        count: u32,
         speed: f32,
         time: f32,
         size: (u32, u32),
         opacity: f32,
     ) {
-        self.count = count;
-        self.pass.write(
+        self.0.write(
             queue,
+            slot,
             &ParticlesUniform {
                 color: encoded(color, opacity.clamp(0.0, 1.0)),
                 viewport: [size.0 as f32, size.1 as f32],
@@ -272,9 +275,9 @@ impl ParticlesPipeline {
         );
     }
 
-    pub fn draw(&self, pass: &mut wgpu::RenderPass<'_>) {
-        if self.count > 0 {
-            self.pass.draw(pass, self.count * 6);
+    pub fn draw(&self, pass: &mut wgpu::RenderPass<'_>, slot: &UniformSlot, count: u32) {
+        if count > 0 {
+            self.0.draw(pass, slot, count * 6);
         }
     }
 }

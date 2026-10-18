@@ -4,7 +4,7 @@
 use crate::app::App;
 use crate::msg::Msg;
 use crate::ui_theme;
-use crate::widgets::scene_view::scene_view;
+use crate::widgets::scene_view::{key, scene_view};
 use iced::widget::{button, column, container, pick_list, row, space, text};
 use iced::{Alignment, Element, Fill};
 use std::time::Instant;
@@ -15,11 +15,14 @@ pub fn show(app: &App) -> Element<'_, Msg> {
     let loaded = live.present.is_loaded();
 
     let thumb: Element<'_, Msg> = if app.gpu_ok && loaded {
-        container(scene_view(live.scene((160, 90), Instant::now())))
-            .width(160)
-            .height(90)
-            .style(ui_theme::thumb_frame)
-            .into()
+        container(scene_view(
+            key("live_strip"),
+            live.scene((160, 90), Instant::now()),
+        ))
+        .width(160)
+        .height(90)
+        .style(ui_theme::thumb_frame)
+        .into()
     } else if loaded {
         container(text(live.present.title.as_str()).size(12).center())
             .width(160)

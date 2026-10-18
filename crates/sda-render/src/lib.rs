@@ -1,6 +1,10 @@
 //! GPU renderer for projected slides. The GUI builds a `Scene` and this crate
 //! draws it with wgpu. No UI toolkit types appear here so the same renderer
 //! serves the Iced window and the headless tests.
+//!
+//! One `Renderer` draws many scenes per frame. Each scene is prepared under a
+//! caller chosen key and rendered into its own viewport of a target that
+//! already holds the rest of the frame.
 
 pub mod background;
 pub mod composite;
@@ -16,19 +20,57 @@ pub use scene::{BackgroundState, Layer, Scene, Viewport};
 pub use video::{FrameSource, spawn_decoder};
 
 use background::{GradientPipeline, ParticlesPipeline, SolidPipeline};
-use layer::{LayerParams, LayerPipeline};
+use layer::{LayerParams, LayerPipeline, SLOTS};
 use std::collections::{HashMap, VecDeque};
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::sync::Arc;
 use text::TextRaster;
 
-/// How many uploaded layer textures stay resident.
-const LAYER_CACHE_CAP: usize = 16;
+/// How many uploaded layer textures stay resident. The Present tab shows
+/// the preview, 12 thumbnails, the theme picker, and the live strip at once,
+/// so the cap must hold more than one scene's worth of layers.
+const LAYER_CACHE_CAP: usize = 48;
+
+/// A prepared scene not prepared again within this many `trim` calls is
+/// dropped.
+const KEEP_GENERATIONS: u64 = 2;
 
 /// Shader override that tells a pipeline whether the target format is sRGB.
 /// Shaders convert encoded color to linear only when it is.
 pub(crate) fn srgb_constant(format: wgpu::TextureFormat) -> [(&'static str, f64); 1] {
     [("srgb_target", if format.is_srgb() { 1.0 } else { 0.0 })]
+}
+
+/// One uniform buffer with its bind group. Every prepared scene owns its own
+/// slots so writes for one scene never clobber another in the same frame.
+pub struct UniformSlot {
+    pub(crate) buffer: wgpu::Buffer,
+    pub(crate) group: wgpu::BindGroup,
+}
+
+impl UniformSlot {
+    pub(crate) fn new(
+        device: &wgpu::Device,
+        layout: &wgpu::BindGroupLayout,
+        size: u64,
+        label: &str,
+    ) -> Self {
+        let buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some(label),
+            size,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some(label),
+            layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: buffer.as_entire_binding(),
+            }],
+        });
+        UniformSlot { buffer, group }
+    }
 }
 
 /// One cached texture. `source` keeps the layer's `Arc` alive so its address
@@ -43,12 +85,26 @@ struct Cached {
 /// Which background passes run under the layers this frame.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum BgPass {
-    /// Only the clear to black, the image or video quad sits on top.
+    /// Nothing under the image or video quad.
     None,
     Solid,
     Gradient,
     /// Solid base then the particle quads.
     Particles,
+}
+
+/// Everything `render` needs for one scene key.
+struct Prepared {
+    /// Generation of the last `prepare` for this key.
+    generation: u64,
+    bg: BgPass,
+    solid: UniformSlot,
+    gradient: UniformSlot,
+    particles: UniformSlot,
+    particle_count: u32,
+    layers: [UniformSlot; SLOTS],
+    /// Draw list as layer slot index and texture cache key.
+    draws: Vec<(usize, u64)>,
 }
 
 /// Owns every pipeline. Create once per device and reuse across frames.
@@ -60,12 +116,15 @@ pub struct Renderer {
     text: TextRaster,
     cache: HashMap<u64, Cached>,
     lru: VecDeque<u64>,
-    /// Draw list for the prepared frame as uniform slot and cache key.
-    draws: Vec<(usize, u64)>,
-    bg: BgPass,
-    /// Cache key of the last uploaded video frame so it can be evicted when
-    /// the next frame arrives instead of filling the LRU.
-    video_key: Option<u64>,
+    scenes: HashMap<u64, Prepared>,
+    /// Bumped once per `trim`, which Iced calls at the end of every frame.
+    generation: u64,
+    /// Cache key of the last uploaded frame per video source, keyed by the
+    /// source pointer. The previous frame is evicted at `trim` instead of
+    /// filling the LRU, and not earlier because another scene prepared this
+    /// frame may still draw it.
+    video_keys: HashMap<usize, u64>,
+    stale: Vec<u64>,
 }
 
 impl Renderer {
@@ -79,19 +138,41 @@ impl Renderer {
             text: TextRaster::new(),
             cache: HashMap::new(),
             lru: VecDeque::new(),
-            draws: Vec::new(),
-            bg: BgPass::Solid,
-            video_key: None,
+            scenes: HashMap::new(),
+            generation: 0,
+            video_keys: HashMap::new(),
+            stale: Vec::new(),
         }
     }
 
-    /// Upload per frame data. Call once before `render`.
-    pub fn prepare(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, scene: &Scene) {
-        self.draws.clear();
+    fn new_prepared(&self, device: &wgpu::Device) -> Prepared {
+        Prepared {
+            generation: self.generation,
+            bg: BgPass::Solid,
+            solid: self.solid.slot(device),
+            gradient: self.gradient.slot(device),
+            particles: self.particles.slot(device),
+            particle_count: 0,
+            layers: self.layer.slots(device),
+            draws: Vec::new(),
+        }
+    }
+
+    /// Upload per frame data for the scene under `key`. Call once per scene
+    /// before `render`. Keys are chosen by the caller and must differ for
+    /// scenes drawn in the same frame.
+    pub fn prepare(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, key: u64, scene: &Scene) {
+        // Take the entry out so the helpers can borrow `self` and it at once.
+        let mut p = self
+            .scenes
+            .remove(&key)
+            .unwrap_or_else(|| self.new_prepared(device));
+        p.generation = self.generation;
+        p.draws.clear();
         let opacity = scene.background_opacity.clamp(0.0, 1.0);
-        self.bg = match &scene.background {
+        p.bg = match &scene.background {
             BackgroundState::Solid(c) => {
-                self.solid.prepare(queue, *c, opacity);
+                self.solid.prepare(queue, &p.solid, *c, opacity);
                 BgPass::Solid
             }
             BackgroundState::Gradient {
@@ -99,8 +180,14 @@ impl Renderer {
                 angle,
                 drift,
             } => {
-                self.gradient
-                    .prepare(queue, stops, *angle, drift * scene.now_secs, opacity);
+                self.gradient.prepare(
+                    queue,
+                    &p.gradient,
+                    stops,
+                    *angle,
+                    drift * scene.now_secs,
+                    opacity,
+                );
                 BgPass::Gradient
             }
             BackgroundState::Particles {
@@ -109,74 +196,90 @@ impl Renderer {
                 count,
                 speed,
             } => {
-                self.solid.prepare(queue, *base, opacity);
+                self.solid.prepare(queue, &p.solid, *base, opacity);
                 self.particles.prepare(
                     queue,
+                    &p.particles,
                     *color,
-                    *count,
                     *speed,
                     scene.now_secs,
                     scene.size,
                     opacity,
                 );
+                p.particle_count = *count;
                 BgPass::Particles
             }
             BackgroundState::Image(img) => {
-                self.background_image(device, queue, img.clone(), opacity, scene.size);
+                self.background_image(device, queue, &mut p, img.clone(), opacity, scene.size);
                 BgPass::None
             }
             BackgroundState::Video(src) => match src.latest() {
                 Some(frame) => {
-                    // One frame lives in the cache at a time.
-                    let key = self.background_image(device, queue, frame, opacity, scene.size);
-                    if let Some(old) = self.video_key.replace(key)
+                    let key =
+                        self.background_image(device, queue, &mut p, frame, opacity, scene.size);
+                    let ptr = Arc::as_ptr(src) as usize;
+                    if let Some(old) = self.video_keys.insert(ptr, key)
                         && old != key
                     {
-                        self.cache.remove(&old);
-                        self.lru.retain(|k| *k != old);
+                        self.stale.push(old);
                     }
                     BgPass::None
                 }
                 None => {
                     self.solid
-                        .prepare(queue, sda_core::theme::Rgba::BLACK, opacity);
+                        .prepare(queue, &p.solid, sda_core::theme::Rgba::BLACK, opacity);
                     BgPass::Solid
                 }
             },
         };
-        if scene.blank {
-            return;
+        if !scene.blank {
+            let progress = scene.outgoing.as_ref().map_or(1.0, |(_, p)| *p);
+            let (out_params, cur_params) = composite::transition(&scene.transition, progress);
+            if let (Some((layer, _)), Some(params)) = (&scene.outgoing, out_params) {
+                self.queue_draw(
+                    device,
+                    queue,
+                    &mut p,
+                    composite::OUTGOING,
+                    layer,
+                    params,
+                    scene.size,
+                );
+            }
+            if let Some(layer) = &scene.current {
+                self.queue_draw(
+                    device,
+                    queue,
+                    &mut p,
+                    composite::CURRENT,
+                    layer,
+                    cur_params,
+                    scene.size,
+                );
+            }
         }
-        let progress = scene.outgoing.as_ref().map_or(1.0, |(_, p)| *p);
-        let (out_params, cur_params) = composite::transition(&scene.transition, progress);
-        if let (Some((layer, _)), Some(params)) = (&scene.outgoing, out_params) {
-            self.queue_draw(
-                device,
-                queue,
-                composite::OUTGOING,
-                layer,
-                params,
-                scene.size,
-            );
-        }
-        if let Some(layer) = &scene.current {
-            self.queue_draw(
-                device,
-                queue,
-                composite::CURRENT,
-                layer,
-                cur_params,
-                scene.size,
-            );
+        self.scenes.insert(key, p);
+    }
+
+    /// End of frame housekeeping. Drops scenes not prepared for
+    /// `KEEP_GENERATIONS` frames and evicts replaced video frames.
+    pub fn trim(&mut self) {
+        self.generation += 1;
+        let keep_from = self.generation.saturating_sub(KEEP_GENERATIONS);
+        self.scenes.retain(|_, p| p.generation >= keep_from);
+        for old in self.stale.drain(..) {
+            self.cache.remove(&old);
+            self.lru.retain(|k| *k != old);
         }
     }
 
     /// Queue `img` in the background slot at `opacity`, covering the output.
-    /// The pass already clears to black so no solid pass runs under it.
+    /// Nothing draws under it. Returns the cache key.
     fn background_image(
         &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
+        p: &mut Prepared,
         img: Arc<image::RgbaImage>,
         opacity: f32,
         size: (u32, u32),
@@ -186,6 +289,7 @@ impl Renderer {
         self.queue_draw(
             device,
             queue,
+            p,
             composite::BACKGROUND,
             &Layer::Bitmap(img),
             params,
@@ -193,14 +297,21 @@ impl Renderer {
         )
     }
 
-    /// Record draw commands for the last prepared scene into `view`. One
-    /// pass clears to black and draws the background then the layers.
+    /// Record draw commands for the scene prepared under `key` into `view`
+    /// inside `vp`. The pass loads what the target already holds, so the
+    /// rest of the frame outside `vp` stays as it was. Inside `vp` the
+    /// background fills every pixel. A key that was never prepared draws
+    /// nothing.
     pub fn render(
         &self,
         encoder: &mut wgpu::CommandEncoder,
         view: &wgpu::TextureView,
+        key: u64,
         vp: Viewport,
     ) {
+        let Some(p) = self.scenes.get(&key) else {
+            return;
+        };
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("scene"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -208,7 +319,7 @@ impl Renderer {
                 depth_slice: None,
                 resolve_target: None,
                 ops: wgpu::Operations {
-                    load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                    load: wgpu::LoadOp::Load,
                     store: wgpu::StoreOp::Store,
                 },
             })],
@@ -218,29 +329,32 @@ impl Renderer {
         });
         pass.set_viewport(vp.x as f32, vp.y as f32, vp.w as f32, vp.h as f32, 0.0, 1.0);
         pass.set_scissor_rect(vp.x, vp.y, vp.w, vp.h);
-        match self.bg {
+        match p.bg {
             BgPass::None => {}
-            BgPass::Solid => self.solid.draw(&mut pass),
-            BgPass::Gradient => self.gradient.draw(&mut pass),
+            BgPass::Solid => self.solid.draw(&mut pass, &p.solid),
+            BgPass::Gradient => self.gradient.draw(&mut pass, &p.gradient),
             BgPass::Particles => {
-                self.solid.draw(&mut pass);
-                self.particles.draw(&mut pass);
+                self.solid.draw(&mut pass, &p.solid);
+                self.particles
+                    .draw(&mut pass, &p.particles, p.particle_count);
             }
         }
-        for (slot, key) in &self.draws {
+        for (slot, key) in &p.draws {
             if let Some(c) = self.cache.get(key) {
-                self.layer.draw(&mut pass, &c.group, *slot);
+                self.layer.draw(&mut pass, &c.group, &p.layers[*slot]);
             }
         }
     }
 
-    /// Make sure `layer` has a texture, write `params` into `slot`, and add
-    /// the draw to this frame. Bitmaps are scaled to cover the output.
-    /// Returns the cache key.
+    /// Make sure `layer` has a texture, write `params` into the layer
+    /// `slot` of `p`, and add the draw to `p`. Bitmaps are scaled to cover
+    /// the output. Returns the cache key.
+    #[allow(clippy::too_many_arguments)]
     fn queue_draw(
         &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
+        p: &mut Prepared,
         slot: usize,
         layer: &Layer,
         params: LayerParams,
@@ -253,8 +367,8 @@ impl Renderer {
             }
         };
         let key = self.texture(device, queue, layer, size);
-        self.layer.set_params(queue, slot, &params);
-        self.draws.push((slot, key));
+        self.layer.set_params(queue, &p.layers[slot], &params);
+        p.draws.push((slot, key));
         key
     }
 

@@ -1,13 +1,14 @@
 //! Textured quad pipeline that draws one slide layer or an image
 //! background. Text layers are rasterized on the CPU into an RGBA image and
-//! uploaded here. Each drawn quad owns one uniform slot so the background,
+//! uploaded here. Each drawn quad owns one `UniformSlot` so the background,
 //! the outgoing layer, and the current layer can carry different
-//! `LayerParams` inside a single render pass.
+//! `LayerParams` inside a single render pass. The slots belong to the
+//! prepared scene, so many scenes can be prepared before any draws.
 
-use crate::srgb_constant;
+use crate::{UniformSlot, srgb_constant};
 use image::RgbaImage;
 
-/// Number of uniform slots. One per quad a frame can draw.
+/// Number of uniform slots per scene. One per quad a scene can draw.
 pub const SLOTS: usize = 3;
 
 /// Uniform block for `image.wgsl`. Padding matches the WGSL layout.
@@ -39,9 +40,8 @@ impl LayerParams {
 pub struct LayerPipeline {
     pipeline: wgpu::RenderPipeline,
     texture_layout: wgpu::BindGroupLayout,
+    params_layout: wgpu::BindGroupLayout,
     sampler: wgpu::Sampler,
-    params: [wgpu::Buffer; SLOTS],
-    params_groups: [wgpu::BindGroup; SLOTS],
 }
 
 impl LayerPipeline {
@@ -83,24 +83,6 @@ impl LayerPipeline {
                 },
                 count: None,
             }],
-        });
-        let params: [wgpu::Buffer; SLOTS] = std::array::from_fn(|_| {
-            device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("layer params"),
-                size: size_of::<LayerParams>() as u64,
-                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-                mapped_at_creation: false,
-            })
-        });
-        let params_groups = std::array::from_fn(|i| {
-            device.create_bind_group(&wgpu::BindGroupDescriptor {
-                label: Some("layer params group"),
-                layout: &params_layout,
-                entries: &[wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: params[i].as_entire_binding(),
-                }],
-            })
         });
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some("layer sampler"),
@@ -151,10 +133,21 @@ impl LayerPipeline {
         LayerPipeline {
             pipeline,
             texture_layout,
+            params_layout,
             sampler,
-            params,
-            params_groups,
         }
+    }
+
+    /// The uniform slots one prepared scene needs.
+    pub fn slots(&self, device: &wgpu::Device) -> [UniformSlot; SLOTS] {
+        std::array::from_fn(|_| {
+            UniformSlot::new(
+                device,
+                &self.params_layout,
+                size_of::<LayerParams>() as u64,
+                "layer params",
+            )
+        })
     }
 
     /// Upload `img` as a texture and return the bind group that draws it.
@@ -214,16 +207,21 @@ impl LayerPipeline {
         })
     }
 
-    /// Write the uniforms for `slot`. Call before the pass is recorded.
-    pub fn set_params(&self, queue: &wgpu::Queue, slot: usize, params: &LayerParams) {
-        queue.write_buffer(&self.params[slot], 0, bytemuck::bytes_of(params));
+    /// Write the uniforms into `slot`. Call before the pass is recorded.
+    pub fn set_params(&self, queue: &wgpu::Queue, slot: &UniformSlot, params: &LayerParams) {
+        queue.write_buffer(&slot.buffer, 0, bytemuck::bytes_of(params));
     }
 
     /// Draw `texture` with the uniforms of `slot`.
-    pub fn draw(&self, pass: &mut wgpu::RenderPass<'_>, texture: &wgpu::BindGroup, slot: usize) {
+    pub fn draw(
+        &self,
+        pass: &mut wgpu::RenderPass<'_>,
+        texture: &wgpu::BindGroup,
+        slot: &UniformSlot,
+    ) {
         pass.set_pipeline(&self.pipeline);
         pass.set_bind_group(0, texture, &[]);
-        pass.set_bind_group(1, &self.params_groups[slot], &[]);
+        pass.set_bind_group(1, &slot.group, &[]);
         pass.draw(0..4, 0..1);
     }
 }

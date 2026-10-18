@@ -20,8 +20,20 @@ pub fn device() -> Option<(wgpu::Device, wgpu::Queue)> {
 
 /// Render `scene` into an RGBA image of `scene.size`.
 pub fn render_to_image(scene: &Scene) -> Option<RgbaImage> {
-    let (device, queue) = device()?;
     let (w, h) = scene.size;
+    let full = Viewport { x: 0, y: 0, w, h };
+    render_many((w, h), wgpu::Color::BLACK, &[(scene.clone(), full)])
+}
+
+/// Clear a `size` texture to `clear`, then prepare every scene under its
+/// own key and render each into its viewport, in the order Iced uses.
+pub fn render_many(
+    size: (u32, u32),
+    clear: wgpu::Color,
+    scenes: &[(Scene, Viewport)],
+) -> Option<RgbaImage> {
+    let (device, queue) = device()?;
+    let (w, h) = size;
     let mut renderer = Renderer::new(&device, &queue, FORMAT);
     let texture = device.create_texture(&wgpu::TextureDescriptor {
         label: Some("headless target"),
@@ -50,9 +62,29 @@ pub fn render_to_image(scene: &Scene) -> Option<RgbaImage> {
         mapped_at_creation: false,
     });
 
-    renderer.prepare(&device, &queue, scene);
+    for (i, (scene, _)) in scenes.iter().enumerate() {
+        renderer.prepare(&device, &queue, i as u64, scene);
+    }
     let mut encoder = device.create_command_encoder(&Default::default());
-    renderer.render(&mut encoder, &view, Viewport { x: 0, y: 0, w, h });
+    // An empty pass clears the whole target to the given color.
+    encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+        label: Some("headless clear"),
+        color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+            view: &view,
+            depth_slice: None,
+            resolve_target: None,
+            ops: wgpu::Operations {
+                load: wgpu::LoadOp::Clear(clear),
+                store: wgpu::StoreOp::Store,
+            },
+        })],
+        depth_stencil_attachment: None,
+        timestamp_writes: None,
+        occlusion_query_set: None,
+    });
+    for (i, (_, vp)) in scenes.iter().enumerate() {
+        renderer.render(&mut encoder, &view, i as u64, *vp);
+    }
     encoder.copy_texture_to_buffer(
         wgpu::TexelCopyTextureInfo {
             texture: &texture,

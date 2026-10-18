@@ -1,19 +1,35 @@
 //! Iced shader widget that draws a `Scene` through `sda_render`.
+//!
+//! Iced keeps one `ScenePipeline` per window set and calls `prepare` for
+//! every `scene_view` on screen before any `render`. The `key` tells the
+//! shared `Renderer` which prepared scene each widget draws, so every call
+//! site on one screen must pass a different stable key.
 
 use iced::advanced::graphics::Viewport;
 use iced::widget::shader;
 use iced::{Element, Fill, Rectangle, mouse};
 use sda_render::{Renderer, Scene};
+use std::hash::{DefaultHasher, Hash, Hasher};
 use std::sync::Arc;
 
-pub fn scene_view<'a, M: 'a>(scene: Arc<Scene>) -> Element<'a, M> {
-    shader(SceneProgram { scene })
+/// Draw `scene` under `key`. Build the key with [`key`].
+pub fn scene_view<'a, M: 'a>(key: u64, scene: Arc<Scene>) -> Element<'a, M> {
+    shader(SceneProgram { key, scene })
         .width(Fill)
         .height(Fill)
         .into()
 }
 
+/// Stable scene key from anything hashable, such as `"preview"` or
+/// `("thumb", index)`.
+pub fn key(parts: impl Hash) -> u64 {
+    let mut h = DefaultHasher::new();
+    parts.hash(&mut h);
+    h.finish()
+}
+
 struct SceneProgram {
+    key: u64,
     scene: Arc<Scene>,
 }
 
@@ -23,6 +39,7 @@ impl<M> shader::Program<M> for SceneProgram {
 
     fn draw(&self, _: &(), _: mouse::Cursor, _: Rectangle) -> ScenePrimitive {
         ScenePrimitive {
+            key: self.key,
             scene: self.scene.clone(),
         }
     }
@@ -30,6 +47,7 @@ impl<M> shader::Program<M> for SceneProgram {
 
 #[derive(Debug)]
 struct ScenePrimitive {
+    key: u64,
     scene: Arc<Scene>,
 }
 
@@ -44,7 +62,9 @@ impl shader::Pipeline for ScenePipeline {
         }
     }
 
-    fn trim(&mut self) {}
+    fn trim(&mut self) {
+        self.renderer.trim();
+    }
 }
 
 impl shader::Primitive for ScenePrimitive {
@@ -64,7 +84,7 @@ impl shader::Primitive for ScenePrimitive {
             (bounds.width * scale).round().max(1.0) as u32,
             (bounds.height * scale).round().max(1.0) as u32,
         );
-        p.renderer.prepare(device, queue, &scene);
+        p.renderer.prepare(device, queue, self.key, &scene);
     }
 
     fn draw(&self, _: &ScenePipeline, _: &mut wgpu::RenderPass<'_>) -> bool {
@@ -81,6 +101,7 @@ impl shader::Primitive for ScenePrimitive {
         p.renderer.render(
             encoder,
             target,
+            self.key,
             sda_render::Viewport {
                 x: clip.x,
                 y: clip.y,

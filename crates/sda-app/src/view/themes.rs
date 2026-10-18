@@ -6,7 +6,7 @@ use crate::msg::{Msg, ThemesMsg};
 use crate::state::themes::{PREVIEW_SAMPLE, sorted_themes, thumb_slide};
 use crate::ui_theme;
 use crate::widgets::card::card;
-use crate::widgets::scene_view::scene_view;
+use crate::widgets::scene_view::{key, scene_view};
 use iced::widget::{Column, button, checkbox, column, container, row, scrollable, space, text};
 use iced::{Alignment, Border, Color, Element, Fill, Theme as IcedTheme};
 use sda_core::resolve::ResolvedSlide;
@@ -117,11 +117,14 @@ fn theme_card<'a>(app: &'a App, i: usize, theme: &'a Theme, now: f32) -> Element
             Some(slide) => Some(slide.clone()),
             None => thumb_slide(theme, s).map(Arc::new),
         };
-        container(scene_view(thumb_scene(theme, slide.as_ref(), now)))
-            .width(THUMB_W)
-            .height(THUMB_H)
-            .style(ui_theme::thumb_frame)
-            .into()
+        container(scene_view(
+            key(("theme_card", theme.name.as_str())),
+            thumb_scene(theme, slide.as_ref(), now),
+        ))
+        .width(THUMB_W)
+        .height(THUMB_H)
+        .style(ui_theme::thumb_frame)
+        .into()
     } else {
         let color = swatch_color(&theme.background);
         container(space::horizontal())
@@ -204,6 +207,7 @@ fn preview(app: &App) -> Element<'_, Msg> {
     let s = &app.core.strings;
     let frame: Element<'_, Msg> = if app.gpu_ok {
         container(scene_view(
+            key("theme_preview"),
             app.themes.preview.scene((960, 540), Instant::now()),
         ))
         .width(Fill)

@@ -73,7 +73,9 @@ pub fn spawn_decoder(
     }
     let (w, h) = size;
     let mut child = Command::new(ffmpeg)
-        .args(["-loglevel", "error", "-stream_loop", "-1", "-i"])
+        // `-re` paces the output at the clip's own frame rate so the newest
+        // frame is the one the wall clock asks for.
+        .args(["-loglevel", "error", "-re", "-stream_loop", "-1", "-i"])
         .arg(media)
         .args(["-an", "-f", "rawvideo", "-pix_fmt", "rgba", "-s"])
         .arg(format!("{w}x{h}"))

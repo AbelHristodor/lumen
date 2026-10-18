@@ -7,7 +7,7 @@ use crate::msg::{Msg, ThemesMsg};
 use crate::state::present::{self as st, MAX_THUMBS, RECENT_COUNT};
 use crate::ui_theme::{self, SPACING};
 use crate::widgets::card::card;
-use crate::widgets::scene_view::scene_view;
+use crate::widgets::scene_view::{key, scene_view};
 use iced::widget::{
     Id, button, column, container, responsive, row, rule, scrollable, space, text, text_input,
     toggler,
@@ -182,7 +182,7 @@ fn center_panel(app: &App) -> Element<'_, Msg> {
             let (w, h) = fit_16_9(avail);
             let inner: Element<'_, Msg> = if app.gpu_ok {
                 match st::slide_scene(app, p.preview_slide, (w as u32, h as u32)) {
-                    Some(scene) => scene_view(scene),
+                    Some(scene) => scene_view(key("preview"), scene),
                     None => space::horizontal().into(),
                 }
             } else {
@@ -215,7 +215,7 @@ fn center_panel(app: &App) -> Element<'_, Msg> {
     for i in 0..count.min(MAX_THUMBS) {
         let inner: Element<'_, Msg> = if app.gpu_ok {
             match st::slide_scene(app, i, (THUMB.0 as u32, THUMB.1 as u32)) {
-                Some(scene) => scene_view(scene),
+                Some(scene) => scene_view(key(("thumb", i)), scene),
                 None => space::horizontal().into(),
             }
         } else {
@@ -297,7 +297,7 @@ fn side_panel(app: &App) -> Element<'_, Msg> {
                 &s.theme_preview_sample,
                 (THEME_THUMB.0 as u32, THEME_THUMB.1 as u32),
             ) {
-                Some(scene) => scene_view(scene),
+                Some(scene) => scene_view(key(("theme", t.name.as_str())), scene),
                 None => space::horizontal().into(),
             }
         } else {
