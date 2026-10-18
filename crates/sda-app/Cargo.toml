@@ -13,7 +13,7 @@ path = "src/main.rs"
 [dependencies]
 sda-core = { path = "../sda-core" }
 sda-render = { path = "../sda-render" }
-iced = { version = "0.14", features = ["wgpu", "image", "tokio", "advanced", "lazy"] }
+iced = { version = "0.14", features = ["wgpu", "image", "tokio", "advanced", "lazy", "canvas"] }
 wgpu = { version = "27", default-features = false }
 tokio = { version = "1", features = ["rt", "time"] }
 cosmic-text = "0.15"
