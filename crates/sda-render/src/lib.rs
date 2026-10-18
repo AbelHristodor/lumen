@@ -309,19 +309,25 @@ impl Renderer {
         )
     }
 
-    /// Record draw commands for the scene prepared under `key` into `view`
-    /// inside `vp`. The pass loads what the target already holds, so the
-    /// rest of the frame outside `vp` stays as it was. Inside `vp` the
-    /// background fills every pixel. A key that was never prepared draws
-    /// nothing.
+    /// Record draw commands for the scene prepared under `key` into `view`.
+    /// The scene is mapped onto `viewport`, the full widget rectangle, and
+    /// only pixels inside `scissor` are written. The pass loads what the
+    /// target already holds, so everything outside the scissor stays as it
+    /// was. Inside it the background fills every pixel. A key that was never
+    /// prepared, or a scissor outside the target, draws nothing.
     pub fn render(
         &self,
         encoder: &mut wgpu::CommandEncoder,
         view: &wgpu::TextureView,
         key: u64,
-        vp: Viewport,
+        viewport: Viewport,
+        scissor: Viewport,
     ) {
         let Some(p) = self.scenes.get(&key) else {
+            return;
+        };
+        let tex = view.texture();
+        let Some(sc) = scissor.clamp(tex.width(), tex.height()) else {
             return;
         };
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -339,8 +345,15 @@ impl Renderer {
             timestamp_writes: None,
             occlusion_query_set: None,
         });
-        pass.set_viewport(vp.x as f32, vp.y as f32, vp.w as f32, vp.h as f32, 0.0, 1.0);
-        pass.set_scissor_rect(vp.x, vp.y, vp.w, vp.h);
+        pass.set_viewport(
+            viewport.x as f32,
+            viewport.y as f32,
+            viewport.w as f32,
+            viewport.h as f32,
+            0.0,
+            1.0,
+        );
+        pass.set_scissor_rect(sc.x as u32, sc.y as u32, sc.w, sc.h);
         match p.bg {
             BgPass::None => {}
             BgPass::Solid => self.solid.draw(&mut pass, &p.solid),

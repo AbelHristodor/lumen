@@ -26,11 +26,33 @@ pub fn render_to_image(scene: &Scene) -> Option<RgbaImage> {
 }
 
 /// Clear a `size` texture to `clear`, then prepare every scene under its
-/// own key and render each into its viewport, in the order Iced uses.
+/// own key and render each into its viewport, in the order Iced uses. The
+/// scissor equals the viewport.
 pub fn render_many(
     size: (u32, u32),
     clear: wgpu::Color,
     scenes: &[(Scene, Viewport)],
+) -> Option<RgbaImage> {
+    let both: Vec<(Scene, Viewport, Viewport)> =
+        scenes.iter().map(|(s, v)| (s.clone(), *v, *v)).collect();
+    render_scissored(size, clear, &both)
+}
+
+/// One scene mapped onto `viewport` with only `scissor` written.
+pub fn render_clipped(
+    size: (u32, u32),
+    clear: wgpu::Color,
+    scene: &Scene,
+    viewport: Viewport,
+    scissor: Viewport,
+) -> Option<RgbaImage> {
+    render_scissored(size, clear, &[(scene.clone(), viewport, scissor)])
+}
+
+fn render_scissored(
+    size: (u32, u32),
+    clear: wgpu::Color,
+    scenes: &[(Scene, Viewport, Viewport)],
 ) -> Option<RgbaImage> {
     let (device, queue) = device()?;
     let (w, h) = size;
@@ -62,7 +84,7 @@ pub fn render_many(
         mapped_at_creation: false,
     });
 
-    for (i, (scene, _)) in scenes.iter().enumerate() {
+    for (i, (scene, _, _)) in scenes.iter().enumerate() {
         renderer.prepare(&device, &queue, i as u64, scene);
     }
     let mut encoder = device.create_command_encoder(&Default::default());
@@ -82,8 +104,8 @@ pub fn render_many(
         timestamp_writes: None,
         occlusion_query_set: None,
     });
-    for (i, (_, vp)) in scenes.iter().enumerate() {
-        renderer.render(&mut encoder, &view, i as u64, *vp);
+    for (i, (_, vp, sc)) in scenes.iter().enumerate() {
+        renderer.render(&mut encoder, &view, i as u64, *vp, *sc);
     }
     encoder.copy_texture_to_buffer(
         wgpu::TexelCopyTextureInfo {

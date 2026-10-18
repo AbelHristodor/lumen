@@ -347,3 +347,79 @@ fn many_scenes_load_the_target() {
     assert_eq!(img.get_pixel(150, 20).0, [0, 0, 255, 255]);
     assert_eq!(img.get_pixel(100, 100).0, [0, 0, 255, 255]);
 }
+
+/// Columns holding at least one bright pixel, as a width.
+fn bright_width(img: &image::RgbaImage) -> u32 {
+    let cols: Vec<u32> = (0..img.width())
+        .filter(|x| (0..img.height()).any(|y| img.get_pixel(*x, y)[0] > 200))
+        .collect();
+    match (cols.first(), cols.last()) {
+        (Some(a), Some(b)) => b - a + 1,
+        _ => 0,
+    }
+}
+
+#[test]
+fn text_pt_scales_with_width() {
+    let mut small = base();
+    small.current = Some(Layer::Text(styled(
+        "Plecaţi-vă",
+        HAlign::Center,
+        TextSize::Pt(40.0),
+        None,
+    )));
+    let mut large = small.clone();
+    large.size = (640, 360);
+    let (Some(a), Some(b)) = (
+        headless::render_to_image(&small),
+        headless::render_to_image(&large),
+    ) else {
+        return;
+    };
+    let (wa, wb) = (bright_width(&a) as f32, bright_width(&b) as f32);
+    assert!(wa > 20.0, "small text too narrow: {wa}");
+    let ratio = wb / wa;
+    assert!((1.8..=2.2).contains(&ratio), "ratio {ratio}, {wa} vs {wb}");
+}
+
+#[test]
+fn scissor_limits_the_draw_but_not_the_mapping() {
+    // Left half red, right half green, same aspect as the viewport. With a
+    // squeeze the green half would land inside the scissor.
+    let mut bmp = image::RgbaImage::new(200, 100);
+    for (x, _, p) in bmp.enumerate_pixels_mut() {
+        *p = if x < 100 {
+            image::Rgba([255, 0, 0, 255])
+        } else {
+            image::Rgba([0, 255, 0, 255])
+        };
+    }
+    let mut red = base();
+    red.current = Some(Layer::Bitmap(Arc::new(bmp)));
+    let blue = wgpu::Color {
+        r: 0.0,
+        g: 0.0,
+        b: 1.0,
+        a: 1.0,
+    };
+    let viewport = Viewport {
+        x: 40,
+        y: 20,
+        w: 200,
+        h: 100,
+    };
+    let left_half = Viewport {
+        x: 40,
+        y: 20,
+        w: 100,
+        h: 100,
+    };
+    let Some(img) = headless::render_clipped((320, 180), blue, &red, viewport, left_half) else {
+        return;
+    };
+    assert_eq!(img.get_pixel(50, 60).0, [255, 0, 0, 255]);
+    assert_eq!(img.get_pixel(135, 60).0, [255, 0, 0, 255]);
+    assert_eq!(img.get_pixel(140, 60).0, [0, 0, 255, 255]);
+    assert_eq!(img.get_pixel(230, 60).0, [0, 0, 255, 255]);
+    assert_eq!(img.get_pixel(10, 10).0, [0, 0, 255, 255]);
+}

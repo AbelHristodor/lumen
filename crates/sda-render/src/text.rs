@@ -11,6 +11,9 @@ use image::RgbaImage;
 use sda_core::resolve::{ResolvedBox, ResolvedLine, ResolvedRun, ResolvedSlide};
 use sda_core::theme::{BundledFont, Font, HAlign, Rgba, TextSize, VAlign};
 
+/// Width of a PPTX slide in points. A `Pt` size is a point on a slide this
+/// wide, so pixels per point is the scene width over this.
+const SLIDE_WIDTH_PT: f32 = 720.0;
 const AUTO_MIN_PT: f32 = 12.0;
 const AUTO_MAX_PT: f32 = 400.0;
 const FOOTER_SCALE: f32 = 0.03;
@@ -52,6 +55,7 @@ impl TextRaster {
     pub fn rasterize(&mut self, slide: &ResolvedSlide, size: (u32, u32)) -> RgbaImage {
         let mut img = RgbaImage::new(size.0, size.1);
         let (w, h) = (size.0 as f32, size.1 as f32);
+        let px_per_pt = w / SLIDE_WIDTH_PT;
         for b in &slide.boxes {
             let rect = Rect {
                 x: b.frame.x * w,
@@ -59,7 +63,7 @@ impl TextRaster {
                 w: b.frame.w * w,
                 h: b.frame.h * h,
             };
-            self.draw_box(&mut img, b, &rect);
+            self.draw_box(&mut img, b, &rect, px_per_pt);
         }
         if let Some(footer) = &slide.footer {
             self.draw_footer(&mut img, footer, (w, h));
@@ -67,7 +71,9 @@ impl TextRaster {
         img
     }
 
-    fn draw_box(&mut self, img: &mut RgbaImage, b: &ResolvedBox, rect: &Rect) {
+    /// Draw one text box. `px_per_pt` turns a `Pt` size into pixels for this
+    /// scene width. Auto sizes fit the box and ignore it.
+    fn draw_box(&mut self, img: &mut RgbaImage, b: &ResolvedBox, rect: &Rect, px_per_pt: f32) {
         let runs: Vec<&ResolvedRun> = b.lines.iter().flat_map(|l| l.runs.iter()).collect();
         if runs.is_empty() {
             return;
@@ -77,7 +83,7 @@ impl TextRaster {
         let fixed_pt = runs
             .iter()
             .filter_map(|r| match r.size {
-                TextSize::Pt(p) => Some(p),
+                TextSize::Pt(p) => Some(p * px_per_pt),
                 TextSize::Auto => None,
             })
             .fold(0.0, f32::max)
@@ -107,7 +113,7 @@ impl TextRaster {
                     .metadata(idx);
                 if !auto {
                     let pt = match run.size {
-                        TextSize::Pt(p) => p,
+                        TextSize::Pt(p) => p * px_per_pt,
                         TextSize::Auto => fixed_pt,
                     };
                     a = a.metrics(Metrics::new(pt, pt * line.spacing));

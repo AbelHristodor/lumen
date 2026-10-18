@@ -9,6 +9,7 @@ use iced::advanced::graphics::Viewport;
 use iced::widget::shader;
 use iced::{Element, Fill, Rectangle, mouse};
 use sda_render::{Renderer, Scene};
+use std::collections::HashMap;
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::sync::Arc;
 
@@ -53,12 +54,16 @@ struct ScenePrimitive {
 
 struct ScenePipeline {
     renderer: Renderer,
+    /// Full widget rectangle in pixels per key. `render` only receives the
+    /// clip, so `prepare` records the bounds the scene is mapped onto here.
+    bounds: HashMap<u64, sda_render::Viewport>,
 }
 
 impl shader::Pipeline for ScenePipeline {
     fn new(device: &wgpu::Device, queue: &wgpu::Queue, format: wgpu::TextureFormat) -> Self {
         ScenePipeline {
             renderer: Renderer::new(device, queue, format),
+            bounds: HashMap::new(),
         }
     }
 
@@ -79,11 +84,15 @@ impl shader::Primitive for ScenePrimitive {
         viewport: &Viewport,
     ) {
         let scale = viewport.scale_factor();
+        let full = sda_render::Viewport {
+            x: (bounds.x * scale).round() as i32,
+            y: (bounds.y * scale).round() as i32,
+            w: (bounds.width * scale).round().max(1.0) as u32,
+            h: (bounds.height * scale).round().max(1.0) as u32,
+        };
         let mut scene = (*self.scene).clone();
-        scene.size = (
-            (bounds.width * scale).round().max(1.0) as u32,
-            (bounds.height * scale).round().max(1.0) as u32,
-        );
+        scene.size = (full.w, full.h);
+        p.bounds.insert(self.key, full);
         p.renderer.prepare(device, queue, self.key, &scene);
     }
 
@@ -98,16 +107,14 @@ impl shader::Primitive for ScenePrimitive {
         target: &wgpu::TextureView,
         clip: &Rectangle<u32>,
     ) {
-        p.renderer.render(
-            encoder,
-            target,
-            self.key,
-            sda_render::Viewport {
-                x: clip.x,
-                y: clip.y,
-                w: clip.width,
-                h: clip.height,
-            },
-        );
+        let scissor = sda_render::Viewport {
+            x: clip.x as i32,
+            y: clip.y as i32,
+            w: clip.width,
+            h: clip.height,
+        };
+        let viewport = p.bounds.get(&self.key).copied().unwrap_or(scissor);
+        p.renderer
+            .render(encoder, target, self.key, viewport, scissor);
     }
 }
