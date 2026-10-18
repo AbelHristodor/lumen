@@ -153,3 +153,85 @@ fn auto_text_fills_box_without_overflow() {
     );
     assert!(*white_rows.first().unwrap() >= 10 && *white_rows.last().unwrap() <= 170);
 }
+
+use sda_core::theme::{Direction, Easing, Transition, TransitionKind};
+
+fn two(kind: TransitionKind) -> Scene {
+    let mut s = base();
+    s.current = Some(Layer::Text(styled(
+        "B",
+        HAlign::Center,
+        TextSize::Pt(80.0),
+        None,
+    )));
+    s.outgoing = Some((
+        Layer::Text(styled("A", HAlign::Center, TextSize::Pt(80.0), None)),
+        0.5,
+    ));
+    s.transition = Transition {
+        kind,
+        duration_ms: 400,
+        easing: Easing::Linear,
+    };
+    s
+}
+
+#[test]
+fn fade_half() {
+    check("fade_half", &two(TransitionKind::Fade));
+}
+
+#[test]
+fn slide_left_half() {
+    check(
+        "slide_left_half",
+        &two(TransitionKind::Slide(Direction::Left)),
+    );
+}
+
+#[test]
+fn scale_half() {
+    check("scale_half", &two(TransitionKind::Scale));
+}
+
+#[test]
+fn blur_half() {
+    check("blur_half", &two(TransitionKind::Blur));
+}
+
+#[test]
+fn blank_hides_text() {
+    let mut s = two(TransitionKind::Fade);
+    s.blank = true;
+    let Some(img) = headless::render_to_image(&s) else {
+        return;
+    };
+    assert!(img.pixels().all(|p| p[0] < 3));
+    check("blank", &s);
+}
+
+#[test]
+fn bitmap_layer_covers_output() {
+    let mut bmp = image::RgbaImage::new(64, 36);
+    for p in bmp.pixels_mut() {
+        *p = image::Rgba([0, 200, 0, 255]);
+    }
+    let mut s = base();
+    s.current = Some(Layer::Bitmap(Arc::new(bmp)));
+    let Some(img) = headless::render_to_image(&s) else {
+        return;
+    };
+    assert!(img.get_pixel(160, 90)[1] > 180);
+    check("bitmap", &s);
+}
+
+#[test]
+fn image_background() {
+    let mut bmp = image::RgbaImage::new(8, 8);
+    for (x, _, p) in bmp.enumerate_pixels_mut() {
+        *p = image::Rgba([x as u8 * 30, 0, 0, 255]);
+    }
+    let mut s = base();
+    s.background = BackgroundState::Image(Arc::new(bmp));
+    check("image_bg", &s);
+}

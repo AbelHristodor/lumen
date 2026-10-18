@@ -1,18 +1,22 @@
-// Textured quad for one slide layer. The texture holds encoded sRGB color
-// with straight alpha. The fragment premultiplies in encoded space, which
-// is the renderer wide opacity rule, then converts to linear for sRGB
-// targets. The pipeline blends with one, one minus source alpha.
+// Textured quad for one slide layer or an image background. The texture
+// holds encoded sRGB color with straight alpha. The fragment premultiplies
+// in encoded space, which is the renderer wide opacity rule, then converts
+// to linear for sRGB targets. The pipeline blends with one, one minus
+// source alpha.
 //
 // `offset` moves the quad as a fraction of the viewport. `scale` grows or
-// shrinks it around the center. `blur` is reserved for transitions.
+// shrinks it around the center per axis so a bitmap can cover the output.
+// `blur` is a radius in texels. Above zero the fragment averages a 9 by 9
+// grid of taps spanning that radius with tent weights.
 
 override srgb_target: u32 = 1u;
 
 struct Params {
     alpha: f32,
-    offset: vec2<f32>,
-    scale: f32,
     blur: f32,
+    offset: vec2<f32>,
+    scale: vec2<f32>,
+    _pad: vec2<f32>,
 };
 
 @group(0) @binding(0) var tex: texture_2d<f32>;
@@ -44,9 +48,27 @@ fn to_target(c: vec3<f32>) -> vec3<f32> {
     return select(hi, lo, c <= vec3<f32>(0.04045));
 }
 
+// Premultiplied sample at `uv`.
+fn tap(uv: vec2<f32>) -> vec4<f32> {
+    let s = textureSampleLevel(tex, samp, uv, 0.0);
+    return vec4<f32>(s.rgb * s.a, s.a);
+}
+
 @fragment
 fn fs_main(in: Vertex) -> @location(0) vec4<f32> {
-    let s = textureSample(tex, samp, in.uv);
-    let a = s.a * params.alpha;
-    return vec4<f32>(to_target(s.rgb * a), a);
+    var c = tap(in.uv);
+    if params.blur > 0.0 {
+        let step = params.blur / vec2<f32>(textureDimensions(tex)) / 4.0;
+        var acc = vec4<f32>(0.0);
+        var total = 0.0;
+        for (var i = -4; i <= 4; i++) {
+            for (var j = -4; j <= 4; j++) {
+                let w = (5.0 - abs(f32(i))) * (5.0 - abs(f32(j)));
+                acc += tap(in.uv + vec2<f32>(f32(i), f32(j)) * step) * w;
+                total += w;
+            }
+        }
+        c = acc / total;
+    }
+    return vec4<f32>(to_target(c.rgb * params.alpha), c.a * params.alpha);
 }

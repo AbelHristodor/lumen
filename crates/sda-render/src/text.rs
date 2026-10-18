@@ -253,19 +253,34 @@ fn measure(buffer: &Buffer) -> (f32, f32) {
     (w, h)
 }
 
-/// Pixel offsets and colors a run needs for one pass. Shadow blur is not
-/// applied. ponytail: hard shadow only, add a blur pass if themes use it.
+/// Alpha of each of the 9 stamps a blurred shadow is built from. Where they
+/// all overlap the coverage reaches about 97 percent.
+const SHADOW_TAP_ALPHA: u8 = 96;
+
+/// Pixel offsets and colors a run needs for one pass. A shadow with blur
+/// above zero is stamped on a 3 by 3 grid spread by the blur radius with a
+/// lighter color so the edge fades. ponytail: a true gaussian would need a
+/// separate blur buffer, add one if the grid shows.
 fn stamps(run: &ResolvedRun, pass: Pass) -> Vec<(i32, i32, Rgba)> {
     match pass {
         Pass::Shadow => run
             .shadow
             .iter()
-            .map(|s| {
-                (
-                    s.offset.0.round() as i32,
-                    s.offset.1.round() as i32,
-                    s.color,
-                )
+            .flat_map(|s| {
+                let (ox, oy) = (s.offset.0.round() as i32, s.offset.1.round() as i32);
+                if s.blur <= 0.0 {
+                    return vec![(ox, oy, s.color)];
+                }
+                let d = s.blur.round().max(1.0) as i32;
+                let soft = Rgba::new(
+                    s.color.r,
+                    s.color.g,
+                    s.color.b,
+                    mul(s.color.a, SHADOW_TAP_ALPHA),
+                );
+                (-1..=1)
+                    .flat_map(|y| (-1..=1).map(move |x| (ox + x * d, oy + y * d, soft)))
+                    .collect()
             })
             .collect(),
         Pass::Outline => run
