@@ -1,0 +1,17 @@
+[package]
+name = "sda-render"
+edition = "2024"
+version.workspace = true
+
+[dependencies]
+sda-core = { path = "../sda-core" }
+wgpu = { version = "27", default-features = false, features = ["std", "wgsl", "metal", "dx12", "vulkan"] }
+cosmic-text = "0.15"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif"] }
+bytemuck = { version = "1", features = ["derive"] }
+pollster = "0.4"
+log = "0.4"
+anyhow = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"
