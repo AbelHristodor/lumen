@@ -57,9 +57,10 @@ pub fn boot(core: &Core) -> Task<Msg> {
 /// Download when the ETag changed and reindex. `Ok(None)` means unchanged.
 fn sync_if_changed(cfg: &Config) -> Result<Option<Handoff<Searcher>>, String> {
     match refresh::sync_default(cfg) {
-        Some(SyncOutcome::Downloaded) => Ok(Some(searcher(refresh::load_local(cfg.clone())))),
-        Some(SyncOutcome::Unchanged) => Ok(None),
-        None => Err("download failed".into()),
+        Some(Ok(SyncOutcome::Downloaded)) => Ok(Some(searcher(refresh::load_local(cfg.clone())))),
+        Some(Ok(SyncOutcome::Unchanged)) => Ok(None),
+        Some(Err(e)) => Err(e),
+        None => Err("no data directory".into()),
     }
 }
 
