@@ -56,3 +56,18 @@ fn register_repairs_legacy_git_clone_path() {
     assert_eq!(cfg.libraries[0].path, default_library().unwrap().path);
     assert!(!cfg.libraries[0].enabled, "user's enabled choice survives");
 }
+
+#[test]
+fn sync_default_reports_the_error_text() {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    drop(listener);
+    let cfg = Config {
+        hymns_url: format!("http://127.0.0.1:{port}/hymns.zip"),
+        ..Config::default()
+    };
+    match sda_core::refresh::sync_default(&cfg) {
+        Some(Err(msg)) => assert!(msg.contains("HEAD"), "got {msg}"),
+        other => panic!("expected Some(Err), got {other:?}"),
+    }
+}

@@ -653,7 +653,7 @@ pub mod store {
     /// Save a theme to `<dir>/<name>.json`. Refuses the reserved default name.
     pub fn save_theme(dir: &Path, theme: &Theme) -> Result<()> {
         if theme.is_builtin_default() {
-            bail!("the built-in Default theme cannot be saved over");
+            bail!("the built in Default theme cannot be saved over");
         }
         std::fs::create_dir_all(dir)?;
         let path = dir.join(format!("{}.json", file_stem(&theme.name)));
@@ -661,10 +661,10 @@ pub mod store {
         Ok(())
     }
 
-    /// Delete a theme file. Refuses to delete the built-in default.
+    /// Delete a theme file. Refuses to delete the built in default.
     pub fn delete_theme(dir: &Path, name: &str) -> Result<()> {
         if name == "Default" {
-            bail!("the built-in Default theme cannot be deleted");
+            bail!("the built in Default theme cannot be deleted");
         }
         let path = dir.join(format!("{}.json", file_stem(name)));
         if path.exists() {

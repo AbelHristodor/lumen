@@ -71,8 +71,9 @@ pub fn register_default_library(cfg: &mut Config) -> bool {
 }
 
 /// Download the hymns zip if its ETag changed. Network step: keep it off the
-/// UI thread. Returns `None` on error or when no data dir exists.
-pub fn sync_default(cfg: &Config) -> Option<SyncOutcome> {
+/// UI thread. Returns `None` when no data dir exists and `Some(Err)` with the
+/// failure text when the sync fails.
+pub fn sync_default(cfg: &Config) -> Option<Result<SyncOutcome, String>> {
     let dir = default_library_dir()?;
     let stamp = hymns_stamp_path()?;
     info!("syncing hymns from {} -> {}", cfg.hymns_url, dir.display());
@@ -85,11 +86,11 @@ pub fn sync_default(cfg: &Config) -> Option<SyncOutcome> {
                     let _ = std::fs::remove_dir_all(old);
                 }
             }
-            Some(outcome)
+            Some(Ok(outcome))
         }
         Err(e) => {
-            warn!("hymns sync failed: {e}");
-            None
+            warn!("hymns sync failed: {e:#}");
+            Some(Err(format!("{e:#}")))
         }
     }
 }

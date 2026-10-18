@@ -144,7 +144,8 @@ pub enum DownloadEvent {
     Title(String),
     /// Incremental download progress.
     Progress(DownloadProgress),
-    /// Finished successfully; the saved file (or its folder).
+    /// Finished successfully. The saved file, or the folder when yt-dlp did
+    /// not report the file path.
     Done { path: PathBuf },
     /// Failed with a human-readable reason.
     Failed { message: String },
@@ -385,28 +386,76 @@ fn ytdlp_update_stamp() -> Option<PathBuf> {
     tools_dir().map(|d| d.join(".yt-dlp-last-update"))
 }
 
-/// True if the last self-update was more than 24h ago (or never).
-fn should_self_update(stamp: &Path) -> bool {
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
-    let last = std::fs::read_to_string(stamp)
-        .ok()
-        .and_then(|s| s.trim().parse::<u64>().ok())
-        .unwrap_or(0);
-    now.saturating_sub(last) > 24 * 3600
+/// Minimum age of the update stamp before `yt-dlp -U` runs again.
+pub const SELF_UPDATE_AFTER_SECS: u64 = 7 * 24 * 3600;
+
+const SELF_UPDATE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
+
+/// True when no stamp exists or the stamp is older than seven days.
+pub fn should_self_update(stamp_age_secs: Option<u64>) -> bool {
+    stamp_age_secs.is_none_or(|age| age > SELF_UPDATE_AFTER_SECS)
 }
 
-/// Best-effort `yt-dlp -U`, at most once per 24h, and only for the copy we
-/// manage in the tools dir (never a system/PATH install).
-///
-/// Fire-and-forget: the update runs as a *detached* child and we never wait on
-/// it, so it can NEVER block (or hang) a download. `yt-dlp -U` replaces the
-/// binary via an atomic rename, so the current download keeps using whatever
-/// version is on disk now and the update simply takes effect next time. The
-/// timestamp is written up front so a slow or failed update doesn't re-trigger
-/// on every download.
+fn now_secs() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
+}
+
+fn stamp_age_secs(stamp: &Path) -> Option<u64> {
+    let last = std::fs::read_to_string(stamp)
+        .ok()?
+        .trim()
+        .parse::<u64>()
+        .ok()?;
+    Some(now_secs().saturating_sub(last))
+}
+
+/// Number of downloads currently running. The self update holds this lock
+/// while it runs, so a new download waits for it and the update never
+/// replaces the binary under a running download.
+static ACTIVE_DOWNLOADS: std::sync::Mutex<usize> = std::sync::Mutex::new(0);
+
+struct DownloadSlot;
+
+impl DownloadSlot {
+    fn acquire() -> Self {
+        *ACTIVE_DOWNLOADS.lock().unwrap_or_else(|e| e.into_inner()) += 1;
+        DownloadSlot
+    }
+}
+
+impl Drop for DownloadSlot {
+    fn drop(&mut self) {
+        let mut n = ACTIVE_DOWNLOADS.lock().unwrap_or_else(|e| e.into_inner());
+        *n = n.saturating_sub(1);
+    }
+}
+
+fn wait_with_timeout(
+    child: &mut std::process::Child,
+    timeout: std::time::Duration,
+) -> Option<std::process::ExitStatus> {
+    let start = std::time::Instant::now();
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => return Some(status),
+            Ok(None) if start.elapsed() < timeout => {
+                std::thread::sleep(std::time::Duration::from_millis(200));
+            }
+            _ => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return None;
+            }
+        }
+    }
+}
+
+/// Synchronous `yt-dlp -U` for the copy we manage in the tools dir, at most
+/// once per seven days, with a 60 second timeout, and never while a download
+/// is running. A failed update logs and leaves the existing binary in place.
 fn maybe_self_update(ytdlp: &Path) {
     let managed = tools_dir().map(|d| ytdlp.starts_with(&d)).unwrap_or(false);
     if !managed {
@@ -415,31 +464,48 @@ fn maybe_self_update(ytdlp: &Path) {
     let Some(stamp) = ytdlp_update_stamp() else {
         return;
     };
-    if !should_self_update(&stamp) {
+    if !should_self_update(stamp_age_secs(&stamp)) {
         return;
     }
-    // Write the stamp first: even if the spawn fails we won't retry until the
-    // 24h window elapses.
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
-    let _ = std::fs::write(&stamp, now.to_string());
-    // Spawn detached and do NOT wait — this must not gate the download.
-    let _ = Command::new(ytdlp)
+    let active = ACTIVE_DOWNLOADS.lock().unwrap_or_else(|e| e.into_inner());
+    if *active > 0 {
+        log::info!("yt-dlp self update skipped, a download is running");
+        return;
+    }
+    let _ = std::fs::write(&stamp, now_secs().to_string());
+    let spawned = Command::new(ytdlp)
         .arg("-U")
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn();
+    match spawned {
+        Ok(mut child) => match wait_with_timeout(&mut child, SELF_UPDATE_TIMEOUT) {
+            Some(s) if s.success() => log::info!("yt-dlp self update finished"),
+            Some(s) => log::warn!("yt-dlp self update exited with {s}"),
+            None => log::warn!("yt-dlp self update timed out and was killed"),
+        },
+        Err(e) => log::warn!("yt-dlp self update could not start: {e}"),
+    }
+    drop(active);
 }
 
 /// yt-dlp progress template that produces lines our parser understands. The
-/// title rides on every progress line via `%(info.title)s` so we get it without
-/// `--print` — `--print` puts yt-dlp in a quiet mode that SUPPRESSES progress
-/// output entirely, which previously left the UI stuck on "Setting up…".
+/// title rides on every progress line via `%(info.title)s`. `--print` puts
+/// yt-dlp in quiet mode, so `--progress` is passed as well to keep these
+/// lines flowing.
 const PROGRESS_TEMPLATE: &str =
     "download:PROGRESS|%(progress._percent_str)s|%(progress._speed_str)s|%(progress._eta_str)s|%(info.title)s";
+
+/// Print template that reports the final file path once yt-dlp moved it.
+const FILEPATH_TEMPLATE: &str = "after_move:FILEPATH|%(filepath)s";
+
+/// Parse the line printed by [`FILEPATH_TEMPLATE`] into the saved file path.
+/// Returns `None` for any other line or an empty path.
+pub fn parse_filepath_line(line: &str) -> Option<PathBuf> {
+    let rest = line.trim().strip_prefix("FILEPATH|")?.trim();
+    (!rest.is_empty()).then(|| PathBuf::from(rest))
+}
 
 /// Download a single video from `url` into `dir`, reporting `DownloadEvent`s
 /// to `emit`. `format_id` picks one quality from a `Probe`. Blocks until the
@@ -470,6 +536,7 @@ fn run_download(
 ) -> Result<(), String> {
     emit(DownloadEvent::Resolving);
     let ytdlp = ensure_ytdlp().map_err(|e| format!("Could not set up downloader: {e}"))?;
+    let _slot = DownloadSlot::acquire();
 
     // Ensure a destination we can actually write to before doing any work.
     std::fs::create_dir_all(dir).map_err(|e| format!("Cannot use download folder: {e}"))?;
@@ -501,6 +568,8 @@ fn run_download(
         .args(["--fragment-retries", "10"])
         .args(["-f", &format])
         .args(["--progress-template", PROGRESS_TEMPLATE])
+        .arg("--progress")
+        .args(["--print", FILEPATH_TEMPLATE])
         .arg("-o")
         .arg(&output_template)
         .arg(url)
@@ -527,6 +596,7 @@ fn run_download(
         })
     });
 
+    let mut saved_path = None;
     if let Some(out) = child.stdout.take() {
         let mut sent_title = false;
         for line in BufReader::new(out).lines().map_while(Result::ok) {
@@ -538,6 +608,8 @@ fn run_download(
                     sent_title = true;
                 }
                 emit(DownloadEvent::Progress(p));
+            } else if let Some(path) = parse_filepath_line(&line) {
+                saved_path = Some(path);
             }
         }
     }
@@ -550,7 +622,7 @@ fn run_download(
     match status {
         Ok(s) if s.success() => {
             emit(DownloadEvent::Done {
-                path: dir.to_path_buf(),
+                path: saved_path.unwrap_or_else(|| dir.to_path_buf()),
             });
             Ok(())
         }

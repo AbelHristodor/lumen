@@ -51,5 +51,21 @@ fn italian_and_romanian_are_translated_not_copied() {
 
 #[test]
 fn field_count_matches_struct() {
-    assert_eq!(Strings::for_language(Language::En).as_fields().len(), 134);
+    assert_eq!(Strings::for_language(Language::En).as_fields().len(), 171);
+}
+
+#[test]
+fn review_fixes_landed() {
+    let it = Strings::for_language(Language::It);
+    let ro = Strings::for_language(Language::Ro);
+    assert_eq!(it.theme_easing, "Curva");
+    assert_eq!(ro.theme_easing, "Curbă");
+    assert_eq!(it.theme_bg_solid, "Tinta unita");
+    for lang in Language::all() {
+        let s = Strings::for_language(lang);
+        assert!(!s.library_unavailable_suffix.contains('('), "{lang:?}");
+        assert!(!s.library_unavailable_suffix.contains(')'), "{lang:?}");
+        assert!(!s.font_licenses.is_empty());
+        assert!(!s.transition_blur.is_empty());
+    }
 }

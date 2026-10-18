@@ -93,11 +93,24 @@ fn verse_slides_groups_per_slide() {
 
 #[test]
 fn index_parses_and_urls_are_pinned() {
+    // Real repo shape: the abbreviation already carries the language prefix.
+    let json = r#"[{"language":"English","versions":[{"name":"King James Version","abbreviation":"en_kjv"}]},{"language":"Romanian","versions":[{"name":"VDC","abbreviation":"ro_vdc"}]}]"#;
+    let v = parse_index(json).unwrap();
+    assert_eq!(v[0].code, "en_kjv");
+    assert_eq!(v[0].abbreviation, "kjv");
+    assert_eq!(v[0].public_domain, Some(true));
+    assert_eq!(v[1].code, "ro_vdc");
+    assert_eq!(v[1].abbreviation, "vdc");
+    assert_eq!(v[1].public_domain, Some(false));
+    assert!(version_url("en_kjv").contains(PIN));
+}
+
+#[test]
+fn index_parses_bare_abbreviations() {
     let json = r#"[{"language":"English","versions":[{"name":"King James Version","abbreviation":"kjv"}]},{"language":"Romanian","versions":[{"name":"VDC","abbreviation":"vdc"}]}]"#;
     let v = parse_index(json).unwrap();
     assert_eq!(v[0].code, "en_kjv");
-    assert_eq!(v[0].public_domain, Some(true));
+    assert_eq!(v[0].abbreviation, "kjv");
     assert_eq!(v[1].code, "ro_vdc");
-    assert_eq!(v[1].public_domain, Some(false));
-    assert!(version_url("en_kjv").contains(PIN));
+    assert_eq!(v[1].abbreviation, "vdc");
 }

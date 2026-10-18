@@ -107,13 +107,16 @@ pub fn parse_index(json: &str) -> Result<Vec<VersionInfo>> {
     for lang in langs {
         let prefix = language_prefix(&lang.language);
         for v in lang.versions {
-            let code = format!("{prefix}_{}", v.abbreviation);
+            let (code, abbreviation) = match v.abbreviation.split_once('_') {
+                Some((_, short)) => (v.abbreviation.clone(), short.to_string()),
+                None => (format!("{prefix}_{}", v.abbreviation), v.abbreviation),
+            };
             out.push(VersionInfo {
                 public_domain: public_domain(&code),
                 code,
                 language: lang.language.clone(),
                 name: v.name,
-                abbreviation: v.abbreviation,
+                abbreviation,
             });
         }
     }

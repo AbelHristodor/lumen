@@ -33,7 +33,13 @@ fn corrupt_theme_file_is_skipped_default_remains() {
 #[test]
 fn cannot_delete_builtin_default() {
     let dir = tempfile::tempdir().unwrap();
-    assert!(delete_theme(dir.path(), "Default").is_err());
+    let err = delete_theme(dir.path(), "Default").unwrap_err().to_string();
+    assert!(err.contains("built in"), "{err}");
+    assert!(!err.contains('-'), "{err}");
+    let err = save_theme(dir.path(), &sda_core::theme::Theme::default())
+        .unwrap_err()
+        .to_string();
+    assert!(!err.contains('-'), "{err}");
 }
 
 #[test]

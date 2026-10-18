@@ -1,4 +1,6 @@
-use sda_core::downloader::{parse_probe, DownloadRecord};
+use sda_core::downloader::{
+    parse_filepath_line, parse_probe, should_self_update, DownloadRecord, SELF_UPDATE_AFTER_SECS,
+};
 use std::path::PathBuf;
 
 #[test]
@@ -37,4 +39,29 @@ fn download_record_round_trips_through_json() {
     let json = serde_json::to_string(&r).unwrap();
     let back: DownloadRecord = serde_json::from_str(&json).unwrap();
     assert_eq!(back, r);
+}
+
+#[test]
+fn self_update_runs_when_stamp_missing_or_older_than_seven_days() {
+    assert_eq!(SELF_UPDATE_AFTER_SECS, 7 * 24 * 3600);
+    assert!(should_self_update(None));
+    assert!(should_self_update(Some(SELF_UPDATE_AFTER_SECS + 1)));
+    assert!(!should_self_update(Some(SELF_UPDATE_AFTER_SECS)));
+    assert!(!should_self_update(Some(0)));
+    assert!(!should_self_update(Some(24 * 3600)));
+}
+
+#[test]
+fn parse_filepath_line_reads_after_move_path() {
+    assert_eq!(
+        parse_filepath_line("FILEPATH|/tmp/out/My Song.mp4\n"),
+        Some(PathBuf::from("/tmp/out/My Song.mp4"))
+    );
+    assert_eq!(
+        parse_filepath_line("FILEPATH|/tmp/a|b.mp4"),
+        Some(PathBuf::from("/tmp/a|b.mp4"))
+    );
+    assert_eq!(parse_filepath_line("FILEPATH|"), None);
+    assert_eq!(parse_filepath_line("PROGRESS|1%|x|y|t"), None);
+    assert_eq!(parse_filepath_line("[download] Destination: x"), None);
 }
