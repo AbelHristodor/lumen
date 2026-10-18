@@ -458,8 +458,14 @@ fn text_pt_shrinks_to_fit() {
     let (l, t, r, d) = bright_bbox(&img).expect("text drawn");
     let (bl, bt) = ((0.06 * 320.0) as u32, (0.06 * 180.0) as u32);
     let (br, bd) = ((0.94 * 320.0) as u32, (0.94 * 180.0) as u32);
-    assert!(l + 2 >= bl && r <= br + 2, "x span {l}..{r} outside box {bl}..{br}");
-    assert!(t + 2 >= bt && d <= bd + 2, "y span {t}..{d} outside box {bt}..{bd}");
+    assert!(
+        l + 2 >= bl && r <= br + 2,
+        "x span {l}..{r} outside box {bl}..{br}"
+    );
+    assert!(
+        t + 2 >= bt && d <= bd + 2,
+        "y span {t}..{d} outside box {bt}..{bd}"
+    );
     assert!(t > bt, "first row {t} must sit below the box top {bt}");
     check("text_pt_shrinks_to_fit", &s);
 }
