@@ -288,7 +288,7 @@ Keep `MatchField` and `SearchHit` with `entry: &'a Hymn`.
 
   `extract` returns `ParsedPptx { number, title, slides: Vec<Slide> }` with the title picked from the plain text of the first slide as today.
 
-- [ ] **Step 5: Index.** In `index.rs` replace `HymnEntry` with `Hymn`, build `Hymn { slides: parsed.slides, .. }`, bump `CACHE_VERSION` to 8.
+- [ ] **Step 5: Index.** In `index.rs` replace `HymnEntry` with `Hymn`, build `Hymn { slides: parsed.slides, .. }`, bump `CACHE_VERSION` to 8. In `lib.rs` add `pub mod resolve; pub mod store; pub mod history; pub mod overrides; pub mod asis; pub mod bible;` and create each as a one line placeholder file `//! Filled in by a later task.` with `bible` as `bible/mod.rs`. Tasks 2 to 5 then never edit `lib.rs`.
 
 - [ ] **Step 6: Search.** In `search.rs` the indexed body is `fold(&entry.plain_slides().join("\n"))`. Add two ranking rules with tests in `tests/search_test.rs`: `quoted_query_requires_exact_phrase` asserts that `"\"se vor topi\""` matches hymn 150 and that `"\"topi se vor\""` matches nothing, implemented by stripping the quotes and requiring `body_folded.contains(&folded_query)` for every item; `exact_number_ranks_first` asserts that for query `1` the first hit has number `1` even though hymn 150 and 664b contain the digit, implemented by adding a bonus of `10_000` when `number_str == folded_query`. In `refresh.rs` rename types.
 
@@ -972,20 +972,20 @@ fn app() -> App { App::for_test() }   // Core with cfg_path None, Searcher over 
 
 ## Wave 4: tabs (parallel, disjoint files)
 
-Each task owns `src/state/<tab>.rs`, `src/view/<tab>.rs`, `src/msg/<tab>.rs`, and may append tests to `tests/views_test.rs` inside a module named after the tab. Nobody edits `app.rs`, `shell.rs`, or `msg.rs`. If you need a top level `Msg` that does not exist, use your tab's sub enum and handle it in your own `update`. Each `update(app: &mut App, msg: XMsg) -> Task<Msg>` has full access to `app.core` and `app.live`.
+Each task owns `src/state/<tab>.rs`, `src/view/<tab>.rs`, `src/msg/<tab>.rs`, and its own test file `tests/<tab>_test.rs` that calls `sda_app::App::for_test()`. Nobody edits `tests/views_test.rs` in this wave. Nobody edits `app.rs`, `shell.rs`, or `msg.rs`. If you need a top level `Msg` that does not exist, use your tab's sub enum and handle it in your own `update`. Each `update(app: &mut App, msg: XMsg) -> Task<Msg>` has full access to `app.core` and `app.live`.
 
 ### Task 12: Present tab
 
-**Files:** `src/state/present.rs`, `src/view/present.rs`, `src/msg/present.rs` (new, `PresentMsg`), tests module `present`.
+**Files:** `src/state/present.rs`, `src/view/present.rs`, `src/msg/present.rs` (new, `PresentMsg`), tests in `tests/present_test.rs`.
 
 **Interfaces:** `PresentState { query, hits: Vec<usize>, selected: Option<usize>, preview_slide: usize, scroll: scrollable::Id, as_is_busy: bool }`. `pub const SEARCH_ID: &str = "search"`. `state::present::run_search(app)`, `select(app, i)`, `move_selection(app, d)`, `go_live(app, slide)` implement `Msg::Search`, `Select`, `MoveSelection`, `GoLive`, `GoLiveAt`, `PreviewSlide`, `AsIsToggle`, `AsIsRendered`, `FocusSearch`. `app.rs` already routes those top level messages to these functions by name, written in Task 11 as calls to `state::present::*`, so keep the names.
 
 - [ ] **Step 1: Tests:**
 
 ```rust
-mod present {
-    use super::*;
-    #[test] fn typing_filters_and_selects_first() {
+use iced_test::{Simulator, selector}; use sda_app::{App, Msg};
+fn app() -> App { App::for_test() }
+#[test] fn typing_filters_and_selects_first() {
         let mut app = app(); let mut ui = Simulator::new(app.view_operator());
         ui.click(selector::id(iced::widget::Id::new(sda_app::state::present::SEARCH_ID))).unwrap(); ui.typewrite("664");
         for m in ui.into_messages() { let _ = app.update(m); }
@@ -1002,7 +1002,6 @@ mod present {
         let mut app = app(); let _ = app.update(Msg::Search("150".into())); let _ = app.update(Msg::GoLive); let _ = app.update(Msg::Search(String::new()));
         let mut ui = Simulator::new(app.view_operator()); assert!(ui.find(&*app.core.strings.recent).is_ok());
     }
-}
 ```
 
 - [ ] **Step 2: Implement** per spec 5.2 Present tab. Search box `text_input(hint, &query).id(SEARCH_ID).on_input(Msg::Search)`. Results in a `scrollable` of `button`s styled as rows: number bold, title, library chip. `MoveSelection` scrolls with `scrollable::snap_to` to keep the selection visible. Preview card: `card(scene_view(preview_scene))` where `preview_scene` builds a `Scene` from the selected hymn at `preview_slide` with `app.live.theme`, no transition. Below it a horizontal `scrollable` of slide thumbnails each a small `scene_view` sized 128x72 wrapped in a button `PreviewSlide(i)`, limit to the first 12 and show `+N` when more. Go Live button `accent_button` emits `GoLiveAt(preview_slide)`. Original toggle `toggler(label, overrides.as_is.get(path), AsIsToggle)` only when `app.core.converter.is_some()`. Right column: theme quick picker as a vertical list of theme names each with a 96x54 `scene_view` thumbnail of sample text, clicking emits `ThemesMsg::SetActive(name)` through `Msg::Themes`. Notes pane shows `slide.notes` or nothing. `go_live` builds `Presentation` with `SlideContent::Styled` per slide, or `Bitmap` paths when the override is on and `asis::cached` is `Some`, else spawns `workers::asis_render` and sets `as_is_busy`. Records history and saves it. Hymn title is `"{number} {title}"` and the footer per slide is `format!("{number} · {title}")`, or just the title when there is no number.
@@ -1011,7 +1010,7 @@ mod present {
 
 ### Task 13: Bible tab
 
-**Files:** `src/state/bible.rs`, `src/view/bible.rs`, `src/msg/bible.rs`, tests module `bible`.
+**Files:** `src/state/bible.rs`, `src/view/bible.rs`, `src/msg/bible.rs`, tests in `tests/bible_test.rs`.
 
 **Interfaces:** `BibleMsg { Reference(String), Version(String), Book(usize), Chapter(u32), ToggleVerse(u32), SelectRange(u32, u32), ClearSelection, Search(String), Present, ManageOpen, ManageClose, Download(String), Remove(String), IndexLoaded(Result<Vec<VersionInfo>, String>), Downloaded(Result<String, String>), Loaded(Result<Arc<Bible>, String>) }`. `BibleState { reference_input, version: Option<String>, bible: Option<Arc<Bible>>, book: usize, chapter: u32, selected: BTreeSet<u32>, query, results, manage_open, index: Vec<VersionInfo>, installed: Vec<String>, busy: Option<String>, error: Option<String> }`.
 
@@ -1022,7 +1021,7 @@ mod present {
 
 ### Task 14: Videos tab
 
-**Files:** `src/state/videos.rs`, `src/view/videos.rs`, `src/msg/videos.rs`, tests module `videos`.
+**Files:** `src/state/videos.rs`, `src/view/videos.rs`, `src/msg/videos.rs`, tests in `tests/videos_test.rs`.
 
 **Interfaces:** `VideosMsg { Url(String), Fetch, Probed(Result<Probe, String>), Quality(String), ChooseFolder, FolderChosen(Option<PathBuf>), Download, Event(DownloadEvent), Reveal(PathBuf) }`. `VideosState { url, probe: Option<Probe>, format_id: Option<String>, dir: PathBuf, phase: Phase, percent, speed, eta, title, message }`, `Phase { Idle, Probing, Ready, Downloading, Done(PathBuf), Failed }`.
 
@@ -1033,7 +1032,7 @@ mod present {
 
 ### Task 15: Themes tab
 
-**Files:** `src/state/themes.rs`, `src/view/themes.rs`, `src/view/theme_form.rs`, `src/msg/themes.rs`, tests module `themes`.
+**Files:** `src/state/themes.rs`, `src/view/themes.rs`, `src/view/theme_form.rs`, `src/msg/themes.rs`, tests in `tests/themes_test.rs`.
 
 **Interfaces:** `ThemesMsg { Select(usize), New, Duplicate, Delete, Save, SetActive(String), Favorite(bool), Draft(DraftEdit), PickImage, PickVideo, FilePicked(Option<PathBuf>), Tick }`. `DraftEdit` is an enum with one variant per form control: `Name(String), FontInherit(bool), Font(Font), SizeInherit(bool), SizeAuto(bool), SizePt(f32), BoldInherit(bool), Bold(bool), ColorInherit(bool), Color(Rgba), HAlignInherit(bool), HAlign(HAlign), VAlign(VAlign), SpacingInherit(bool), Spacing(f32), MarginInherit(bool), Margin(f32), Opacity(f32), ShadowOn(bool), ShadowColor(Rgba), ShadowOffset(f32), OutlineOn(bool), OutlineColor(Rgba), OutlineWidth(f32), BgKind(BgKind), BgSolid(Rgba), BgStop(usize, Rgba), BgAngle(f32), BgDrift(f32), BgParticleColor(Rgba), BgParticleCount(u32), BgParticleSpeed(f32), BgOpacity(f32), TransitionKind(TransitionKind), Duration(u32), Easing(Easing), PerSlide(u8), ShowReference(bool), ShowNumbers(bool), RefPos(RefPos), Footer(bool) }`. `ThemesState { draft: Theme, draft_index: usize, fonts: Vec<String>, preview_started: Instant, preview_flip: bool }`.
 
@@ -1044,7 +1043,7 @@ mod present {
 
 ### Task 16: Settings tab and screen picker
 
-**Files:** `src/state/settings.rs`, `src/view/settings.rs`, `src/view/screen_picker.rs`, `src/msg/settings.rs`, tests module `settings`.
+**Files:** `src/state/settings.rs`, `src/view/settings.rs`, `src/view/screen_picker.rs`, `src/msg/settings.rs`, tests in `tests/settings_test.rs`.
 
 **Interfaces:** `SettingsMsg { Section(Section), Language(Language), CheckUpdate, ForceSync, AddFolder, FolderPicked(Option<PathBuf>), RemoveFolder(String), EnableFolder(String, bool), DefaultDisplay(usize), Identify, DetectConverter, Detected(Option<Converter>), BibleDefault(String), RevealData }`. `Section { General, Library, Display, Presenting, About }`. `screen_picker::show(displays, selected, on_pick) -> Element` draws each display as a `container` positioned by its rect scaled to fit 360x200 using `canvas`, feature `canvas` must be added to the Iced features in `Cargo.toml` by this task, with a number label and a highlight on the selected one.
 
