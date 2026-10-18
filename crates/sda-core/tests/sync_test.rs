@@ -1,4 +1,4 @@
-use sda_core::sync::{sync_hymns, SyncOutcome};
+use sda_core::sync::{sync_file, sync_hymns, SyncOutcome};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpListener;
 use std::sync::{Arc, Mutex};
@@ -87,6 +87,27 @@ fn missing_library_folder_redownloads_even_with_matching_stamp() {
     assert!(dest.join("a.pptx").is_file());
     assert!(!tmp.path().join("hymns.zip.part").exists());
     assert!(!tmp.path().join("hymns.tmp").exists());
+}
+
+#[test]
+fn sync_file_downloads_then_unchanged() {
+    let etag = Arc::new(Mutex::new("\"f1\"".to_string()));
+    let body = b"bible bytes".to_vec();
+    let url = serve(body.clone(), etag);
+    let tmp = tempfile::tempdir().unwrap();
+    let dest = tmp.path().join("bibles").join("kjv.json");
+    let stamp = tmp.path().join("bibles").join("kjv.etag");
+
+    assert_eq!(sync_file(&url, &dest, &stamp).unwrap(), SyncOutcome::Downloaded);
+    assert_eq!(read(&dest), body);
+    assert_eq!(std::fs::read_to_string(&stamp).unwrap(), "\"f1\"");
+    assert!(!dest.with_extension("part").exists());
+
+    assert_eq!(sync_file(&url, &dest, &stamp).unwrap(), SyncOutcome::Unchanged);
+
+    std::fs::remove_file(&dest).unwrap();
+    assert_eq!(sync_file(&url, &dest, &stamp).unwrap(), SyncOutcome::Downloaded);
+    assert_eq!(read(&dest), body);
 }
 
 #[test]

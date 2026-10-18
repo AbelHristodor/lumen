@@ -44,6 +44,9 @@ pub struct Config {
     /// Index of the last-used output display. `None` => auto-pick.
     #[serde(default)]
     pub output_display: Option<i32>,
+    /// Id of the chosen Bible translation. `None` => none picked yet.
+    #[serde(default)]
+    pub bible_version: Option<String>,
 }
 
 impl Default for Config {
@@ -55,6 +58,7 @@ impl Default for Config {
             language: None,
             active_theme: None,
             output_display: None,
+            bible_version: None,
         }
     }
 }
@@ -133,6 +137,36 @@ pub fn tools_dir() -> Option<PathBuf> {
 
 pub fn themes_dir() -> Option<PathBuf> {
     dirs().map(|d| d.config_dir().join("themes"))
+}
+
+/// Folder holding downloaded Bible translations.
+pub fn bibles_dir() -> Option<PathBuf> {
+    dirs().map(|d| d.data_dir().join("bibles"))
+}
+
+/// Recently opened hymns.
+pub fn history_path() -> Option<PathBuf> {
+    dirs().map(|d| d.data_dir().join("history.json"))
+}
+
+/// Record of finished video downloads.
+pub fn downloads_path() -> Option<PathBuf> {
+    dirs().map(|d| d.data_dir().join("downloads.json"))
+}
+
+/// Per hymn user overrides.
+pub fn overrides_path() -> Option<PathBuf> {
+    dirs().map(|d| d.data_dir().join("overrides.json"))
+}
+
+/// Saved main window geometry.
+pub fn window_path() -> Option<PathBuf> {
+    dirs().map(|d| d.data_dir().join("window.json"))
+}
+
+/// Rendered slide images for hymns shown as is.
+pub fn asis_cache_dir() -> Option<PathBuf> {
+    dirs().map(|d| d.cache_dir().join("asis"))
 }
 
 /// The configured download directory, else the OS Downloads folder, else home.
@@ -240,6 +274,7 @@ mod tests {
             language: None,
             active_theme: None,
             output_display: None,
+            bible_version: None,
         };
         let text = cfg.to_toml().unwrap();
         let back = Config::from_toml(&text).unwrap();
@@ -272,6 +307,7 @@ mod tests {
             language: None,
             active_theme: None,
             output_display: None,
+            bible_version: None,
         };
         let back = Config::from_toml(&cfg.to_toml().unwrap()).unwrap();
         assert_eq!(back.download_dir, Some("/home/user/Videos".into()));
@@ -286,6 +322,7 @@ mod tests {
             language: Some("ro".into()),
             active_theme: Some("Sunset".into()),
             output_display: Some(2),
+            bible_version: None,
         };
         let back = Config::from_toml(&cfg.to_toml().unwrap()).unwrap();
         assert_eq!(back.language, Some("ro".into()));
@@ -321,6 +358,7 @@ mod tests {
             language: None,
             active_theme: None,
             output_display: None,
+            bible_version: None,
         };
         set_library_enabled(&mut cfg, "/tmp/u", false);
         assert!(!cfg.libraries[0].enabled);
@@ -339,6 +377,7 @@ mod tests {
             language: None,
             active_theme: None,
             output_display: None,
+            bible_version: None,
         };
         set_library_enabled(&mut cfg, "/data/default", false);
         assert!(!cfg.libraries[0].enabled);
@@ -378,6 +417,19 @@ mod tests {
     }
 
     #[test]
+    fn config_without_bible_version_parses() {
+        let cfg = Config::from_toml("libraries = []\n").unwrap();
+        assert_eq!(cfg.bible_version, None);
+    }
+
+    #[test]
+    fn bible_version_round_trips() {
+        let cfg = Config { bible_version: Some("kjv".into()), ..Config::default() };
+        let back = Config::from_toml(&cfg.to_toml().unwrap()).unwrap();
+        assert_eq!(back.bible_version, Some("kjv".into()));
+    }
+
+    #[test]
     fn remove_user_library_removes_user_but_not_default() {
         let mut cfg = Config {
             hymns_url: "x".into(),
@@ -389,6 +441,7 @@ mod tests {
             language: None,
             active_theme: None,
             output_display: None,
+            bible_version: None,
         };
         remove_user_library(&mut cfg, "/tmp/mine");
         assert_eq!(cfg.libraries.len(), 1);
