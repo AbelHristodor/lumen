@@ -1,6 +1,6 @@
 //! Background pipelines. Only the solid color pass exists for now.
 
-use crate::scene::Viewport;
+use crate::srgb_constant;
 use sda_core::theme::Rgba;
 
 /// Uniform block for `solid.wgsl`. Color is encoded sRGB in 0..1 and the
@@ -25,7 +25,7 @@ impl SolidPipeline {
         });
         let uniform = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("solid uniform"),
-            size: std::mem::size_of::<SolidUniform>() as u64,
+            size: size_of::<SolidUniform>() as u64,
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -55,6 +55,7 @@ impl SolidPipeline {
             bind_group_layouts: &[&layout],
             push_constant_ranges: &[],
         });
+        let constants = srgb_constant(format);
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("solid pipeline"),
             layout: Some(&pipeline_layout),
@@ -70,10 +71,13 @@ impl SolidPipeline {
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
                 entry_point: Some("fs_main"),
-                compilation_options: Default::default(),
+                compilation_options: wgpu::PipelineCompilationOptions {
+                    constants: &constants,
+                    ..Default::default()
+                },
                 targets: &[Some(wgpu::ColorTargetState {
                     format,
-                    blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+                    blend: None,
                     write_mask: wgpu::ColorWrites::ALL,
                 })],
             }),
@@ -99,30 +103,8 @@ impl SolidPipeline {
         queue.write_buffer(&self.uniform, 0, bytemuck::bytes_of(&u));
     }
 
-    /// Clear to black and draw the color over it inside `vp`.
-    pub fn render(
-        &self,
-        encoder: &mut wgpu::CommandEncoder,
-        view: &wgpu::TextureView,
-        vp: Viewport,
-    ) {
-        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            label: Some("solid"),
-            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                view,
-                depth_slice: None,
-                resolve_target: None,
-                ops: wgpu::Operations {
-                    load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
-                    store: wgpu::StoreOp::Store,
-                },
-            })],
-            depth_stencil_attachment: None,
-            timestamp_writes: None,
-            occlusion_query_set: None,
-        });
-        pass.set_viewport(vp.x as f32, vp.y as f32, vp.w as f32, vp.h as f32, 0.0, 1.0);
-        pass.set_scissor_rect(vp.x, vp.y, vp.w, vp.h);
+    /// Fill the whole viewport with the prepared color.
+    pub fn draw(&self, pass: &mut wgpu::RenderPass<'_>) {
         pass.set_pipeline(&self.pipeline);
         pass.set_bind_group(0, &self.bind_group, &[]);
         pass.draw(0..3, 0..1);

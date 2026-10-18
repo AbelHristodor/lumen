@@ -15,6 +15,10 @@ pub struct Scene {
     pub size: (u32, u32),
     pub background: BackgroundState,
     /// 0 hides the background, 1 shows it at full strength.
+    ///
+    /// Renderer wide rule: opacity multiplies the encoded sRGB color before
+    /// any conversion to linear, so half opacity over black stores half the
+    /// byte value. Every pass applies opacity and alpha this same way.
     pub background_opacity: f32,
     pub current: Option<Layer>,
     /// The slide on its way out and its transition progress in 0..1.

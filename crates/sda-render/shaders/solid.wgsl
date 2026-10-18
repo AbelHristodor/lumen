@@ -2,9 +2,11 @@
 // the clip space square. The fragment stage writes the uniform color.
 //
 // The color arrives as encoded sRGB bytes scaled to 0..1 plus an opacity.
-// Opacity is applied in encoded space so half opacity reads as half
-// brightness in a saved frame. The result is converted to linear because
-// the target is an sRGB format and the hardware encodes it on store.
+// Opacity multiplies the encoded color, see `Scene::background_opacity`.
+// When the target is an sRGB format the result is converted to linear
+// because the hardware encodes it again on store.
+
+override srgb_target: u32 = 1u;
 
 struct Solid {
     color: vec4<f32>,
@@ -19,7 +21,10 @@ fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
     return vec4<f32>(x, y, 0.0, 1.0);
 }
 
-fn srgb_to_linear(c: vec3<f32>) -> vec3<f32> {
+fn to_target(c: vec3<f32>) -> vec3<f32> {
+    if srgb_target == 0u {
+        return c;
+    }
     let lo = c / 12.92;
     let hi = pow((c + 0.055) / 1.055, vec3<f32>(2.4));
     return select(hi, lo, c <= vec3<f32>(0.04045));
@@ -28,5 +33,5 @@ fn srgb_to_linear(c: vec3<f32>) -> vec3<f32> {
 @fragment
 fn fs_main() -> @location(0) vec4<f32> {
     let dimmed = solid.color.rgb * solid.color.a;
-    return vec4<f32>(srgb_to_linear(dimmed), 1.0);
+    return vec4<f32>(to_target(dimmed), 1.0);
 }
