@@ -305,13 +305,145 @@ fn video_background_installs_for_the_matching_theme_and_drops_on_change() {
         "a new background drops the decoder"
     );
 
+    let library = app.status.library.clone();
+    app.live.set_theme(theme.clone());
     let _ = app.update(Msg::BackgroundReady(
         BgTarget::Live,
         theme.background.clone(),
         Err("ffmpeg not found".into()),
     ));
+    assert!(
+        !app.status.library_error,
+        "a background error is not a library error"
+    );
+    assert_eq!(
+        app.status.library, library,
+        "the hymn count stays in the chip"
+    );
+    let notice = app.status.notice.clone().expect("notice set");
+    assert!(notice.contains("ffmpeg not found"));
+    {
+        let mut ui = Simulator::new(app.view_operator());
+        assert!(ui.find(&*notice).is_ok());
+    }
+
+    let _ = app.update(Msg::BackgroundReady(
+        BgTarget::Live,
+        theme.background.clone(),
+        Ok(BackgroundAsset::Video(FrameSource::new((16, 9)))),
+    ));
+    assert!(
+        app.status.notice.is_none(),
+        "a later success clears the notice"
+    );
+}
+
+#[test]
+fn preview_and_live_share_one_decoder_for_the_same_video() {
+    use sda_app::msg::{BackgroundAsset, BgTarget, ThemesMsg};
+    use sda_core::theme::{Background, Theme, store};
+    use sda_render::FrameSource;
+    use std::path::PathBuf;
+    use std::sync::Arc;
+    let mut app = app();
+    let theme = Theme {
+        name: "Clip".into(),
+        background: Background::Video {
+            path: PathBuf::from("/tmp/bg.mp4"),
+        },
+        ..Theme::default()
+    };
+    store::save_theme(&app.core.paths.themes_dir, &theme).unwrap();
+    app.core.reload_themes();
+    let _ = app.update(Msg::Themes(ThemesMsg::SetActive("Clip".into())));
+    let src = FrameSource::new((16, 9));
+    let _ = app.update(Msg::BackgroundReady(
+        BgTarget::Live,
+        theme.background.clone(),
+        Ok(BackgroundAsset::Video(src.clone())),
+    ));
+    let i = sda_app::state::themes::sorted_themes(&app.core)
+        .iter()
+        .position(|t| t.name == "Clip")
+        .unwrap();
+    let _ = app.update(Msg::Themes(ThemesMsg::Select(i)));
+    let shared = app
+        .themes
+        .preview
+        .video
+        .as_ref()
+        .expect("preview adopted the live decoder");
+    assert!(Arc::ptr_eq(shared, &src));
+    assert!(!app.themes.preview.background_pending());
+
+    let other = FrameSource::new((16, 9));
+    let _ = app.update(Msg::BackgroundReady(
+        BgTarget::ThemePreview,
+        theme.background.clone(),
+        Ok(BackgroundAsset::Video(other)),
+    ));
+    assert!(
+        Arc::ptr_eq(app.themes.preview.video.as_ref().unwrap(), &src),
+        "a second decoder for the same file is dropped"
+    );
+}
+
+#[test]
+fn window_geometry_saves_only_the_latest_change_and_loads_back() {
+    use iced::{Point, Size};
+    use sda_app::app::WindowGeom;
+    use sda_core::store::json_load;
+    let mut app = app();
+    let path = app.core.paths.window.clone();
+    let other = iced::window::Id::unique();
+    let _ = app.update(Msg::WindowMoved(other, Point::new(5.0, 5.0)));
+    assert!(app.window_geom.is_none(), "other windows are ignored");
+    assert_eq!(app.window_geom_seq, 0);
+
+    let _ = app.update(Msg::WindowMoved(app.operator, Point::new(40.0, 60.0)));
+    let first = app.window_geom_seq;
+    let _ = app.update(Msg::WindowResized(app.operator, Size::new(1000.0, 700.0)));
+    let second = app.window_geom_seq;
+    assert!(second > first);
+
+    let _ = app.update(Msg::SaveWindow(first));
+    assert!(!path.exists(), "a stale debounce timer writes nothing");
+    let _ = app.update(Msg::SaveWindow(second));
+    let saved: Option<WindowGeom> = json_load(&path);
+    assert_eq!(
+        saved,
+        Some(WindowGeom {
+            x: 40.0,
+            y: 60.0,
+            w: 1000.0,
+            h: 700.0,
+        })
+    );
+}
+
+#[test]
+fn status_chip_colors_follow_the_library_state_and_cuts_long_text() {
+    use sda_app::view::shell::{CHIP_CHARS, shorten};
+    let mut app = app();
+    let long = "x".repeat(CHIP_CHARS + 20);
+    let _ = app.update(Msg::Synced(Err(long.clone())));
+    let short = shorten(&app.status.library, CHIP_CHARS);
+    assert_eq!(short.chars().count(), CHIP_CHARS);
+    assert!(short.ends_with('…'));
+    {
+        let mut ui = Simulator::new(app.view_operator());
+        assert!(ui.find(&*short).is_ok(), "the chip shows the cut text");
+    }
+    let _ = app.update(Msg::UpdateChecked("3.1.0".into(), true));
     assert!(app.status.library_error);
-    assert_eq!(app.status.library, app.core.strings.worker_failed);
+    let _ = app.update(Msg::ForceSync);
+    assert!(app.status.sync_busy);
+    assert!(!app.status.library_error, "a new sync clears the error");
+    let mut ui = Simulator::new(app.view_operator());
+    assert!(
+        ui.find(&*app.core.strings.update_available).is_ok(),
+        "update button shows once the library is fine"
+    );
 }
 
 #[test]

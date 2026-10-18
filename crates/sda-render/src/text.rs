@@ -14,7 +14,11 @@ use sda_core::theme::{BundledFont, Font, HAlign, Rgba, TextSize, VAlign};
 /// Width of a PPTX slide in points. A `Pt` size is a point on a slide this
 /// wide, so pixels per point is the scene width over this.
 const SLIDE_WIDTH_PT: f32 = 720.0;
+/// Smallest Auto size in points on a 720 pt wide slide. Scaled to the
+/// scene width like `Pt` sizes so a thumbnail does not overflow.
 const AUTO_MIN_PT: f32 = 12.0;
+/// Floor for the scaled minimum, in pixels.
+const AUTO_MIN_PX: f32 = 4.0;
 const AUTO_MAX_PT: f32 = 400.0;
 const FOOTER_SCALE: f32 = 0.03;
 const FOOTER_MARGIN: f32 = 0.02;
@@ -138,7 +142,7 @@ impl TextRaster {
                     measure(&buffer)
                 },
                 (rect.w, rect.h),
-                AUTO_MIN_PT,
+                (AUTO_MIN_PT * px_per_pt).max(AUTO_MIN_PX),
                 AUTO_MAX_PT,
             )
         } else {

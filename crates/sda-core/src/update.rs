@@ -9,6 +9,9 @@ const REPO_OWNER: &str = "AbelHristodor";
 const REPO_NAME: &str = "sda_manager";
 const BIN_NAME: &str = "sda-manager";
 
+/// Web page of the newest release, for the update chip.
+pub const RELEASES_URL: &str = "https://github.com/AbelHristodor/sda_manager/releases/latest";
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum UpdateOutcome {
     UpToDate,

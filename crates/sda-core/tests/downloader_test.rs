@@ -62,6 +62,7 @@ fn parse_filepath_line_reads_after_move_path() {
         Some(PathBuf::from("/tmp/a|b.mp4"))
     );
     assert_eq!(parse_filepath_line("FILEPATH|"), None);
+    assert_eq!(parse_filepath_line("FILEPATH|NA"), None);
     assert_eq!(parse_filepath_line("PROGRESS|1%|x|y|t"), None);
     assert_eq!(parse_filepath_line("[download] Destination: x"), None);
 }

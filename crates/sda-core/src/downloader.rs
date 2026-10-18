@@ -464,10 +464,12 @@ fn maybe_self_update(ytdlp: &Path) {
     let Some(stamp) = ytdlp_update_stamp() else {
         return;
     };
+    // Hold the lock before reading the stamp so two downloads started
+    // together cannot both see an old stamp and both run the update.
+    let active = ACTIVE_DOWNLOADS.lock().unwrap_or_else(|e| e.into_inner());
     if !should_self_update(stamp_age_secs(&stamp)) {
         return;
     }
-    let active = ACTIVE_DOWNLOADS.lock().unwrap_or_else(|e| e.into_inner());
     if *active > 0 {
         log::info!("yt-dlp self update skipped, a download is running");
         return;
@@ -504,7 +506,8 @@ const FILEPATH_TEMPLATE: &str = "after_move:FILEPATH|%(filepath)s";
 /// Returns `None` for any other line or an empty path.
 pub fn parse_filepath_line(line: &str) -> Option<PathBuf> {
     let rest = line.trim().strip_prefix("FILEPATH|")?.trim();
-    (!rest.is_empty()).then(|| PathBuf::from(rest))
+    // yt-dlp prints `NA` when the template field has no value.
+    (!rest.is_empty() && rest != "NA").then(|| PathBuf::from(rest))
 }
 
 /// Download a single video from `url` into `dir`, reporting `DownloadEvent`s

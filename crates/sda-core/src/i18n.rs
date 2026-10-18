@@ -236,6 +236,9 @@ pub struct Strings {
     pub single_display_hint: String,
     pub identify_hint: String,
     pub font_licenses: String,
+    pub background_failed_fmt: String, // one `{}` = error
+    pub videos_empty: String,
+    pub bible_pick_chapter: String,
 }
 
 impl Strings {
@@ -421,6 +424,9 @@ impl Strings {
             &self.single_display_hint,
             &self.identify_hint,
             &self.font_licenses,
+            &self.background_failed_fmt,
+            &self.videos_empty,
+            &self.bible_pick_chapter,
         ]
     }
 
@@ -527,7 +533,7 @@ impl Strings {
             videos_history: "Download history".into(),
             theme_duplicate: "Duplicate".into(),
             theme_favorite: "Favorite".into(),
-            theme_inherit: "Inherit from".into(),
+            theme_inherit: "Inherit from the file".into(),
             theme_text: "Text".into(),
             theme_background: "Background".into(),
             theme_transition: "Transition".into(),
@@ -597,6 +603,9 @@ impl Strings {
             single_display_hint: "Only one display is connected. Plug in a projector to present on a second screen.".into(),
             identify_hint: "Shows a number on each display for a few seconds.".into(),
             font_licenses: "Inter, Noto Serif, and Lora use the SIL Open Font License. Roboto Slab uses the Apache 2.0 license.".into(),
+            background_failed_fmt: "Background could not load: {}".into(),
+            videos_empty: "Paste a YouTube link above to fetch its details.".into(),
+            bible_pick_chapter: "Pick a book and a chapter to see the verses.".into(),
         }
     }
 
@@ -703,7 +712,7 @@ impl Strings {
             videos_history: "Cronologia download".into(),
             theme_duplicate: "Duplica".into(),
             theme_favorite: "Preferito".into(),
-            theme_inherit: "Eredita da".into(),
+            theme_inherit: "Eredita dal file".into(),
             theme_text: "Testo".into(),
             theme_background: "Sfondo".into(),
             theme_transition: "Transizione".into(),
@@ -752,9 +761,9 @@ impl Strings {
             align_left: "Sinistra".into(),
             align_center: "Centro".into(),
             align_right: "Destra".into(),
-            align_top: "Alto".into(),
-            align_middle: "Mezzo".into(),
-            align_bottom: "Basso".into(),
+            align_top: "In alto".into(),
+            align_middle: "Al centro".into(),
+            align_bottom: "In basso".into(),
             angle: "Angolo".into(),
             drift: "Deriva".into(),
             speed: "Velocità".into(),
@@ -773,6 +782,9 @@ impl Strings {
             single_display_hint: "È collegato un solo schermo. Collega un proiettore per presentare su un secondo schermo.".into(),
             identify_hint: "Mostra un numero su ogni schermo per qualche secondo.".into(),
             font_licenses: "Inter, Noto Serif e Lora usano la licenza SIL Open Font. Roboto Slab usa la licenza Apache 2.0.".into(),
+            background_failed_fmt: "Sfondo non caricato: {}".into(),
+            videos_empty: "Incolla un link YouTube qui sopra per leggerne i dettagli.".into(),
+            bible_pick_chapter: "Scegli un libro e un capitolo per vedere i versetti.".into(),
         }
     }
 
@@ -879,7 +891,7 @@ impl Strings {
             videos_history: "Istoric descărcări".into(),
             theme_duplicate: "Duplică".into(),
             theme_favorite: "Favorit".into(),
-            theme_inherit: "Moștenește de la".into(),
+            theme_inherit: "Moștenește din fișier".into(),
             theme_text: "Text".into(),
             theme_background: "Fundal".into(),
             theme_transition: "Tranziție".into(),
@@ -949,6 +961,9 @@ impl Strings {
             single_display_hint: "Este conectat un singur ecran. Conectează un proiector pentru a prezenta pe un al doilea ecran.".into(),
             identify_hint: "Afișează un număr pe fiecare ecran pentru câteva secunde.".into(),
             font_licenses: "Inter, Noto Serif și Lora folosesc licența SIL Open Font. Roboto Slab folosește licența Apache 2.0.".into(),
+            background_failed_fmt: "Fundalul nu s-a încărcat: {}".into(),
+            videos_empty: "Lipește un link YouTube mai sus pentru a-i citi detaliile.".into(),
+            bible_pick_chapter: "Alege o carte și un capitol pentru a vedea versetele.".into(),
         }
     }
 }

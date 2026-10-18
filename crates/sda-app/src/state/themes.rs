@@ -356,6 +356,7 @@ fn sync_preview(app: &mut App) -> Task<Msg> {
     if t.preview.theme != shown {
         t.preview.set_theme(shown);
     }
+    t.preview.adopt_video(&app.live);
     let keys: Vec<u64> = app.core.themes.iter().map(Theme::cache_key).collect();
     t.thumbs.retain(|k, _| keys.contains(k));
     for theme in &app.core.themes {
@@ -373,6 +374,8 @@ fn sync_preview(app: &mut App) -> Task<Msg> {
 fn apply_live(app: &mut App, theme: Theme) -> Task<Msg> {
     app.core.set_active_theme(theme.clone());
     app.live.set_theme(theme);
+    app.live.adopt_video(&app.themes.preview);
+    app.status.notice = None;
     workers::background(BgTarget::Live, &app.live)
 }
 

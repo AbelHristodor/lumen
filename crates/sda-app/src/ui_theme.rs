@@ -2,7 +2,7 @@
 //! corners, a 12 px grid. Every button and card goes through here.
 
 use iced::theme::{Palette, palette};
-use iced::widget::{button, container};
+use iced::widget::{button, container, rule};
 use iced::{Border, Color, Shadow, Theme, Vector};
 use std::sync::OnceLock;
 
@@ -136,5 +136,15 @@ pub fn segment_track(_theme: &Theme) -> container::Style {
         background: Some(SURFACE.into()),
         border: Border::default().rounded(RADIUS + 2.0),
         ..container::Style::default()
+    }
+}
+
+/// Faint 1 px line between the header and the body.
+pub fn hairline(_theme: &Theme) -> rule::Style {
+    rule::Style {
+        color: SURFACE_HI,
+        radius: 0.0.into(),
+        fill_mode: rule::FillMode::Full,
+        snap: true,
     }
 }

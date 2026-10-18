@@ -221,8 +221,7 @@ fn switch_version(app: &mut App, code: String) -> Task<Msg> {
 }
 
 /// Load the saved version when nothing is loaded yet. Safe to call often.
-/// `app.rs` can call this on `Msg::Tab(Tab::Bible)`, the view also sends
-/// `BibleMsg::Opened` when the cursor enters the tab body.
+/// `app.rs` calls this on `Msg::Tab(Tab::Bible)`.
 pub fn opened(app: &mut App) -> Task<Msg> {
     let dir = app.core.paths.bibles_dir.clone();
     app.bible.installed = installed_versions(&dir);

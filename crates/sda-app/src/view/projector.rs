@@ -22,7 +22,7 @@ pub fn show(app: &App) -> Element<'_, Msg> {
         .width(Fill)
         .height(Fill);
     mouse_area(scene)
-        .interaction(mouse::Interaction::None)
+        .interaction(mouse::Interaction::Hidden)
         .into()
 }
 

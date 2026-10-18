@@ -16,7 +16,10 @@ use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::time::Instant;
+use std::time::{Duration, Instant};
+
+/// How long the window must stay still before its geometry is written.
+pub const WINDOW_SAVE_AFTER: Duration = Duration::from_millis(500);
 
 /// Text shown in the top right chip.
 #[derive(Debug, Clone, Default)]
@@ -28,6 +31,9 @@ pub struct Status {
     pub update: Option<String>,
     /// True when a new version was staged. The chip shows a short label.
     pub update_staged: bool,
+    /// A warning that is not about the library, such as a background file
+    /// that failed to load. Cleared when the next background loads.
+    pub notice: Option<String>,
 }
 
 /// Saved operator window geometry in logical points.
@@ -37,6 +43,25 @@ pub struct WindowGeom {
     pub y: f32,
     pub w: f32,
     pub h: f32,
+}
+
+impl WindowGeom {
+    pub const DEFAULT: WindowGeom = WindowGeom {
+        x: 0.0,
+        y: 0.0,
+        w: 1280.0,
+        h: 800.0,
+    };
+}
+
+/// Operator window moves and resizes. Other window events are dropped here
+/// so `update` never sees a redraw stream.
+fn window_geometry(event: iced::Event, _: event::Status, id: window::Id) -> Option<Msg> {
+    match event {
+        iced::Event::Window(window::Event::Moved(p)) => Some(Msg::WindowMoved(id, p)),
+        iced::Event::Window(window::Event::Resized(s)) => Some(Msg::WindowResized(id, s)),
+        _ => None,
+    }
 }
 
 pub struct App {
@@ -57,6 +82,9 @@ pub struct App {
     /// False when wgpu is unavailable. Scenes then show as plain text.
     pub gpu_ok: bool,
     pub window_geom: Option<WindowGeom>,
+    /// Bumped on every move or resize. A `SaveWindow` carrying an older
+    /// value is a debounce timer that lost the race and does nothing.
+    pub window_geom_seq: u64,
     /// Windows opened by Identify.
     pub identify: Vec<window::Id>,
     /// The last frame time. Views draw the live scene at this instant.
@@ -86,6 +114,7 @@ impl App {
             displays: Vec::new(),
             gpu_ok,
             window_geom: None,
+            window_geom_seq: 0,
             identify: Vec::new(),
             now: Instant::now(),
         }
@@ -188,8 +217,12 @@ impl App {
     }
 
     pub fn subscription(&self) -> Subscription<Msg> {
+        // The projector has no decorations, so a close request only comes
+        // from the OS. The default `exit_on_close_request` lets Iced close
+        // that window itself and `close_events` then clears our state.
         let mut subs = vec![
             event::listen_with(shortcuts::filter),
+            event::listen_with(window_geometry),
             window::close_events().map(Msg::ProjectorClosed),
         ];
         if self.live.animating() {
@@ -210,6 +243,16 @@ impl App {
         self.core.searcher = Some(searcher);
         present::run_search(self);
         Some(len)
+    }
+
+    /// Start the debounce timer for the window geometry.
+    fn save_window_later(&mut self) -> Task<Msg> {
+        self.window_geom_seq += 1;
+        let seq = self.window_geom_seq;
+        Task::perform(
+            async { tokio::time::sleep(WINDOW_SAVE_AFTER).await },
+            move |_| Msg::SaveWindow(seq),
+        )
     }
 
     pub fn update(&mut self, msg: Msg) -> Task<Msg> {
@@ -306,18 +349,29 @@ impl App {
                     BgTarget::ThemePreview => &mut self.themes.preview,
                 };
                 match result {
-                    Ok(asset) => live.install_background(&bg, asset),
+                    Ok(asset) => {
+                        live.install_background(&bg, asset);
+                        // The other state may wait on the same file.
+                        let (a, b) = (&mut self.live, &mut self.themes.preview);
+                        match target {
+                            BgTarget::Live => b.adopt_video(a),
+                            BgTarget::ThemePreview => a.adopt_video(b),
+                        }
+                        if target == BgTarget::Live {
+                            self.status.notice = None;
+                        }
+                    }
                     Err(e) => {
                         log::warn!("background load failed: {e}");
-                        if target == BgTarget::Live {
-                            self.status.library = s.worker_failed;
-                            self.status.library_error = true;
+                        if target == BgTarget::Live && self.live.theme.background == bg {
+                            self.status.notice = Some(s.background_failed_fmt.replace("{}", &e));
                         }
                     }
                 }
             }
             Msg::ForceSync => {
                 self.status.sync_busy = true;
+                self.status.library_error = false;
                 self.status.library = s.status_re_cloning;
                 return workers::force_sync(&self.core);
             }
@@ -342,31 +396,33 @@ impl App {
                 self.displays = list;
             }
             Msg::FontsListed(fonts) => self.themes.fonts = fonts,
-            Msg::WindowMoved(p) => {
-                let g = self.window_geom.get_or_insert(WindowGeom {
-                    x: 0.0,
-                    y: 0.0,
-                    w: 1280.0,
-                    h: 800.0,
-                });
-                g.x = p.x;
-                g.y = p.y;
+            Msg::WindowMoved(id, p) => {
+                if id == self.operator {
+                    let g = self.window_geom.get_or_insert(WindowGeom::DEFAULT);
+                    g.x = p.x;
+                    g.y = p.y;
+                    return self.save_window_later();
+                }
             }
-            Msg::WindowResized(size) => {
-                let g = self.window_geom.get_or_insert(WindowGeom {
-                    x: 0.0,
-                    y: 0.0,
-                    w: 1280.0,
-                    h: 800.0,
-                });
-                g.w = size.width;
-                g.h = size.height;
+            Msg::WindowResized(id, size) => {
+                if id == self.operator {
+                    let g = self.window_geom.get_or_insert(WindowGeom::DEFAULT);
+                    g.w = size.width;
+                    g.h = size.height;
+                    return self.save_window_later();
+                }
             }
-            Msg::SaveWindow => {
-                if let Some(g) = self.window_geom
+            Msg::SaveWindow(seq) => {
+                if seq == self.window_geom_seq
+                    && let Some(g) = self.window_geom
                     && let Err(e) = json_save(&self.core.paths.window, &g)
                 {
                     log::warn!("saving window geometry failed: {e}");
+                }
+            }
+            Msg::OpenReleases => {
+                if let Err(e) = open::that_detached(sda_core::update::RELEASES_URL) {
+                    log::warn!("opening the release page failed: {e}");
                 }
             }
             Msg::Noop => {}

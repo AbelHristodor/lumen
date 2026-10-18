@@ -83,10 +83,27 @@ impl LiveState {
             return;
         }
         match asset {
-            BackgroundAsset::Video(src) => self.video = Some(src),
+            BackgroundAsset::Video(src) => {
+                // Two workers for one path can both land. The first decoder
+                // stays and the dropped Arc kills its ffmpeg.
+                if self.video.is_none() {
+                    self.video = Some(src);
+                }
+            }
             BackgroundAsset::Still(path, img) => {
                 self.bitmaps.insert(path, img);
             }
+        }
+    }
+
+    /// Reuse `other`'s running decoder when both show the same video, so
+    /// one ffmpeg feeds the projector and the Themes preview.
+    pub fn adopt_video(&mut self, other: &LiveState) {
+        if self.video.is_some() || self.theme.background != other.theme.background {
+            return;
+        }
+        if let (Background::Video { .. }, Some(src)) = (&self.theme.background, &other.video) {
+            self.video = Some(src.clone());
         }
     }
 
@@ -190,8 +207,10 @@ impl LiveState {
     }
 
     /// True while a transition runs or the background moves on its own.
+    /// A started transition counts until `settle` clears it on a tick, so
+    /// the frame clock always delivers the final frame.
     pub fn animating(&self) -> bool {
-        self.progress(Instant::now()).is_some() || self.theme.background.is_animated()
+        self.started.is_some() || self.theme.background.is_animated()
     }
 
     fn footer(&self) -> Option<&str> {
