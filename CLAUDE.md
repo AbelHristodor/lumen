@@ -4,110 +4,174 @@ This file guides Claude Code when working in this repository.
 
 ## What this is
 
-SDA Manager 2.0.0 is a desktop app for projecting hymns. It is written in Rust
-with eframe/egui 0.36. There is one operator screen. The search panel is on the
-left. The Preview card and the Live card are on the right. Settings and Videos
-open as egui windows. The projector is an immediate egui viewport shown
-fullscreen on a chosen display.
+SDA Manager 3.0.0 is a desktop app for projecting hymns and Bible verses. It is
+written in Rust with Iced 0.14 and a wgpu renderer. There is one operator
+window with five tabs: Present, Bible, Videos, Themes, Settings. A Live strip
+stays visible across tabs and shows what the projector shows. The projector is
+a second Iced window shown fullscreen on a chosen display.
 
 Hymns are `.pptx` files. Search matches number, title, filename, and lyrics. It
 is fuzzy and ignores accents, so `plecati` finds *Plecaţi-vă*. The hymnal comes
-from the `hymns.zip` asset of the latest GitHub release with ETag sync. The app
-also checks GitHub Releases for new versions.
+from the `hymns.zip` asset of the latest GitHub release with ETag sync. Bibles
+come from the thiagobodruk/bible repository pinned at one commit. The app also
+checks GitHub Releases for new versions.
 
 ## Commands
 
 ```sh
-cargo build --release -p sda-gui      # -> target/release/sda-manager
-cargo run -p sda-gui                  # run in debug
-cargo test -p sda-core                # all core tests
+cargo build --release -p sda-app      # -> target/release/sda-manager
+cargo run -p sda-app                  # run in debug
+cargo test --workspace                # everything
+cargo test -p sda-core                # core tests
 cargo test -p sda-core search         # one test file
 cargo test -p sda-core -- matches_by_number   # one test by name
-cargo test -p sda-gui                 # the fonts unit test
-RUST_LOG=sda_manager=debug,sda_core=debug cargo run -p sda-gui   # verbose logs
+cargo test -p sda-render              # headless goldens, skip without a GPU
+UPDATE_GOLDENS=1 cargo test -p sda-render     # rewrite the golden PNGs
+cargo test -p sda-app                 # iced_test simulator tests
+cargo clippy --workspace --all-targets -- -D warnings
+RUST_LOG=sda_app=debug,sda_core=debug,sda_render=debug cargo run -p sda-app
 ```
 
-The binary log target is `sda_manager`. Run `cargo clippy` for lints.
+Log targets are `sda_app`, `sda_core`, and `sda_render`. The default filter
+is `info` for all three. Rust 1.88 or newer. `sda-app` and `sda-render` use
+edition 2024 and let chains.
 
 ### Releases and distribution
 
 - Releases are built by `.github/workflows/release.yml` by manual trigger only.
-  It takes a `version` input like `v2.0.0`. It builds natively on `macos-14`,
-  `windows-latest`, and `ubuntu-latest`. It publishes a GitHub Release with one archive per target.
-- `install.sh` (macOS/Linux) and `install.ps1` (Windows) are one-liner installers
-  that fetch the latest `sda-manager` asset. The README has the commands.
+  It takes a `version` input like `v3.0.0`. A `test` job runs
+  `cargo test --workspace` and clippy on `macos-14`, `windows-latest`, and
+  `ubuntu-latest`. The `build` job needs `test` and builds `-p sda-app` on the
+  same three runners. It publishes a GitHub Release with one archive per
+  target: `sda-manager-<target>.tar.gz` for macOS and Linux and
+  `sda-manager-<target>.zip` for Windows.
+- Linux CI installs `libxkbcommon-dev libwayland-dev libxcb-render0-dev
+  libxcb-shape0-dev libxcb-xfixes0-dev libgtk-3-dev libasound2-dev`.
+- `install.sh` for macOS and Linux and `install.ps1` for Windows are one line
+  installers that fetch the latest `sda-manager` asset. The README has the
+  commands.
 - The `hymns` job zips `assets/920` into `hymns.zip`. The app downloads it on
   first run and whenever its ETag changes. Hymn edits reach users on the next
   release. A push alone does nothing.
+- Binary name, config paths, themes dir, hymns sync, and the update check are
+  unchanged from 2.x so installs upgrade in place.
 
 ## Architecture
 
-Two crates. Logic lives in the core. The GUI stays thin.
+Three crates. Logic lives in the core. The renderer knows nothing about Iced.
+The app stays thin.
 
-- **`crates/sda-core`**: no UI, unit tested. Modules: `pptx`, `model`, `index`,
-  `search`, `fold`, `library`, `sync`, `refresh`, `downloader`, `update`,
-  `i18n`, `theme`, `present`, `fit`.
-- **`crates/sda-gui`**: the egui app, binary `sda-manager`. `build.rs` embeds
-  `assets/icon.ico` on Windows. `#![windows_subsystem = "windows"]` hides the
-  console in release builds on Windows. Modules:
+- **`crates/sda-core`**: no UI, no GPU, unit tested. Modules: `asis`, `bible`
+  with `names` and `reference`, `downloader`, `fit`, `fold`, `history`, `i18n`,
+  `index`, `library`, `model`, `overrides`, `pptx`, `present`, `refresh`,
+  `resolve`, `search`, `store`, `sync`, `theme`, `update`.
+- **`crates/sda-render`**: wgpu scene renderer, tested headless with golden
+  PNGs. Modules: `background`, `composite`, `fonts`, `headless`, `layer`,
+  `scene`, `text`, `video`. `Renderer` owns every pipeline. `prepare` uploads
+  one scene under a caller chosen key and `render` draws it into a viewport
+  with a scissor. `trim` runs at the end of every frame and drops scenes not
+  prepared for two frames.
+- **`crates/sda-app`**: the Iced daemon, binary `sda-manager`. `build.rs`
+  embeds `assets/icon.ico` on Windows. `#![windows_subsystem = "windows"]`
+  hides the console on Windows. Modules:
 
 ```
-main.rs          eframe setup, logging, window options
-app.rs           App, Msg, UiState, App::ui: drain, shortcuts, layout
-core.rs          Core: config, strings, themes, worker spawns, save_cfg
-search_panel.rs  search box and virtualized results
-preview.rs       Preview card
-live.rs          Live card and projector controls
-projector.rs     display list and the projector viewport
-slide.rs         slide::paint, layout, footer, FitCache
-settings.rs      Settings window
-theme_editor.rs  theme thumbnails, form, live preview
-videos.rs        Videos window
-shortcuts.rs     key handling
-style.rs         visuals, spacing, bundled fonts
+main.rs          calls sda_app::run
+lib.rs           run: env_logger, iced::daemon, bundled fonts
+app.rs           App, boot, update, view(window_id), subscription, theme
+msg.rs           Msg, Tab, Handoff, BgTarget, BackgroundAsset
+msg/             bible.rs, present.rs, settings.rs, themes.rs, videos.rs
+state/           core.rs, live.rs, present.rs, bible.rs, videos.rs,
+                 themes.rs, settings.rs, projector.rs
+view/            shell.rs, live_strip.rs, present.rs, bible.rs, videos.rs,
+                 themes.rs, theme_form.rs, settings.rs, screen_picker.rs,
+                 projector.rs, placeholder.rs
+widgets/         scene_view.rs, card.rs, segmented.rs
+ui_theme.rs      palette, container and button styles
+shortcuts.rs     event filter
+displays.rs      display-info wrapper
+workers.rs       Task builders for boot, sync, reindex, update, gpu probe,
+                 backgrounds, converter detect, fonts list
 ```
 
-Config is loaded once in `Core::load` and written only by `Core::save_cfg`.
+`Core` in `state/core.rs` holds config, strings, searcher, themes, history,
+overrides, download records, and the detected converter. `Paths` lists the
+small JSON state files: `history.json`, `overrides.json`, `downloads.json`,
+`window.json`, the `bibles` dir, and the `asis` cache dir. Config is loaded
+once in `Core::load` and written only by `Core::save_cfg`. The other files are
+written by `save_history`, `save_overrides`, and `save_downloads`.
 
 ### Data flow and threading
 
-Workers never touch the UI. Each worker sends one `app::Msg` over an
-`mpsc` channel and calls `ctx.request_repaint()`. Messages are `Index`,
-`Synced`, `Reindexed`, `Update`, and `Download`. Workers build the `Searcher`
-themselves, so the UI thread only swaps it in.
+Workers never touch the UI. Every function in `workers.rs` returns an
+`iced::Task` that runs the blocking core call on a tokio blocking thread and
+ends in exactly one `Msg`. A panic inside becomes an `Err` string. Results
+that are not `Clone`, like `Searcher`, travel in `Handoff<T>` and `update`
+takes them out once.
 
-- Boot, `Core::spawn_boot`: load the local index, then sync `hymns.zip`, then
-  reindex only if the zip changed, then check for updates.
-- Force sync, `Core::spawn_force_sync`: sends `Msg::Synced`.
-- Library folder edits, `Core::spawn_reindex`: sends `Msg::Reindexed`.
-- Downloads, `Core::spawn_download`: sends `Msg::Download` events.
+Top level messages in `msg.rs` include `Indexed`, `Synced`, `Reindexed`,
+`UpdateChecked`, `GpuProbed`, `BackgroundReady`, `AsIsRendered`,
+`DisplaysListed`, `FontsListed`, `Tick`, `ProjectorClosed`, `WindowMoved`,
+`WindowResized`, and `SaveWindow`. Tab messages live in sub enums:
+`PresentMsg`, `BibleMsg`, `VideosMsg`, `ThemesMsg`, `SettingsMsg`.
 
-`App::ui` calls `drain` first on every frame to apply pending messages.
+- Boot, `workers::boot`: index from disk, then sync `hymns.zip` if it changed,
+  then check for updates. On a first run the library downloads before indexing.
+- Force sync, `workers::force_sync`: ends in `Msg::Synced`. `Ok(None)` means
+  the zip was already current.
+- Library folder edits, `workers::reindex`: ends in `Msg::Reindexed`.
+- `workers::gpu_probe` calls `sda_render::headless::device()` and ends in
+  `Msg::GpuProbed(false)` when there is no wgpu adapter. The app shows a
+  fallback banner.
+- `workers::background` decodes an image or starts an ffmpeg decoder for a
+  video background and ends in `Msg::BackgroundReady` for either the live
+  state or the Themes tab preview.
+- Downloads, Bible index and version downloads, and as-is conversion send
+  their own tab messages.
+
+`App::subscription` listens to `shortcuts::filter`, window geometry events,
+and `window::close_events`. It adds `window::frames` as `Msg::Tick` only while
+`live.animating()` is true, so idle frames cost nothing.
 
 ### UI conventions
 
-- Search runs only when the query changed. Results use `ScrollArea::show_rows`.
-- `slide::paint` is the only place slide text is drawn. Preview, Live, the
-  projector, and the theme editor all call it. Auto size uses `sda_core::fit`
-  and a `FitCache` bounded at 64 entries.
-- The selected hymn drives Preview. Go Live copies it into the presentation
-  state that Live and the projector show.
-- The projector runs through `ctx.show_viewport_immediate`, so its frames run
-  on the main thread. Closing it from the OS clears `app.projector`. Keys
-  pressed in the projector go through the same `shortcuts::handle`.
-- Settings and Videos are `egui::Window`s. eframe persists window geometry.
+- Search runs only when the query changed.
+- `scene_view` is the only widget that draws a slide. The Present preview,
+  the thumbnails, the Live strip, the Themes preview, and the projector all
+  call it with a `Scene` from `sda-render`. Every call site on one screen
+  passes a different stable key, because Iced prepares all scenes before it
+  renders any.
+- A slide is resolved by `sda_core::resolve` from a `Theme` plus a
+  `SlideContent`. `SlideContent` is `Styled` for parsed pptx, `Verses` for
+  Bible verses, or `Bitmap` for as-is pages. Theme properties are `Prop<T>`.
+  `Set` wins, `Inherit` takes the pptx value when the file has one, and the
+  fallback otherwise.
+- Auto text size uses `sda_core::fit`. Text is rasterized by `sda-render::text`
+  with cosmic-text at the target size, so size is part of the texture key.
+- `LiveState` holds the `Presentation`, the theme, the outgoing slide, and the
+  transition clock. The Live strip and the projector both build their `Scene`
+  from it.
+- The projector is a second Iced window with no decorations. A close request
+  only comes from the OS and `Msg::ProjectorClosed` clears the state.
+- One dark palette lives in `ui_theme.rs`. A second palette is one file.
+- `i18n::Strings` has every UI string. Tabs take their label from it.
 
 ### Keyboard
 
-| Key | Action | Scope |
-|---|---|---|
-| Cmd/Ctrl+K | focus search | always |
-| Up / Down | move selection | search focused or list |
-| Enter | go live with previewed slide | search focused |
-| Left / Right, Space | live prev / next | not in a text field |
-| B | blank toggle | not in a text field |
-| Esc | stop projector | always |
-| 1..9 | live jump to slide N | not in a text field |
+`shortcuts::filter` runs on every event the widgets did not capture, so
+nothing fires while a text field has focus.
+
+| Key | Action |
+|---|---|
+| Cmd/Ctrl+K | focus search |
+| Cmd/Ctrl+O | toggle projector |
+| Cmd/Ctrl+1..5 | switch tab |
+| Up / Down | move selection |
+| Enter | go live with the previewed slide |
+| Left / Right, Space | live prev / next |
+| B | blank toggle |
+| 1..9 | live jump to slide N |
+| Esc | stop the projector |
 
 ### Conventions
 
@@ -122,20 +186,71 @@ themselves, so the UI thread only swaps it in.
 - The index cache in `index.rs` is bincode with a `CACHE_VERSION`. Bump it when
   the parser or entry layout changes. Unchanged files are reused by path and
   mtime. The rest parse in parallel.
-- Themes in `theme.rs` are JSON files. Fonts are Inter, Noto Serif, Lora, and
-  Roboto Slab. Roboto Slab is Apache 2.0 and the others are OFL. A theme sets a
-  solid background color, auto or fixed size, bold, alignment, line spacing,
-  margin, and footer.
+- Themes in `theme.rs` are JSON files in the themes dir. A theme has a name,
+  `TextStyle`, `Background`, `background_opacity`, `Transition`, `footer`,
+  `VerseLayout`, and `favorite`. Backgrounds are `Solid`, `Gradient`,
+  `Particles`, `Image`, or `Video`. Transitions are `None`, `Fade`, `Slide`,
+  `Scale`, or `Blur` with an easing. Fonts are Inter, Noto Serif, Lora, and
+  Roboto Slab. Roboto Slab is Apache 2.0 and the others are OFL. A theme can
+  also name a system font.
+- `history.rs` keeps the last 50 opened hymns, newest first, one entry per
+  path. `store.rs` loads small JSON files without failing and saves through a
+  temp file and a rename.
+- `overrides.rs` keeps per hymn choices outside the hymn files. Today that is
+  the as-is flag per path.
 - Config paths are unchanged from 1.x. Config is TOML in the OS config dir.
+  `Config` has `hymns_url`, `libraries`, `download_dir`, `language`,
+  `active_theme`, `output_display`, and `bible_version`.
 - `i18n.rs` has a `Strings` struct per language, En, It, and Ro. A new UI
   string fails to compile until all three languages have it.
 - `downloader.rs` finds `yt-dlp` and `ffmpeg` on `PATH` or in the data
-  `tools/` dir, else downloads them.
+  `tools/` dir, else downloads them. Video backgrounds decode through the same
+  `ffmpeg`.
+
+### Bible data and license
+
+- `bible/mod.rs` loads the JSON files of the thiagobodruk/bible repository.
+  Every download URL points at the commit in `bible::PIN`. Files live in the
+  `bibles` dir as `<code>.json` with a `<code>.etag` stamp through the `sync`
+  module.
+- `bible::public_domain(code)` is a small built in list. `Some(true)` for known
+  public domain versions like `en_kjv`, `Some(false)` for known restricted
+  ones like `en_niv`, `None` when unknown. The copyright of each version
+  belongs to its owner. The app only marks what it knows. Do not present an
+  unknown version as free.
+- `bible/names.rs` has book names and aliases for en, it, and ro.
+  `parse_reference` accepts `:` or `,` between chapter and verse and `-` for
+  ranges, after folding. `search` folds both sides and scans all verses.
+  `verse_slides` splits a selection into slides of `per_slide` verses.
+
+### As-is pipeline
+
+- `asis::detect` finds LibreOffice or PowerPoint on `PATH` or in well known
+  install paths and returns a `Converter`. `workers::converter_detect` runs it
+  and Settings shows the result.
+- When a hymn has the as-is flag, the app converts the pptx to one PNG per
+  slide and presents them as `SlideContent::Bitmap`. Output is cached in the
+  `asis` cache dir under a content hash. The toggle is per hymn and lives in
+  `overrides.json`.
+- Without a converter the toggle is off and the parser based rendering is
+  used.
 
 ### Tests
 
-Core tests live in `crates/sda-core/tests/` and use real `.pptx` fixtures in
-`tests/fixtures/`: `001.pptx`, `150.pptx`, `356.pptx`, and `664b.pptx`. The
-last one covers letter suffixes. `sync` is tested against a local
-`TcpListener` stub. `downloader` parsing runs without network. Self update is
-not tested. `sda-gui` has one unit test for fonts.
+- Core tests live in `crates/sda-core/tests/` and use real `.pptx` fixtures in
+  `tests/fixtures/`: `001.pptx`, `150.pptx`, `356.pptx`, and `664b.pptx`. The
+  last one covers letter suffixes. `bible_mini.json` is a small Bible fixture.
+  `ytdlp_probe.json` is a saved `yt-dlp -J` output. `sync` is tested against
+  a local `TcpListener` stub. `asis::detect` is tested with a fake `PATH`.
+  Self update is not tested.
+- Render tests live in `crates/sda-render/tests/golden_test.rs`. Each test
+  renders a 320 by 180 scene through `headless::render_to_image` and compares
+  it to `tests/golden/<name>.png`. Tolerance is 2 per channel and one pixel
+  per thousand. When `headless::device()` returns `None` the test prints
+  `no GPU adapter, skipping` and returns, so Linux and Windows CI pass without
+  a GPU. `UPDATE_GOLDENS=1` rewrites the PNGs. A missing PNG is written on
+  first run.
+- App tests live in `crates/sda-app/tests/` and use the `iced_test`
+  `Simulator` on `App::for_test()`. They click and type into views, collect
+  the messages, and feed them back through `App::update`. Shortcuts are tested
+  by feeding events to `shortcuts::filter`.
