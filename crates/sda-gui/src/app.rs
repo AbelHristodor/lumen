@@ -110,6 +110,18 @@ impl App {
         App { core, ui, projector: None, rx, tx, displays: projector::list_displays(), status }
     }
 
+    /// An app over an already built searcher, with no workers and no disk writes.
+    #[cfg(test)]
+    pub fn for_test(searcher: Searcher) -> Self {
+        let mut core = Core::load();
+        core.cfg_path = None;
+        core.searcher = Some(searcher);
+        let (tx, rx) = mpsc::channel();
+        let ui = UiState { focus_search: true, ..UiState::default() };
+        let displays = vec![Display { index: 0, label: "Test".into(), is_primary: true }];
+        App { core, ui, projector: None, rx, tx, displays, status: Status::default() }
+    }
+
     /// The hymn highlighted in the result list.
     pub fn selected_entry(&self) -> Option<&HymnEntry> {
         let idx = *self.ui.hits.get(self.ui.selected?)?;
@@ -288,5 +300,49 @@ impl eframe::App for App {
         settings::show(ui.ctx(), self);
         videos::show(ui.ctx(), self);
         projector::show(ui.ctx(), self);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    use sda_core::index::refresh_index;
+    use sda_core::search::Searcher;
+
+    use super::App;
+
+    fn app() -> App {
+        let entries = refresh_index(Path::new("../sda-core/tests/fixtures"), "test", &[]);
+        App::for_test(Searcher::new(entries))
+    }
+
+    #[test]
+    fn search_select_and_go_live_drive_presentation_state() {
+        let mut app = app();
+        app.ui.query = "664".into();
+        app.run_search();
+        assert_eq!(app.selected_entry().unwrap().number.as_deref(), Some("664b"));
+
+        app.ui.query.clear();
+        app.run_search();
+        assert_eq!(app.ui.hits.len(), 4);
+        app.move_selection(10);
+        assert_eq!(app.ui.selected, Some(3));
+        app.move_selection(-1);
+        assert_eq!(app.ui.selected, Some(2));
+
+        app.go_live(99);
+        let count = app.core.present.slide_count();
+        assert!(count > 1);
+        assert_eq!(app.core.present.index, count - 1);
+        app.live_jump(1);
+        assert_eq!(app.core.present.index, 0);
+        app.live_jump(count + 1);
+        assert_eq!(app.core.present.index, 0);
+        app.live_next();
+        assert_eq!(app.core.present.index, 1);
+        app.live_blank();
+        assert!(app.core.present.blank);
     }
 }
