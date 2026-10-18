@@ -20,6 +20,7 @@ pub fn show(app: &App) -> Element<'_, Msg> {
             .on_input(|u| Msg::Videos(VideosMsg::Url(u)))
             .on_submit_maybe((!busy).then_some(Msg::Videos(VideosMsg::Fetch)))
             .padding(10)
+            .size(14)
             .width(Fill),
         button(text(&s.videos_fetch).size(13))
             .padding([10, 14])
@@ -135,10 +136,14 @@ pub fn show(app: &App) -> Element<'_, Msg> {
     }
 
     scrollable(
-        column![panel(card), panel(history)]
-            .spacing(ui_theme::SPACING)
-            .padding(ui_theme::SPACING)
-            .max_width(900),
+        container(
+            column![panel(card), panel(history)]
+                .spacing(ui_theme::SPACING)
+                .max_width(900),
+        )
+        .width(Fill)
+        .center_x(Fill)
+        .padding([0, ui_theme::SPACING as u16]),
     )
     .width(Fill)
     .into()
@@ -146,7 +151,7 @@ pub fn show(app: &App) -> Element<'_, Msg> {
 
 fn panel<'a>(content: impl Into<Element<'a, Msg>>) -> Element<'a, Msg> {
     container(content)
-        .padding(ui_theme::SPACING * 1.5)
+        .padding(ui_theme::SPACING)
         .width(Fill)
         .style(ui_theme::card)
         .into()

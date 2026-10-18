@@ -237,8 +237,9 @@ pub struct Strings {
     pub identify_hint: String,
     pub font_licenses: String,
     pub background_failed_fmt: String, // one `{}` = error
-    pub videos_empty: String,
     pub bible_pick_chapter: String,
+    pub theme_kind: String,
+    pub bible_search_empty: String,
 }
 
 impl Strings {
@@ -425,8 +426,9 @@ impl Strings {
             &self.identify_hint,
             &self.font_licenses,
             &self.background_failed_fmt,
-            &self.videos_empty,
             &self.bible_pick_chapter,
+            &self.theme_kind,
+            &self.bible_search_empty,
         ]
     }
 
@@ -488,7 +490,7 @@ impl Strings {
             theme_footer_label: "Footer with number and title".into(),
             download_button: "Download".into(),
             remove: "Remove".into(),
-            active_suffix: "(active)".into(),
+            active_suffix: "Active".into(),
             status_loading: "Loading hymn library…".into(),
             status_library_ready: "Library ready.".into(),
             status_re_cloning: "Re-cloning and reindexing…".into(),
@@ -604,8 +606,9 @@ impl Strings {
             identify_hint: "Shows a number on each display for a few seconds.".into(),
             font_licenses: "Inter, Noto Serif, and Lora use the SIL Open Font License. Roboto Slab uses the Apache 2.0 license.".into(),
             background_failed_fmt: "Background could not load: {}".into(),
-            videos_empty: "Paste a YouTube link above to fetch its details.".into(),
             bible_pick_chapter: "Pick a book and a chapter to see the verses.".into(),
+            theme_kind: "Kind".into(),
+            bible_search_empty: "Type a word above to search the whole Bible.".into(),
         }
     }
 
@@ -667,7 +670,7 @@ impl Strings {
             theme_footer_label: "Piè di pagina con numero e titolo".into(),
             download_button: "Scarica".into(),
             remove: "Rimuovi".into(),
-            active_suffix: "(attivo)".into(),
+            active_suffix: "Attivo".into(),
             status_loading: "Caricamento dell'innario…".into(),
             status_library_ready: "Innario pronto.".into(),
             status_re_cloning: "Riscaricamento e reindicizzazione…".into(),
@@ -783,8 +786,9 @@ impl Strings {
             identify_hint: "Mostra un numero su ogni schermo per qualche secondo.".into(),
             font_licenses: "Inter, Noto Serif e Lora usano la licenza SIL Open Font. Roboto Slab usa la licenza Apache 2.0.".into(),
             background_failed_fmt: "Sfondo non caricato: {}".into(),
-            videos_empty: "Incolla un link YouTube qui sopra per leggerne i dettagli.".into(),
             bible_pick_chapter: "Scegli un libro e un capitolo per vedere i versetti.".into(),
+            theme_kind: "Tipo".into(),
+            bible_search_empty: "Scrivi una parola qui sopra per cercare in tutta la Bibbia.".into(),
         }
     }
 
@@ -846,7 +850,7 @@ impl Strings {
             theme_footer_label: "Subsol cu număr și titlu".into(),
             download_button: "Descarcă".into(),
             remove: "Elimină".into(),
-            active_suffix: "(activ)".into(),
+            active_suffix: "Activ".into(),
             status_loading: "Se încarcă imnarul…".into(),
             status_library_ready: "Imnar pregătit.".into(),
             status_re_cloning: "Se reclonează și se reindexează…".into(),
@@ -962,8 +966,9 @@ impl Strings {
             identify_hint: "Afișează un număr pe fiecare ecran pentru câteva secunde.".into(),
             font_licenses: "Inter, Noto Serif și Lora folosesc licența SIL Open Font. Roboto Slab folosește licența Apache 2.0.".into(),
             background_failed_fmt: "Fundalul nu s-a încărcat: {}".into(),
-            videos_empty: "Lipește un link YouTube mai sus pentru a-i citi detaliile.".into(),
             bible_pick_chapter: "Alege o carte și un capitol pentru a vedea versetele.".into(),
+            theme_kind: "Tip".into(),
+            bible_search_empty: "Scrie un cuvânt mai sus pentru a căuta în toată Biblia.".into(),
         }
     }
 }

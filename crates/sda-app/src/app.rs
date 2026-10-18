@@ -183,7 +183,7 @@ impl App {
         app.core.searcher = Some(Searcher::new(hymns));
         app.displays = vec![Display {
             index: 0,
-            label: "Display 1 1440x900".into(),
+            label: "Display 1 · 1440x900".into(),
             rect: (0, 0, 1440, 900),
             scale: 2.0,
             is_primary: true,

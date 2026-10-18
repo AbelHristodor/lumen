@@ -437,7 +437,7 @@ fn background_section<'a>(app: &'a App, d: &'a Theme) -> Element<'a, Msg> {
         bg_kind(&d.background),
         |k| edit(DraftEdit::BgKind(k)),
     );
-    let mut rows: Vec<Element<'a, Msg>> = vec![kind];
+    let mut rows: Vec<Element<'a, Msg>> = vec![field(&s.theme_kind, kind)];
     let choose = |msg: Msg| {
         iced::widget::button(text(s.choose.as_str()).size(13))
             .padding([6, 12])
@@ -595,7 +595,7 @@ fn transition_section<'a>(app: &'a App, d: &'a Theme) -> Element<'a, Msg> {
     section(
         &s.theme_transition,
         vec![
-            kind.into(),
+            field(&s.theme_kind, kind),
             field(&s.theme_duration, duration),
             field(&s.theme_easing, easing),
         ],

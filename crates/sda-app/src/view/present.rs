@@ -6,13 +6,14 @@ use crate::app::App;
 use crate::msg::{Msg, ThemesMsg};
 use crate::state::present::{self as st, MAX_THUMBS, RECENT_COUNT};
 use crate::ui_theme::{self, SPACING};
+use crate::view::shell::shorten;
 use crate::widgets::card::card;
 use crate::widgets::scene_view::{key, scene_view};
 use iced::widget::{
-    Id, button, column, container, responsive, row, rule, scrollable, space, text, text_input,
-    toggler,
+    Id, button, column, container, responsive, row, rule, scrollable, space, stack, text,
+    text_input, toggler, tooltip,
 };
-use iced::{Alignment, Border, Color, Element, Fill, Size, Theme};
+use iced::{Alignment, Element, Fill, Shrink, Size};
 use sda_core::history;
 use sda_core::model::Hymn;
 
@@ -20,8 +21,17 @@ pub use crate::state::present::SEARCH_ID;
 
 const LEFT_WIDTH: f32 = 320.0;
 const RIGHT_WIDTH: f32 = 280.0;
+/// Every result row has this height so the list reads as a grid.
+const ROW_H: f32 = 36.0;
+/// Longest title in a result row before the ellipsis.
+const TITLE_CHARS: usize = 28;
 const THUMB: (f32, f32) = (128.0, 72.0);
 const THEME_THUMB: (f32, f32) = (96.0, 54.0);
+/// Theme rows shown before the picker scrolls.
+const THEME_ROWS: f32 = 6.0;
+const THEME_ROW_H: f32 = THEME_THUMB.1 + 12.0;
+/// Scrollbar width plus margin, so the search box ends where rows end.
+const SCROLL_GUTTER: f32 = 10.0;
 
 pub fn show(app: &App) -> Element<'_, Msg> {
     row![
@@ -38,12 +48,16 @@ pub fn show(app: &App) -> Element<'_, Msg> {
 fn search_panel(app: &App) -> Element<'_, Msg> {
     let s = &app.core.strings;
     let p = &app.present;
-    let search = text_input(&s.search_placeholder, &p.query)
-        .id(Id::new(SEARCH_ID))
-        .on_input(Msg::Search)
-        .on_submit(Msg::GoLive)
-        .padding(10)
-        .size(14);
+    let search = container(
+        text_input(&s.search_placeholder, &p.query)
+            .id(Id::new(SEARCH_ID))
+            .on_input(Msg::Search)
+            .on_submit(Msg::GoLive)
+            .padding(10)
+            .size(14),
+    )
+    .padding(iced::Padding::ZERO.right(SCROLL_GUTTER));
+    let many_libraries = app.core.cfg.libraries.iter().filter(|l| l.enabled).count() > 1;
 
     let mut list = column![].spacing(2);
     if p.query.trim().is_empty() && !app.core.history.is_empty() {
@@ -52,11 +66,11 @@ fn search_panel(app: &App) -> Element<'_, Msg> {
             if let Some(pos) = st::hit_position(app, &e.path)
                 && let Some(hymn) = hymn_at(app, pos)
             {
-                list = list.push(hymn_row(hymn, p.selected == Some(pos), Msg::Select(pos)));
+                list = list.push(hymn_row(hymn, p.selected == Some(pos), many_libraries, pos));
             }
         }
         list = list.push(
-            container(rule::horizontal(1))
+            container(rule::horizontal(1).style(ui_theme::hairline))
                 .padding([SPACING as u16 / 2, 0])
                 .width(Fill),
         );
@@ -71,11 +85,17 @@ fn search_panel(app: &App) -> Element<'_, Msg> {
     }
     for pos in 0..p.hits.len() {
         if let Some(hymn) = hymn_at(app, pos) {
-            list = list.push(hymn_row(hymn, p.selected == Some(pos), Msg::Select(pos)));
+            list = list.push(hymn_row(hymn, p.selected == Some(pos), many_libraries, pos));
         }
     }
-    let results = scrollable(list)
+    let results = scrollable(container(list).padding(iced::Padding::ZERO.right(SCROLL_GUTTER)))
         .id(p.scroll.clone())
+        .direction(scrollable::Direction::Vertical(
+            scrollable::Scrollbar::new()
+                .width(6)
+                .margin(2)
+                .scroller_width(6),
+        ))
         .height(Fill)
         .width(Fill);
     column![search, results]
@@ -90,128 +110,108 @@ fn hymn_at(app: &App, pos: usize) -> Option<&Hymn> {
 }
 
 fn heading(label: &str) -> Element<'_, Msg> {
-    container(
-        text(label)
-            .size(12)
-            .font(ui_theme::BOLD)
-            .color(ui_theme::MUTED),
-    )
-    .padding([6, 10])
-    .into()
+    container(ui_theme::section_label::<Msg>(label))
+        .padding([6, 10])
+        .into()
 }
 
-fn hymn_row<'a>(hymn: &'a Hymn, selected: bool, msg: Msg) -> Element<'a, Msg> {
+fn hymn_row(hymn: &Hymn, selected: bool, show_library: bool, pos: usize) -> Element<'_, Msg> {
     let number = text(hymn.number.clone().unwrap_or_default())
         .size(14)
         .font(ui_theme::BOLD)
-        .width(52);
-    let title = text(&hymn.title).size(14).width(Fill);
-    let library = container(text(&hymn.library).size(11))
-        .padding([2, 8])
-        .style(ui_theme::chip);
-    button(
-        row![number, title, library]
-            .spacing(8)
-            .align_y(Alignment::Center),
-    )
-    .padding([8, 10])
-    .width(Fill)
-    .style(row_style(selected))
-    .on_press(msg)
-    .into()
-}
-
-/// A list row. The selected row carries a tinted accent surface.
-fn row_style(selected: bool) -> impl Fn(&Theme, button::Status) -> button::Style {
-    move |_, status| {
-        let bg = if selected {
-            Color {
-                a: 0.28,
-                ..ui_theme::ACCENT
-            }
-        } else if status == button::Status::Hovered {
-            ui_theme::SURFACE_HI
-        } else {
-            Color::TRANSPARENT
-        };
-        button::Style {
-            background: Some(bg.into()),
-            text_color: ui_theme::TEXT,
-            border: Border::default().rounded(ui_theme::RADIUS - 2.0),
-            ..button::Style::default()
-        }
+        .width(44);
+    let mut line = row![
+        number,
+        text(shorten(&hymn.title, TITLE_CHARS))
+            .size(14)
+            .wrapping(text::Wrapping::None),
+    ]
+    .spacing(4)
+    .align_y(Alignment::Center);
+    if show_library {
+        line = line.push(space::horizontal()).push(
+            text(&hymn.library)
+                .size(11)
+                .color(ui_theme::MUTED)
+                .wrapping(text::Wrapping::None),
+        );
     }
+    button(line)
+        .height(ROW_H)
+        .padding([0, 10])
+        .width(Fill)
+        .style(ui_theme::list_row(selected))
+        .on_press(Msg::Select(pos))
+        .into()
 }
 
-/// A thumbnail button. The active one gets an accent border.
-fn thumb_style(active: bool) -> impl Fn(&Theme, button::Status) -> button::Style {
-    move |_, _| button::Style {
-        background: Some(Color::BLACK.into()),
-        text_color: ui_theme::TEXT,
-        border: Border {
-            color: if active {
-                ui_theme::ACCENT
-            } else {
-                ui_theme::SURFACE_HI
-            },
-            width: 2.0,
-            radius: 4.0.into(),
-        },
-        ..button::Style::default()
-    }
-}
+/// Height the preview column needs besides the slide: heading, thumbnail
+/// strip with its scrollbar, the action row, and three gaps.
+const CHROME_H: f32 = 16.0 + THUMB.1 + 10.0 + 36.0 + 3.0 * SPACING;
 
-/// Largest 16 by 9 box inside `avail`.
-fn fit_16_9(avail: Size) -> (f32, f32) {
-    let w = avail.width.min(avail.height * 16.0 / 9.0).max(16.0);
-    (w, w * 9.0 / 16.0)
+/// Largest 16 by 9 slide that leaves room for the rest of the column.
+fn slide_size(avail: Size) -> (f32, f32) {
+    let h = (avail.width * 9.0 / 16.0)
+        .min(avail.height - CHROME_H)
+        .max(90.0);
+    (h * 16.0 / 9.0, h)
 }
 
 fn center_panel(app: &App) -> Element<'_, Msg> {
+    card(responsive(move |avail| {
+        let (w, h) = slide_size(avail);
+        column![
+            ui_theme::section_label::<Msg>(&app.core.strings.preview),
+            container(preview(app, w, h)).width(Fill).center_x(Fill),
+            thumbs(app),
+            actions(app),
+        ]
+        .spacing(SPACING)
+        .into()
+    }))
+    .width(Fill)
+    .height(Fill)
+    .into()
+}
+
+fn preview(app: &App, w: f32, h: f32) -> Element<'_, Msg> {
     let s = &app.core.strings;
     let p = &app.present;
-    let selected = st::selected_hymn(app).map(|(_, h)| h);
-
-    let preview: Element<'_, Msg> = match selected {
-        None => container(text(&s.nothing_selected).size(14).color(ui_theme::MUTED))
-            .width(Fill)
-            .height(Fill)
-            .center(Fill)
+    let inner: Element<'_, Msg> = match st::selected_hymn(app).map(|(_, h)| h) {
+        None => text(&s.nothing_selected)
+            .size(14)
+            .color(ui_theme::MUTED)
             .into(),
-        Some(hymn) => responsive(move |avail| {
-            let (w, h) = fit_16_9(avail);
-            let inner: Element<'_, Msg> = if app.gpu_ok {
-                match st::slide_scene(app, p.preview_slide, (w as u32, h as u32)) {
-                    Some(scene) => scene_view(key("preview"), scene),
-                    None => space::horizontal().into(),
-                }
-            } else {
-                let body = hymn
-                    .slides
-                    .get(p.preview_slide)
-                    .map(|sl| sl.plain_text())
-                    .unwrap_or_default();
-                container(text(body).size(14).center())
-                    .padding(SPACING)
-                    .center(Fill)
-                    .into()
-            };
-            container(
-                container(inner)
-                    .width(w)
-                    .height(h)
-                    .style(ui_theme::thumb_frame),
-            )
-            .width(Fill)
-            .height(Fill)
-            .center(Fill)
-            .into()
-        })
-        .into(),
+        Some(_) if app.gpu_ok => {
+            match st::slide_scene(app, p.preview_slide, (w as u32, h as u32)) {
+                Some(scene) => scene_view(key("preview"), scene),
+                None => space::horizontal().into(),
+            }
+        }
+        Some(hymn) => {
+            let body = hymn
+                .slides
+                .get(p.preview_slide)
+                .map(|sl| sl.plain_text())
+                .unwrap_or_default();
+            container(text(body).size(14).center())
+                .padding(SPACING)
+                .into()
+        }
     };
+    container(inner)
+        .width(w)
+        .height(h)
+        .align_x(Alignment::Center)
+        .align_y(Alignment::Center)
+        .style(ui_theme::thumb_frame)
+        .into()
+}
 
+fn thumbs(app: &App) -> Element<'_, Msg> {
+    let p = &app.present;
+    let count = st::selected_hymn(app).map_or(0, |(_, h)| h.slides.len());
     let mut strip = row![].spacing(SPACING / 2.0).align_y(Alignment::Center);
-    let count = selected.map_or(0, |h| h.slides.len());
     for i in 0..count.min(MAX_THUMBS) {
         let inner: Element<'_, Msg> = if app.gpu_ok {
             match st::slide_scene(app, i, (THUMB.0 as u32, THUMB.1 as u32)) {
@@ -219,16 +219,26 @@ fn center_panel(app: &App) -> Element<'_, Msg> {
                 None => space::horizontal().into(),
             }
         } else {
-            container(text((i + 1).to_string()).size(12))
-                .center(Fill)
-                .into()
+            space::horizontal().into()
         };
+        let number = container(text((i + 1).to_string()).size(11))
+            .padding([1, 5])
+            .style(ui_theme::tile_label);
+        let tile = stack![
+            inner,
+            container(number)
+                .width(Fill)
+                .height(Fill)
+                .padding(4)
+                .align_x(Alignment::Start)
+                .align_y(Alignment::End),
+        ];
         strip = strip.push(
-            button(inner)
+            button(tile)
                 .width(THUMB.0)
                 .height(THUMB.1)
                 .padding(0)
-                .style(thumb_style(i == p.preview_slide))
+                .style(ui_theme::tile(i == p.preview_slide))
                 .on_press(Msg::PreviewSlide(i)),
         );
     }
@@ -239,12 +249,23 @@ fn center_panel(app: &App) -> Element<'_, Msg> {
                 .color(ui_theme::MUTED),
         );
     }
-    let thumbs = scrollable(container(strip).padding(iced::Padding::ZERO.bottom(8)))
-        .horizontal()
-        .width(Fill);
+    scrollable(container(strip).padding(iced::Padding::ZERO.bottom(10)))
+        .direction(scrollable::Direction::Horizontal(
+            scrollable::Scrollbar::new()
+                .width(6)
+                .margin(2)
+                .scroller_width(6),
+        ))
+        .width(Fill)
+        .into()
+}
 
+fn actions(app: &App) -> Element<'_, Msg> {
+    let s = &app.core.strings;
+    let p = &app.present;
+    let selected = st::selected_hymn(app).map(|(_, h)| h);
     let go_live = button(text(&s.go_live).size(14))
-        .padding([8, 18])
+        .padding([9, 18])
         .style(ui_theme::accent_button)
         .on_press_maybe(selected.map(|_| Msg::GoLiveAt(p.preview_slide)));
     let mut actions = row![go_live].spacing(SPACING).align_y(Alignment::Center);
@@ -258,36 +279,31 @@ fn center_panel(app: &App) -> Element<'_, Msg> {
     actions = actions.push(space::horizontal());
     if let (Some(hymn), Some(_)) = (selected, &app.core.converter) {
         let on = st::as_is_on(app, hymn);
-        let mut col = column![
-            toggler(on)
-                .label(s.original.as_str())
-                .text_size(13)
-                .on_toggle(|b| Msg::Present(crate::msg::PresentMsg::AsIsToggle(b))),
-            text(&s.original_hint).size(11).color(ui_theme::MUTED),
-        ]
-        .spacing(2)
-        .align_x(Alignment::End);
-        if let Some(err) = &p.as_is_error {
-            let danger = ui_theme::theme().palette().danger;
-            col = col
-                .push(text(&s.render_failed).size(11).color(danger))
-                .push(text(err).size(11).color(danger));
-        }
-        actions = actions.push(col);
+        let toggle = toggler(on)
+            .label(s.original.as_str())
+            .text_size(13)
+            .on_toggle(|b| Msg::Present(crate::msg::PresentMsg::AsIsToggle(b)));
+        actions = actions.push(tooltip(
+            toggle,
+            container(text(&s.original_hint).size(12))
+                .padding(8)
+                .max_width(280)
+                .style(ui_theme::card),
+            tooltip::Position::Top,
+        ));
     }
-
-    let body = column![
-        text(&s.preview)
-            .size(12)
-            .font(ui_theme::BOLD)
-            .color(ui_theme::MUTED),
-        preview,
-        thumbs,
-        actions,
-    ]
-    .spacing(SPACING)
-    .height(Fill);
-    card(body).width(Fill).height(Fill).into()
+    let mut col = column![actions].spacing(4);
+    if let Some(err) = &p.as_is_error {
+        let danger = ui_theme::theme().palette().danger;
+        col = col.push(
+            row![
+                text(&s.render_failed).size(11).color(danger),
+                text(err).size(11).color(danger),
+            ]
+            .spacing(6),
+        );
+    }
+    col.into()
 }
 
 fn side_panel(app: &App) -> Element<'_, Msg> {
@@ -296,11 +312,11 @@ fn side_panel(app: &App) -> Element<'_, Msg> {
     let mut themes = column![].spacing(2);
     for t in &app.core.themes {
         let thumb: Element<'_, Msg> = if app.gpu_ok {
-            match st::sample_scene(
+            match st::theme_scene(
                 app,
                 t,
                 &s.theme_preview_sample,
-                (THEME_THUMB.0 as u32, THEME_THUMB.1 as u32),
+                (THEME_THUMB.0 as u32 * 2, THEME_THUMB.1 as u32 * 2),
             ) {
                 Some(scene) => scene_view(key(("theme", t.name.as_str())), scene),
                 None => space::horizontal().into(),
@@ -314,50 +330,44 @@ fn side_panel(app: &App) -> Element<'_, Msg> {
             .style(ui_theme::thumb_frame);
         themes = themes.push(
             button(
-                row![frame, text(&t.name).size(13).width(Fill)]
-                    .spacing(SPACING)
-                    .align_y(Alignment::Center),
+                row![
+                    frame,
+                    text(&t.name)
+                        .size(13)
+                        .width(Fill)
+                        .wrapping(text::Wrapping::None)
+                ]
+                .spacing(SPACING)
+                .align_y(Alignment::Center),
             )
-            .padding(6)
+            .height(THEME_ROW_H)
+            .padding([0, 6])
             .width(Fill)
-            .style(row_style(t.name == active))
+            .style(ui_theme::list_row(t.name == active))
             .on_press(Msg::Themes(ThemesMsg::SetActive(t.name.clone()))),
         );
     }
     let theme_card = card(
         column![
-            text(&s.theme_label)
-                .size(12)
-                .font(ui_theme::BOLD)
-                .color(ui_theme::MUTED),
-            scrollable(themes).height(Fill),
+            ui_theme::section_label::<Msg>(&s.theme_label),
+            container(scrollable(themes).height(Shrink))
+                .max_height(THEME_ROWS * (THEME_ROW_H + 2.0)),
         ]
         .spacing(SPACING),
     )
-    .height(Fill);
+    .width(Fill);
 
     let notes = st::selected_hymn(app)
         .and_then(|(_, h)| h.slides.get(app.present.preview_slide))
         .and_then(|sl| sl.notes.as_deref())
         .filter(|n| !n.trim().is_empty());
-    let has_notes = notes.is_some();
     let body: Element<'_, Msg> = match notes {
         Some(notes) => scrollable(text(notes).size(13)).height(Fill).into(),
         None => text(&s.no_notes).size(13).color(ui_theme::MUTED).into(),
     };
-    let mut notes_card = card(
-        column![
-            text(&s.notes)
-                .size(12)
-                .font(ui_theme::BOLD)
-                .color(ui_theme::MUTED),
-            body,
-        ]
-        .spacing(SPACING),
-    );
-    if has_notes {
-        notes_card = notes_card.height(Fill);
-    }
+    let notes_card = card(column![ui_theme::section_label::<Msg>(&s.notes), body].spacing(SPACING))
+        .width(Fill)
+        .height(Fill);
     column![theme_card, notes_card]
         .spacing(SPACING)
         .height(Fill)

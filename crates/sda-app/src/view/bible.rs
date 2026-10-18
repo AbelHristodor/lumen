@@ -120,7 +120,25 @@ fn empty_state(app: &App) -> Element<'_, Msg> {
 }
 
 fn heading(label: &str) -> Element<'_, Msg> {
-    text(label).size(12).color(ui_theme::MUTED).into()
+    ui_theme::section_label::<Msg>(label).into()
+}
+
+/// Room for the scrollbar so rows and the grid never sit under it.
+const SCROLL_GUTTER: f32 = 10.0;
+
+fn thin_scrollbar() -> scrollable::Direction {
+    scrollable::Direction::Vertical(
+        scrollable::Scrollbar::new()
+            .width(6)
+            .margin(2)
+            .scroller_width(6),
+    )
+}
+
+fn gutter<'a>(content: impl Into<Element<'a, Msg>>) -> Element<'a, Msg> {
+    container(content)
+        .padding(iced::Padding::ZERO.right(SCROLL_GUTTER))
+        .into()
 }
 
 fn books_pane(app: &App) -> Element<'_, Msg> {
@@ -145,9 +163,12 @@ fn books_pane(app: &App) -> Element<'_, Msg> {
     card(
         column![
             heading(&s.bible_books),
-            scrollable(books).height(Fill),
+            scrollable(gutter(books))
+                .direction(thin_scrollbar())
+                .height(Fill),
             heading(&s.bible_chapters),
-            container(scrollable(chapter_grid(st))).max_height(190),
+            container(scrollable(gutter(chapter_grid(st))).direction(thin_scrollbar()))
+                .max_height(190),
         ]
         .spacing(ui_theme::SPACING / 2.0),
     )
@@ -231,12 +252,14 @@ fn verses_pane(app: &App) -> Element<'_, Msg> {
         }
         line.into()
     }))
-    .spacing(6)
-    .padding(iced::Padding::ZERO.right(14.0));
+    .spacing(6);
     let list: Element<'_, Msg> = if st.chapter_count() == 0 {
-        center(text(&s.bible_verses).color(ui_theme::MUTED)).into()
+        center(text(&s.bible_pick_chapter).size(13).color(ui_theme::MUTED)).into()
     } else {
-        scrollable(rows).height(Fill).into()
+        scrollable(gutter(rows))
+            .direction(thin_scrollbar())
+            .height(Fill)
+            .into()
     };
     card(column![header, list].spacing(ui_theme::SPACING))
         .width(Fill)
@@ -271,9 +294,19 @@ fn search_pane(app: &App) -> Element<'_, Msg> {
     }))
     .spacing(4);
     let body: Element<'_, Msg> = if st.results.is_empty() {
-        center(text(&s.bible_search_hint).size(13).color(ui_theme::MUTED)).into()
+        center(
+            text(&s.bible_search_empty)
+                .size(13)
+                .color(ui_theme::MUTED)
+                .center(),
+        )
+        .padding(ui_theme::SPACING)
+        .into()
     } else {
-        scrollable(results).height(Fill).into()
+        scrollable(gutter(results))
+            .direction(thin_scrollbar())
+            .height(Fill)
+            .into()
     };
     card(column![field, body].spacing(ui_theme::SPACING))
         .width(280)
@@ -308,7 +341,9 @@ fn manage_modal(app: &App) -> Element<'_, Msg> {
             .height(120)
             .into()
     } else {
-        scrollable(version_list(s, st)).into()
+        scrollable(gutter(version_list(s, st)))
+            .direction(thin_scrollbar())
+            .into()
     };
     col = col.push(list);
     let dim = |_: &iced::Theme| container::Style {
@@ -326,9 +361,7 @@ fn manage_modal(app: &App) -> Element<'_, Msg> {
 }
 
 fn version_list<'a>(s: &'a Strings, st: &'a BibleState) -> Element<'a, Msg> {
-    let mut col = Column::new()
-        .spacing(6)
-        .padding(iced::Padding::ZERO.right(14.0));
+    let mut col = Column::new().spacing(6);
     let mut language: Option<&str> = None;
     for v in &st.index {
         if language != Some(v.language.as_str()) {

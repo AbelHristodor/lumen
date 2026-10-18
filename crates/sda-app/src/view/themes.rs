@@ -7,8 +7,10 @@ use crate::state::themes::{PREVIEW_SAMPLE, sorted_themes, thumb_slide};
 use crate::ui_theme;
 use crate::widgets::card::card;
 use crate::widgets::scene_view::{key, scene_view};
-use iced::widget::{Column, button, checkbox, column, container, row, scrollable, space, text};
-use iced::{Alignment, Border, Color, Element, Fill, Theme as IcedTheme};
+use iced::widget::{
+    Column, button, checkbox, column, container, row, scrollable, space, stack, text,
+};
+use iced::{Alignment, Border, Color, Element, Fill};
 use sda_core::resolve::ResolvedSlide;
 use sda_core::theme::{Background, Rgba, Theme};
 use sda_render::{BackgroundState, Layer, Scene};
@@ -64,10 +66,40 @@ fn background_state(bg: &Background) -> BackgroundState {
     }
 }
 
-fn thumb_scene(theme: &Theme, slide: Option<&Arc<ResolvedSlide>>, now: f32) -> Arc<Scene> {
+/// The background a card thumbnail shows. A video or image already decoded
+/// for the projector or the preview is reused, so the card shows the real
+/// frame. `None` when the file is not loaded anywhere.
+fn thumb_background(app: &App, bg: &Background) -> Option<BackgroundState> {
+    let states = [&app.live, &app.themes.preview];
+    match bg {
+        Background::Video { path } => states
+            .iter()
+            .find(|l| l.theme.background == *bg)
+            .and_then(|l| l.video.clone())
+            .map(BackgroundState::Video)
+            .or_else(|| {
+                states
+                    .iter()
+                    .find_map(|l| l.bitmaps.get(path))
+                    .map(|b| BackgroundState::Image(b.clone()))
+            }),
+        Background::Image(path) => states
+            .iter()
+            .find_map(|l| l.bitmaps.get(path))
+            .map(|b| BackgroundState::Image(b.clone())),
+        other => Some(background_state(other)),
+    }
+}
+
+fn thumb_scene(
+    background: BackgroundState,
+    theme: &Theme,
+    slide: Option<&Arc<ResolvedSlide>>,
+    now: f32,
+) -> Arc<Scene> {
     Arc::new(Scene {
         size: (THUMB_W as u32 * 2, THUMB_H as u32 * 2),
-        background: background_state(&theme.background),
+        background,
         background_opacity: theme.background_opacity,
         current: slide.map(|s| Layer::Text(s.clone())),
         outgoing: None,
@@ -85,30 +117,6 @@ fn swatch_color(bg: &Background) -> Color {
     }
 }
 
-fn card_button(selected: bool) -> impl Fn(&IcedTheme, button::Status) -> button::Style {
-    move |_theme, status| {
-        let bg = match (selected, status) {
-            (true, _) => ui_theme::SURFACE_HI,
-            (false, button::Status::Hovered) => ui_theme::SURFACE,
-            _ => Color::TRANSPARENT,
-        };
-        button::Style {
-            background: Some(bg.into()),
-            text_color: ui_theme::TEXT,
-            border: Border {
-                color: if selected {
-                    ui_theme::ACCENT
-                } else {
-                    Color::TRANSPARENT
-                },
-                width: 1.0,
-                radius: ui_theme::RADIUS.into(),
-            },
-            ..button::Style::default()
-        }
-    }
-}
-
 fn theme_card<'a>(app: &'a App, i: usize, theme: &'a Theme, now: f32) -> Element<'a, Msg> {
     let s = &app.core.strings;
     let thumb: Element<'a, Msg> = if app.gpu_ok {
@@ -117,14 +125,43 @@ fn theme_card<'a>(app: &'a App, i: usize, theme: &'a Theme, now: f32) -> Element
             Some(slide) => Some(slide.clone()),
             None => thumb_slide(theme, s).map(Arc::new),
         };
-        container(scene_view(
+        let background = thumb_background(app, &theme.background);
+        let missing = background.is_none();
+        let scene = scene_view(
             key(("theme_card", theme.name.as_str())),
-            thumb_scene(theme, slide.as_ref(), now),
-        ))
-        .width(THUMB_W)
-        .height(THUMB_H)
-        .style(ui_theme::thumb_frame)
-        .into()
+            thumb_scene(
+                background.unwrap_or(BackgroundState::Solid(Rgba::BLACK)),
+                theme,
+                slide.as_ref(),
+                now,
+            ),
+        );
+        let mut layers = stack![scene];
+        if missing {
+            // The file is not loaded, so name the kind instead of showing
+            // a bare black tile.
+            let kind = match &theme.background {
+                Background::Video { .. } => s.theme_bg_video.as_str(),
+                _ => s.theme_bg_image.as_str(),
+            };
+            layers = layers.push(
+                container(
+                    container(text(kind).size(10))
+                        .padding([1, 5])
+                        .style(ui_theme::tile_label),
+                )
+                .width(Fill)
+                .height(Fill)
+                .padding(3)
+                .align_x(Alignment::End)
+                .align_y(Alignment::End),
+            );
+        }
+        container(layers)
+            .width(THUMB_W)
+            .height(THUMB_H)
+            .style(ui_theme::thumb_frame)
+            .into()
     } else {
         let color = swatch_color(&theme.background);
         container(space::horizontal())
@@ -157,8 +194,8 @@ fn theme_card<'a>(app: &'a App, i: usize, theme: &'a Theme, now: f32) -> Element
             .align_y(Alignment::Center),
     )
     .width(Fill)
-    .padding(8)
-    .style(card_button(selected))
+    .padding(6)
+    .style(ui_theme::list_row(selected))
     .on_press(Msg::Themes(ThemesMsg::Select(i)))
     .into()
 }

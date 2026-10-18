@@ -103,12 +103,7 @@ pub fn show(app: &App) -> Element<'_, Msg> {
             .height(Fill),
     ]
     .spacing(ui_theme::SPACING)
-    .padding(
-        iced::Padding::ZERO
-            .left(ui_theme::SPACING)
-            .right(ui_theme::SPACING)
-            .bottom(ui_theme::SPACING),
-    )
+    .padding([0, ui_theme::SPACING as u16])
     .height(Fill)
     .into()
 }
@@ -148,9 +143,17 @@ fn library_section(app: &App) -> Column<'_, Msg> {
     } else {
         &s.force_sync_button
     };
+    let status: Element<'_, Msg> = if app.status.library_error {
+        text(&app.status.library)
+            .size(13)
+            .color(ui_theme::theme().palette().danger)
+            .into()
+    } else {
+        hint(&app.status.library)
+    };
     let sync_row = row![
         ghost(sync_label, (!busy).then_some(m(SettingsMsg::ForceSync))),
-        hint(&app.status.library),
+        status,
     ]
     .spacing(ui_theme::SPACING)
     .align_y(Alignment::Center);

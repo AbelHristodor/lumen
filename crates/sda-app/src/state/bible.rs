@@ -238,7 +238,10 @@ pub fn opened(app: &mut App) -> Task<Msg> {
         .version
         .clone()
         .or_else(|| app.core.cfg.bible_version.clone())
-        .filter(|c| app.bible.installed.contains(c));
+        .filter(|c| app.bible.installed.contains(c))
+        // With versions on disk and no saved pick, the first one is better
+        // than an empty tab that claims nothing is installed.
+        .or_else(|| app.bible.installed.first().cloned());
     match saved {
         Some(code) => switch_version(app, code),
         None => Task::none(),

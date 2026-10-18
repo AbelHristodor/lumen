@@ -385,6 +385,29 @@ fn still(
     })
 }
 
+/// Slide `slide` of `hymn` resolved under `theme`, through the preview
+/// cache so the renderer sees one `Arc` per slide and theme.
+fn resolve_slide(
+    app: &App,
+    hymn: &Hymn,
+    slide: usize,
+    theme: &Theme,
+) -> Option<Arc<ResolvedSlide>> {
+    let content = SlideContent::Styled(hymn.slides.get(slide)?.clone());
+    let key = (hymn.path.clone(), hymn.mtime, slide, theme.cache_key());
+    let mut cache = app.present.resolved.lock().ok()?;
+    if cache.len() > RESOLVED_CAP {
+        cache.clear();
+    }
+    if let Some(r) = cache.get(&key) {
+        return Some(r.clone());
+    }
+    let footer = theme.footer.then(|| title_of(hymn));
+    let r = Arc::new(resolve(theme, &content, footer.as_deref())?);
+    cache.insert(key, r.clone());
+    Some(r)
+}
+
 /// A still frame of slide `slide` of the selected hymn under the live theme.
 pub fn slide_scene(app: &App, slide: usize, size: (u32, u32)) -> Option<Arc<Scene>> {
     let (_, hymn) = selected_hymn(app)?;
@@ -399,31 +422,17 @@ pub fn slide_scene(app: &App, slide: usize, size: (u32, u32)) -> Option<Arc<Scen
             size,
         ));
     }
-    let content = SlideContent::Styled(hymn.slides.get(slide)?.clone());
-    let key = (hymn.path.clone(), hymn.mtime, slide, theme.cache_key());
-    let mut cache = app.present.resolved.lock().ok()?;
-    if cache.len() > RESOLVED_CAP {
-        cache.clear();
-    }
-    let resolved = match cache.get(&key) {
-        Some(r) => r.clone(),
-        None => {
-            let footer = theme.footer.then(|| title_of(hymn));
-            let r = Arc::new(resolve(theme, &content, footer.as_deref())?);
-            cache.insert(key, r.clone());
-            r
-        }
-    };
+    let resolved = resolve_slide(app, hymn, slide, theme)?;
     Some(still(theme, &app.live.bitmaps, Layer::Text(resolved), size))
 }
 
-/// A still frame of `sample` text under `theme`, for the theme picker.
-pub fn sample_scene(
-    app: &App,
-    theme: &Theme,
-    sample: &str,
-    size: (u32, u32),
-) -> Option<Arc<Scene>> {
+/// A still frame for the theme picker: the selected hymn's first slide
+/// under `theme`, or `sample` text when nothing is selected.
+pub fn theme_scene(app: &App, theme: &Theme, sample: &str, size: (u32, u32)) -> Option<Arc<Scene>> {
+    if let Some((_, hymn)) = selected_hymn(app) {
+        let resolved = resolve_slide(app, hymn, 0, theme)?;
+        return Some(still(theme, &app.live.bitmaps, Layer::Text(resolved), size));
+    }
     let key = theme.cache_key();
     let mut cache = app.present.samples.lock().ok()?;
     let resolved = match cache.get(&key) {

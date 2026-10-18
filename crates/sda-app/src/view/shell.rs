@@ -27,10 +27,11 @@ pub fn show(app: &App) -> Element<'_, Msg> {
         body = body.push(banner(&app.core.strings.gpu_unavailable));
     }
     body.push(
-        container(content)
-            .height(Fill)
-            .width(Fill)
-            .padding(iced::Padding::ZERO.top(ui_theme::SPACING)),
+        container(content).height(Fill).width(Fill).padding(
+            iced::Padding::ZERO
+                .top(ui_theme::SPACING)
+                .bottom(ui_theme::SPACING),
+        ),
     )
     .push(live_strip::show(app))
     .into()

@@ -107,14 +107,71 @@ pub fn accent_button(_theme: &Theme, status: button::Status) -> button::Style {
     }
 }
 
-/// Quiet button that only shows a surface on hover.
+/// Quiet button that only shows a surface on hover. Disabled drops to a
+/// faint outline with dim text so it cannot pass for an active one.
 pub fn ghost_button(_theme: &Theme, status: button::Status) -> button::Style {
     match status {
         button::Status::Active => button_base(SURFACE_HI, TEXT),
         button::Status::Hovered => button_base(lighten(SURFACE_HI, 0.06), TEXT),
         button::Status::Pressed => button_base(lighten(SURFACE_HI, -0.03), TEXT),
-        button::Status::Disabled => button_base(with_alpha(SURFACE_HI, 0.5), MUTED),
+        button::Status::Disabled => button::Style {
+            border: Border {
+                color: with_alpha(SURFACE_HI, 0.8),
+                width: 1.0,
+                radius: RADIUS.into(),
+            },
+            ..button_base(Color::TRANSPARENT, with_alpha(MUTED, 0.55))
+        },
     }
+}
+
+/// A row in a list or a card in a picker. The selected one carries a
+/// tinted accent surface, hover a raised surface.
+pub fn list_row(selected: bool) -> impl Fn(&Theme, button::Status) -> button::Style {
+    move |_, status| {
+        let bg = if selected {
+            with_alpha(ACCENT, 0.22)
+        } else if status == button::Status::Hovered {
+            SURFACE_HI
+        } else {
+            Color::TRANSPARENT
+        };
+        button::Style {
+            background: Some(bg.into()),
+            text_color: TEXT,
+            border: Border::default().rounded(RADIUS - 2.0),
+            ..button::Style::default()
+        }
+    }
+}
+
+/// A small 16 by 9 tile. The active one gets an accent border.
+pub fn tile(active: bool) -> impl Fn(&Theme, button::Status) -> button::Style {
+    move |_, _| button::Style {
+        background: Some(Color::BLACK.into()),
+        text_color: TEXT,
+        border: Border {
+            color: if active { ACCENT } else { SURFACE_HI },
+            width: 2.0,
+            radius: 4.0.into(),
+        },
+        ..button::Style::default()
+    }
+}
+
+/// Small label drawn over a tile corner.
+pub fn tile_label(_theme: &Theme) -> container::Style {
+    container::Style {
+        background: Some(with_alpha(Color::BLACK, 0.6).into()),
+        text_color: Some(TEXT),
+        border: Border::default().rounded(3.0),
+        ..container::Style::default()
+    }
+}
+
+/// Section label above a group of controls.
+pub fn section_label<'a, M: 'a>(label: &'a str) -> iced::widget::Text<'a> {
+    iced::widget::text(label).size(12).font(BOLD).color(MUTED)
 }
 
 /// One segment of a segmented control. The active segment is filled.

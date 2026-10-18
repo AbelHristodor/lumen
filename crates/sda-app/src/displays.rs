@@ -24,7 +24,7 @@ pub fn list() -> Vec<Display> {
             .enumerate()
             .map(|(i, d)| Display {
                 index: i,
-                label: format!("Display {} {}x{}", i + 1, d.width, d.height),
+                label: format!("Display {} · {}x{}", i + 1, d.width, d.height),
                 rect: (d.x, d.y, d.width, d.height),
                 scale: d.scale_factor,
                 is_primary: d.is_primary,
