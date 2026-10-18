@@ -212,13 +212,14 @@ fn go_live_with_a_cold_cache_goes_styled_and_queues_a_load() {
 
     let _ = app.update(Msg::GoLive);
     assert!(app.present.as_is_busy);
-    assert!(app.present.has_pending_load());
+    assert!(
+        !app.present.has_pending_load(),
+        "update starts the queued load right away"
+    );
     assert!(matches!(
         app.live.present.slides[0],
         SlideContent::Styled(_)
     ));
-    let _ = sda_app::state::present::pending_load(&mut app);
-    assert!(!app.present.has_pending_load());
 }
 
 fn app_with_converter() -> App {

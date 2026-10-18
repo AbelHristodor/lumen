@@ -122,16 +122,32 @@ impl LiveState {
     }
 
     pub fn blank(&mut self) {
+        if !self.present.is_loaded() {
+            return;
+        }
         let prev = self.snapshot();
         self.present.toggle_blank();
         self.step(prev);
     }
 
     pub fn stop(&mut self) {
+        if !self.present.is_loaded() {
+            return;
+        }
         let prev = self.snapshot();
         self.present = Presentation::default();
         self.clear_cache();
         self.step(prev);
+    }
+
+    /// Drop the outgoing slide once the transition has run its course at
+    /// `now`, so `animating` turns false and the frame clock can stop.
+    pub fn settle(&mut self, now: Instant) {
+        if self.started.is_some() && self.progress(now).is_none() {
+            self.started = None;
+            self.outgoing = None;
+            self.outgoing_layer = None;
+        }
     }
 
     /// Progress of the running transition in 0..1, or `None` when settled.

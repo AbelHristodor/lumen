@@ -370,6 +370,11 @@ fn tick_later() -> Task<Msg> {
     })
 }
 
+/// The Themes tab was shown. Starts the preview loop.
+pub fn opened(app: &mut App) -> Task<Msg> {
+    ensure_ticking(app)
+}
+
 /// Start the preview loop if the tab is open and it is not running.
 fn ensure_ticking(app: &mut App) -> Task<Msg> {
     if app.tab != Tab::Themes || app.themes.ticking {

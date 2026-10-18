@@ -4,7 +4,7 @@ use crate::displays::{self, Display};
 use crate::msg::{Handoff, Msg, Tab};
 use crate::state::core::{Core, Paths};
 use crate::state::live::LiveState;
-use crate::state::{self, bible, present, settings, themes, videos};
+use crate::state::{self, bible, present, projector, settings, themes, videos};
 use crate::{shortcuts, ui_theme, view, workers};
 use iced::widget::operation;
 use iced::{Element, Point, Size, Subscription, Task, event, window};
@@ -16,6 +16,7 @@ use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::time::Instant;
 
 /// Text shown in the top right chip.
 #[derive(Debug, Clone, Default)]
@@ -54,6 +55,8 @@ pub struct App {
     pub window_geom: Option<WindowGeom>,
     /// Windows opened by Identify.
     pub identify: Vec<window::Id>,
+    /// The last frame time. Views draw the live scene at this instant.
+    pub now: Instant,
 }
 
 impl App {
@@ -80,6 +83,7 @@ impl App {
             gpu_ok,
             window_geom: None,
             identify: Vec::new(),
+            now: Instant::now(),
         }
     }
 
@@ -165,6 +169,8 @@ impl App {
     pub fn view(&self, id: window::Id) -> Element<'_, Msg> {
         if Some(id) == self.projector {
             view::projector::show(self)
+        } else if let Some(n) = projector::identify_number(self, id) {
+            view::projector::identify(n)
         } else {
             view::shell::show(self)
         }
@@ -190,49 +196,27 @@ impl App {
         ui_theme::theme()
     }
 
-    /// Swap in a searcher a worker built and refresh the hit list.
-    fn install_searcher(&mut self, handoff: &Handoff<Searcher>) -> usize {
-        let Some(searcher) = handoff.take() else {
-            return 0;
-        };
+    /// Swap in a searcher a worker built and refresh the hit list. `None`
+    /// when the handoff was already taken, so the status stays as it is.
+    fn install_searcher(&mut self, handoff: &Handoff<Searcher>) -> Option<usize> {
+        let searcher = handoff.take()?;
         let len = searcher.len();
         self.core.searcher = Some(searcher);
         present::run_search(self);
-        len
-    }
-
-    fn open_projector(&mut self) -> Task<Msg> {
-        let Some(d) = self
-            .projector_display
-            .and_then(|i| self.displays.get(i))
-            .cloned()
-        else {
-            return Task::none();
-        };
-        let (x, y, w, h) = d.rect;
-        let (id, open) = window::open(window::Settings {
-            size: Size::new(w as f32, h as f32),
-            position: window::Position::Specific(Point::new(x as f32 + 1.0, y as f32 + 1.0)),
-            decorations: false,
-            resizable: false,
-            level: window::Level::AlwaysOnTop,
-            ..window::Settings::default()
-        });
-        self.projector = Some(id);
-        open.then(move |_| window::set_mode(id, window::Mode::Fullscreen))
-    }
-
-    fn close_projector(&mut self) -> Task<Msg> {
-        match self.projector.take() {
-            Some(id) => window::close(id),
-            None => Task::none(),
-        }
+        Some(len)
     }
 
     pub fn update(&mut self, msg: Msg) -> Task<Msg> {
         let s = self.core.strings.clone();
         match msg {
-            Msg::Tab(t) => self.tab = t,
+            Msg::Tab(t) => {
+                self.tab = t;
+                return match t {
+                    Tab::Bible => bible::opened(self),
+                    Tab::Themes => themes::opened(self),
+                    _ => Task::none(),
+                };
+            }
             Msg::Search(q) => {
                 self.present.query = q;
                 present::run_search(self);
@@ -241,11 +225,18 @@ impl App {
             Msg::MoveSelection(d) => {
                 if self.tab == Tab::Present {
                     present::move_selection(self, d);
+                    return present::snap_to_selection(self);
                 }
             }
             Msg::PreviewSlide(i) => self.present.preview_slide = i,
-            Msg::GoLive => present::go_live(self, self.present.preview_slide),
-            Msg::GoLiveAt(i) => present::go_live(self, i),
+            Msg::GoLive => {
+                present::go_live(self, self.present.preview_slide);
+                return present::pending_load(self);
+            }
+            Msg::GoLiveAt(i) => {
+                present::go_live(self, i);
+                return present::pending_load(self);
+            }
             Msg::FocusSearch => {
                 self.tab = Tab::Present;
                 return operation::focus(iced::widget::Id::new(view::present::SEARCH_ID));
@@ -256,33 +247,24 @@ impl App {
             Msg::LiveJump(n) => self.live.jump(n),
             Msg::LiveStop => {
                 self.live.stop();
-                return self.close_projector();
+                return projector::close(self);
             }
-            Msg::ProjectorToggle => {
-                return if self.projector.is_some() {
-                    self.close_projector()
-                } else {
-                    self.open_projector()
-                };
-            }
-            Msg::ProjectorDisplay(i) => {
-                self.projector_display = Some(i);
-                self.core.cfg.output_display = Some(i as i32);
-                self.core.save_cfg();
-            }
+            Msg::ProjectorToggle => return projector::toggle(self),
+            Msg::ProjectorDisplay(i) => return projector::choose_display(self, i),
             Msg::ProjectorClosed(id) => {
                 if id == self.operator {
                     return iced::exit();
                 }
-                if Some(id) == self.projector {
-                    self.projector = None;
-                }
+                projector::closed(self, id);
             }
-            Msg::Tick(_) => {}
+            Msg::Tick(now) => projector::tick(self, now),
+            Msg::Identify => return projector::identify(self),
+            Msg::IdentifyDone => return projector::identify_done(self),
             Msg::Indexed(r) | Msg::Reindexed(r) => match r {
                 Ok(h) => {
-                    let n = self.install_searcher(&h);
-                    self.status.library = s.status_indexed_fmt.replace("{}", &n.to_string());
+                    if let Some(n) = self.install_searcher(&h) {
+                        self.status.library = s.status_indexed_fmt.replace("{}", &n.to_string());
+                    }
                 }
                 Err(e) => self.status.library = s.status_indexing_failed_fmt.replace("{}", &e),
             },
@@ -290,8 +272,9 @@ impl App {
                 self.status.sync_busy = false;
                 match r {
                     Ok(Some(h)) => {
-                        let n = self.install_searcher(&h);
-                        self.status.library = s.status_synced_fmt.replace("{}", &n.to_string());
+                        if let Some(n) = self.install_searcher(&h) {
+                            self.status.library = s.status_synced_fmt.replace("{}", &n.to_string());
+                        }
                     }
                     Ok(None) => self.status.library = s.status_library_ready,
                     Err(e) => self.status.library = s.status_sync_failed_fmt.replace("{}", &e),
@@ -316,7 +299,11 @@ impl App {
                     .output_display
                     .and_then(|i| usize::try_from(i).ok())
                     .filter(|i| *i < list.len());
-                self.projector_display = saved.or_else(|| displays::default_display(&list));
+                self.projector_display = saved
+                    .or_else(|| displays::default_display(&list))
+                    .or_else(|| {
+                        (displays::single_display_allowed() && !list.is_empty()).then_some(0)
+                    });
                 self.displays = list;
             }
             Msg::FontsListed(fonts) => self.themes.fonts = fonts,
@@ -347,7 +334,7 @@ impl App {
                     log::warn!("saving window geometry failed: {e}");
                 }
             }
-            Msg::Identify | Msg::IdentifyDone | Msg::Noop => {}
+            Msg::Noop => {}
         }
         Task::none()
     }

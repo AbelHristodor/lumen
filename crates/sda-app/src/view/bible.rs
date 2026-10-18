@@ -53,9 +53,7 @@ pub fn show(app: &App) -> Element<'_, Msg> {
         .padding([0, ui_theme::SPACING as u16])
         .width(Fill)
         .height(Fill);
-    // There is no tab open hook, so the first cursor move over the tab body
-    // loads the saved version. The message is a no op once loaded.
-    let page: Element<'_, Msg> = mouse_area(page).on_enter(b(BibleMsg::Opened)).into();
+    let page: Element<'_, Msg> = page.into();
     if st.manage_open {
         stack![page, opaque(manage_modal(app))].into()
     } else {

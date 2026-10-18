@@ -41,3 +41,9 @@ pub fn list() -> Vec<Display> {
 pub fn default_display(displays: &[Display]) -> Option<usize> {
     displays.iter().position(|d| !d.is_primary)
 }
+
+/// Debug switch. `SDA_ALLOW_SINGLE_DISPLAY=1` lets the projector open
+/// fullscreen on the only screen so it can be tried on a laptop.
+pub fn single_display_allowed() -> bool {
+    std::env::var_os("SDA_ALLOW_SINGLE_DISPLAY").is_some_and(|v| v == "1")
+}

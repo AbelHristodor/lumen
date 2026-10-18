@@ -2,12 +2,12 @@
 //! projector and holds the slide and projector controls.
 
 use crate::app::App;
+use crate::displays;
 use crate::msg::Msg;
 use crate::ui_theme;
 use crate::widgets::scene_view::{key, scene_view};
 use iced::widget::{button, column, container, pick_list, row, space, text};
 use iced::{Alignment, Element, Fill};
-use std::time::Instant;
 
 pub fn show(app: &App) -> Element<'_, Msg> {
     let s = &app.core.strings;
@@ -17,7 +17,7 @@ pub fn show(app: &App) -> Element<'_, Msg> {
     let thumb: Element<'_, Msg> = if app.gpu_ok && loaded {
         container(scene_view(
             key("live_strip"),
-            live.scene((160, 90), Instant::now()),
+            live.scene((160, 90), app.now),
         ))
         .width(160)
         .height(90)
@@ -27,8 +27,8 @@ pub fn show(app: &App) -> Element<'_, Msg> {
         container(text(live.present.title.as_str()).size(12).center())
             .width(160)
             .height(90)
-            .center_x(Fill)
-            .center_y(Fill)
+            .align_x(iced::Center)
+            .align_y(iced::Center)
             .style(ui_theme::thumb_frame)
             .into()
     } else {
@@ -79,7 +79,9 @@ pub fn show(app: &App) -> Element<'_, Msg> {
     } else {
         &s.projector_on
     };
-    let can_project = app.gpu_ok && (app.displays.len() >= 2 || app.projector.is_some());
+    let enough =
+        app.displays.len() >= 2 || (displays::single_display_allowed() && !app.displays.is_empty());
+    let can_project = app.gpu_ok && (enough || app.projector.is_some());
     let toggle = button(text(toggle_label.as_str()).size(13))
         .padding([6, 14])
         .style(ui_theme::accent_button)
