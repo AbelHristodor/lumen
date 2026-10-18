@@ -1,6 +1,7 @@
 //! What is live right now and how it is drawn. The Live strip and the
 //! projector both read this state and build a `Scene` from it.
 
+use crate::msg::BackgroundAsset;
 use image::RgbaImage;
 use sda_core::present::Presentation;
 use sda_core::resolve::{ResolvedSlide, SlideContent, resolve};
@@ -49,20 +50,44 @@ impl LiveState {
         live
     }
 
-    /// Switch themes. Decodes an image background once into `bitmaps`.
+    /// Switch themes. A changed background drops the running video. Image
+    /// and video files are loaded by a worker, see `background_pending`.
     pub fn set_theme(&mut self, theme: Theme) {
-        if let Background::Image(path) = &theme.background
-            && !self.bitmaps.contains_key(path)
-        {
-            match image::open(path) {
-                Ok(img) => {
-                    self.bitmaps.insert(path.clone(), Arc::new(img.to_rgba8()));
-                }
-                Err(e) => log::warn!("background image {} failed to load: {e}", path.display()),
-            }
+        if theme.background != self.theme.background {
+            self.video = None;
         }
         self.theme = theme;
         self.clear_cache();
+    }
+
+    /// True when the background needs a worker: a video with no decoder
+    /// and no still yet, or an image not decoded yet.
+    pub fn background_pending(&self) -> bool {
+        match &self.theme.background {
+            Background::Video { path } => {
+                self.video.is_none()
+                    && !self.bitmaps.contains_key(path)
+                    && !path.as_os_str().is_empty()
+            }
+            Background::Image(path) => {
+                !self.bitmaps.contains_key(path) && !path.as_os_str().is_empty()
+            }
+            _ => false,
+        }
+    }
+
+    /// Put a worker result in place. Ignored when the theme moved on to a
+    /// different background while the worker ran.
+    pub fn install_background(&mut self, for_background: &Background, asset: BackgroundAsset) {
+        if self.theme.background != *for_background {
+            return;
+        }
+        match asset {
+            BackgroundAsset::Video(src) => self.video = Some(src),
+            BackgroundAsset::Still(path, img) => {
+                self.bitmaps.insert(path, img);
+            }
+        }
     }
 
     fn clear_cache(&self) {
@@ -221,10 +246,15 @@ impl LiveState {
                 .get(path)
                 .map(|b| BackgroundState::Image(b.clone()))
                 .unwrap_or(BackgroundState::Solid(Rgba::BLACK)),
-            Background::Video { .. } => self
+            Background::Video { path } => self
                 .video
                 .clone()
                 .map(BackgroundState::Video)
+                .or_else(|| {
+                    self.bitmaps
+                        .get(path)
+                        .map(|b| BackgroundState::Image(b.clone()))
+                })
                 .unwrap_or(BackgroundState::Solid(Rgba::BLACK)),
         }
     }

@@ -103,7 +103,7 @@ fn empty_state(app: &App) -> Element<'_, Msg> {
     let line = match (&st.error, &st.busy) {
         (Some(e), _) => e.clone(),
         (None, Some(_)) => s.status_loading.clone(),
-        (None, None) => s.bible_download.clone(),
+        (None, None) => s.bible_empty.clone(),
     };
     let open = button(text(&s.bible_manage).size(13))
         .padding([6, 14])
@@ -192,12 +192,17 @@ fn verses_pane(app: &App) -> Element<'_, Msg> {
         .padding([6, 14])
         .style(ui_theme::accent_button)
         .on_press_maybe((!st.selected.is_empty()).then_some(b(BibleMsg::Present)));
+    let clear = button(text(&s.clear_selection).size(13))
+        .padding([6, 12])
+        .style(ui_theme::ghost_button)
+        .on_press_maybe((!st.selected.is_empty()).then_some(b(BibleMsg::ClearSelection)));
     let header = row![
         text(title).size(16).font(ui_theme::BOLD),
         container(text(abbr).size(12))
             .padding([2, 8])
             .style(ui_theme::chip),
         space::horizontal(),
+        clear,
         present,
     ]
     .spacing(ui_theme::SPACING)
@@ -218,7 +223,7 @@ fn verses_pane(app: &App) -> Element<'_, Msg> {
         // Extend the selection down to this verse. Stands in for Shift click.
         if let Some(first) = last.filter(|l| n > *l) {
             line = line.push(
-                button(text(format!("{first}-{n}")).size(11))
+                button(text(&s.select_to_here).size(11))
                     .padding([2, 6])
                     .style(ui_theme::ghost_button)
                     .on_press(b(BibleMsg::SelectRange(first, n))),
@@ -279,8 +284,8 @@ fn search_pane(app: &App) -> Element<'_, Msg> {
 fn manage_modal(app: &App) -> Element<'_, Msg> {
     let s = &app.core.strings;
     let st = &app.bible;
-    let close = button(text("×").size(16))
-        .padding([2, 10])
+    let close = button(text(&s.close).size(13))
+        .padding([4, 10])
         .style(ui_theme::ghost_button)
         .on_press(b(BibleMsg::ManageClose));
     let header = row![

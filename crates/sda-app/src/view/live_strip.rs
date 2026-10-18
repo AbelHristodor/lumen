@@ -6,7 +6,7 @@ use crate::displays;
 use crate::msg::Msg;
 use crate::ui_theme;
 use crate::widgets::scene_view::{key, scene_view};
-use iced::widget::{button, column, container, pick_list, row, space, text};
+use iced::widget::{button, column, container, pick_list, row, space, text, tooltip};
 use iced::{Alignment, Element, Fill};
 
 pub fn show(app: &App) -> Element<'_, Msg> {
@@ -86,6 +86,25 @@ pub fn show(app: &App) -> Element<'_, Msg> {
         .padding([6, 14])
         .style(ui_theme::accent_button)
         .on_press_maybe(can_project.then_some(Msg::ProjectorToggle));
+    let hint = if !app.gpu_ok {
+        Some(&s.gpu_unavailable)
+    } else if !can_project {
+        Some(&s.single_display_hint)
+    } else {
+        None
+    };
+    let toggle: Element<'_, Msg> = match hint {
+        Some(h) => tooltip(
+            toggle,
+            container(text(h.as_str()).size(12))
+                .padding(8)
+                .max_width(280)
+                .style(ui_theme::card),
+            tooltip::Position::Top,
+        )
+        .into(),
+        None => toggle.into(),
+    };
 
     container(
         row![thumb, info, space::horizontal(), controls, picker, toggle]

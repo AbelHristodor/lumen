@@ -1,15 +1,23 @@
 //! Background work. Every function returns a `Task` that runs the blocking
 //! core call on a tokio blocking thread and ends in exactly one `Msg`.
 
-use crate::msg::{Handoff, Msg, SettingsMsg};
+use crate::msg::{BackgroundAsset, BgTarget, Handoff, Msg, SettingsMsg};
 use crate::state::core::Core;
+use crate::state::live::LiveState;
 use iced::Task;
 use sda_core::asis;
+use sda_core::downloader;
 use sda_core::library::Config;
 use sda_core::refresh;
 use sda_core::search::Searcher;
 use sda_core::sync::SyncOutcome;
+use sda_core::theme::Background;
 use sda_core::update::{self, UpdateOutcome};
+use std::path::Path;
+use std::sync::Arc;
+
+/// Output size of video backgrounds. The renderer covers the target.
+pub const VIDEO_SIZE: (u32, u32) = (1920, 1080);
 
 /// Run `f` off the UI thread. A panic inside becomes an `Err` string.
 async fn blocking<T: Send + 'static>(f: impl FnOnce() -> T + Send + 'static) -> Result<T, String> {
@@ -89,22 +97,70 @@ pub fn reindex(core: &Core) -> Task<Msg> {
 pub fn update_check(core: &Core) -> Task<Msg> {
     let s = core.strings.clone();
     Task::perform(blocking(update::check_and_stage_update), move |r| {
-        Msg::UpdateChecked(match r {
-            Ok(Ok(UpdateOutcome::UpToDate)) => s.update_up_to_date,
+        let (text, staged) = match r {
+            Ok(Ok(UpdateOutcome::UpToDate)) => (s.update_up_to_date, false),
             Ok(Ok(UpdateOutcome::Updated { version })) => {
-                s.update_staged_fmt.replace("{}", &version)
+                (s.update_staged_fmt.replace("{}", &version), true)
             }
-            Ok(Ok(UpdateOutcome::CheckUnavailable)) => s.update_unavailable,
+            Ok(Ok(UpdateOutcome::CheckUnavailable)) => (s.update_unavailable, false),
             Ok(Err(e)) => {
                 log::warn!("update check failed: {e}");
-                s.update_failed
+                (s.update_failed, false)
             }
             Err(e) => {
                 log::warn!("{e}");
-                s.update_failed
+                (s.update_failed, false)
             }
-        })
+        };
+        Msg::UpdateChecked(text, staged)
     })
+}
+
+/// Probe for a wgpu device once. False turns on the text fallbacks.
+pub fn gpu_probe() -> Task<Msg> {
+    Task::perform(blocking(|| sda_render::headless::device().is_some()), |r| {
+        Msg::GpuProbed(r.unwrap_or(false))
+    })
+}
+
+/// Load what `live`'s background needs from disk: start ffmpeg for a
+/// video, decode an image. `Task::none()` when nothing is pending.
+pub fn background(target: BgTarget, live: &LiveState) -> Task<Msg> {
+    if !live.background_pending() {
+        return Task::none();
+    }
+    let bg = live.theme.background.clone();
+    let work = bg.clone();
+    Task::perform(blocking(move || load_background(&work)), move |r| {
+        Msg::BackgroundReady(target, bg.clone(), r.and_then(|inner| inner))
+    })
+}
+
+fn load_background(bg: &Background) -> Result<BackgroundAsset, String> {
+    match bg {
+        Background::Image(path) => still(path),
+        Background::Video { path } => {
+            let spawned = downloader::find_existing("ffmpeg")
+                .ok_or_else(|| "ffmpeg not found".to_string())
+                .and_then(|ffmpeg| {
+                    sda_render::spawn_decoder(&ffmpeg, path, VIDEO_SIZE).map_err(|e| e.to_string())
+                });
+            match spawned {
+                Ok(src) => Ok(BackgroundAsset::Video(src)),
+                Err(e) => {
+                    log::warn!("video background {} failed: {e}", path.display());
+                    still(path).map_err(|_| e)
+                }
+            }
+        }
+        _ => Err("background needs no file".into()),
+    }
+}
+
+fn still(path: &Path) -> Result<BackgroundAsset, String> {
+    image::open(path)
+        .map(|img| BackgroundAsset::Still(path.to_path_buf(), Arc::new(img.to_rgba8())))
+        .map_err(|e| format!("{}: {e}", path.display()))
 }
 
 /// Find LibreOffice or PowerPoint for as is slides.

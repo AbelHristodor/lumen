@@ -1,7 +1,7 @@
 //! The one app state Iced owns, its message handler, and window routing.
 
 use crate::displays::{self, Display};
-use crate::msg::{Handoff, Msg, Tab};
+use crate::msg::{BgTarget, Handoff, Msg, Tab};
 use crate::state::core::{Core, Paths};
 use crate::state::live::LiveState;
 use crate::state::{self, bible, present, projector, settings, themes, videos};
@@ -22,8 +22,12 @@ use std::time::Instant;
 #[derive(Debug, Clone, Default)]
 pub struct Status {
     pub library: String,
+    /// True when `library` reports a failure. The chip shows a danger dot.
+    pub library_error: bool,
     pub sync_busy: bool,
     pub update: Option<String>,
+    /// True when a new version was staged. The chip shows a short label.
+    pub update_staged: bool,
 }
 
 /// Saved operator window geometry in logical points.
@@ -104,12 +108,14 @@ impl App {
             min_size: Some(Size::new(960.0, 640.0)),
             ..window::Settings::default()
         });
-        // The device probe lands with the as is and video wiring. Until then
-        // the shader widget reports its own failure through Iced.
+        // Optimistic until the probe answers, so a working machine never
+        // flashes the banner at boot.
         let mut app = App::new(core, operator, true);
         app.window_geom = geom;
         let task = Task::batch([
             open.discard(),
+            workers::gpu_probe(),
+            workers::background(BgTarget::Live, &app.live),
             workers::boot(&app.core),
             Task::perform(async { displays::list() }, Msg::DisplaysListed),
         ]);
@@ -264,9 +270,14 @@ impl App {
                 Ok(h) => {
                     if let Some(n) = self.install_searcher(&h) {
                         self.status.library = s.status_indexed_fmt.replace("{}", &n.to_string());
+                        self.status.library_error = false;
                     }
                 }
-                Err(e) => self.status.library = s.status_indexing_failed_fmt.replace("{}", &e),
+                Err(e) => {
+                    log::warn!("indexing worker failed: {e}");
+                    self.status.library = s.worker_failed;
+                    self.status.library_error = true;
+                }
             },
             Msg::Synced(r) => {
                 self.status.sync_busy = false;
@@ -274,13 +285,37 @@ impl App {
                     Ok(Some(h)) => {
                         if let Some(n) = self.install_searcher(&h) {
                             self.status.library = s.status_synced_fmt.replace("{}", &n.to_string());
+                            self.status.library_error = false;
                         }
                     }
-                    Ok(None) => self.status.library = s.status_library_ready,
-                    Err(e) => self.status.library = s.status_sync_failed_fmt.replace("{}", &e),
+                    Ok(None) => {}
+                    Err(e) => {
+                        self.status.library = s.status_sync_failed_fmt.replace("{}", &e);
+                        self.status.library_error = true;
+                    }
                 }
             }
-            Msg::UpdateChecked(text) => self.status.update = Some(text),
+            Msg::UpdateChecked(text, staged) => {
+                self.status.update = Some(text);
+                self.status.update_staged = staged;
+            }
+            Msg::GpuProbed(ok) => self.gpu_ok = ok,
+            Msg::BackgroundReady(target, bg, result) => {
+                let live = match target {
+                    BgTarget::Live => &mut self.live,
+                    BgTarget::ThemePreview => &mut self.themes.preview,
+                };
+                match result {
+                    Ok(asset) => live.install_background(&bg, asset),
+                    Err(e) => {
+                        log::warn!("background load failed: {e}");
+                        if target == BgTarget::Live {
+                            self.status.library = s.worker_failed;
+                            self.status.library_error = true;
+                        }
+                    }
+                }
+            }
             Msg::ForceSync => {
                 self.status.sync_busy = true;
                 self.status.library = s.status_re_cloning;

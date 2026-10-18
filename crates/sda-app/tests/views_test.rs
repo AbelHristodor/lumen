@@ -219,3 +219,116 @@ fn settings_detected_and_themes_set_active_update_state() {
     assert_eq!(app.live.theme.name, "Default");
     assert_eq!(app.core.cfg.active_theme.as_deref(), Some("Default"));
 }
+
+#[test]
+fn gpu_banner_shows_only_when_the_probe_failed() {
+    let mut app = app();
+    let _ = app.update(Msg::GpuProbed(false));
+    assert!(!app.gpu_ok);
+    {
+        let mut ui = Simulator::new(app.view_operator());
+        assert!(ui.find(&*app.core.strings.gpu_unavailable).is_ok());
+    }
+    let _ = app.update(Msg::GpuProbed(true));
+    assert!(app.gpu_ok);
+}
+
+#[test]
+fn live_scene_resolves_a_preloaded_bitmap_slide() {
+    use sda_render::Layer;
+    use std::path::PathBuf;
+    use std::sync::Arc;
+    let mut app = app();
+    let png = PathBuf::from("/tmp/asis/1.png");
+    let img = Arc::new(image::RgbaImage::new(4, 4));
+    app.live.bitmaps.insert(png.clone(), img.clone());
+    let mut p = Presentation::default();
+    p.load(
+        "150 Test".into(),
+        None,
+        vec![SlideContent::Bitmap(png)],
+        Source::Hymn(PathBuf::from("/tmp/150.pptx")),
+    );
+    app.live.go(p);
+    let scene = app.live.scene((160, 90), Instant::now());
+    match &scene.current {
+        Some(Layer::Bitmap(b)) => assert!(Arc::ptr_eq(b, &img)),
+        other => panic!("expected a bitmap layer, got {other:?}"),
+    }
+}
+
+#[test]
+fn video_background_installs_for_the_matching_theme_and_drops_on_change() {
+    use sda_app::msg::{BackgroundAsset, BgTarget};
+    use sda_core::theme::{Background, Theme};
+    use sda_render::{BackgroundState, FrameSource};
+    use std::path::PathBuf;
+    let mut app = app();
+    let theme = Theme {
+        background: Background::Video {
+            path: PathBuf::from("/tmp/bg.mp4"),
+        },
+        ..Theme::default()
+    };
+    app.live.set_theme(theme.clone());
+    assert!(app.live.background_pending());
+
+    let stale = Background::Video {
+        path: PathBuf::from("/tmp/other.mp4"),
+    };
+    let _ = app.update(Msg::BackgroundReady(
+        BgTarget::Live,
+        stale,
+        Ok(BackgroundAsset::Video(FrameSource::new((16, 9)))),
+    ));
+    assert!(
+        app.live.video.is_none(),
+        "a late result for another file is dropped"
+    );
+
+    let src = FrameSource::new((16, 9));
+    let _ = app.update(Msg::BackgroundReady(
+        BgTarget::Live,
+        theme.background.clone(),
+        Ok(BackgroundAsset::Video(src.clone())),
+    ));
+    assert!(!app.live.background_pending());
+    let shows_video = matches!(
+        app.live.scene((160, 90), Instant::now()).background,
+        BackgroundState::Video(_)
+    );
+    assert!(shows_video);
+
+    app.live.set_theme(Theme::default());
+    assert!(
+        app.live.video.is_none(),
+        "a new background drops the decoder"
+    );
+
+    let _ = app.update(Msg::BackgroundReady(
+        BgTarget::Live,
+        theme.background.clone(),
+        Err("ffmpeg not found".into()),
+    ));
+    assert!(app.status.library_error);
+    assert_eq!(app.status.library, app.core.strings.worker_failed);
+}
+
+#[test]
+fn sync_error_marks_the_chip_and_hides_the_update_chip() {
+    let mut app = app();
+    let up_to_date = app.core.strings.update_up_to_date.clone();
+    let _ = app.update(Msg::UpdateChecked(up_to_date.clone(), false));
+    let _ = app.update(Msg::Synced(Err("HEAD failed".into())));
+    assert!(app.status.library_error);
+    {
+        let mut ui = Simulator::new(app.view_operator());
+        assert!(ui.find(&*app.status.library).is_ok());
+        assert!(ui.find(&*up_to_date).is_err());
+    }
+    let _ = app.update(Msg::Synced(Ok(None)));
+    assert!(
+        app.status.library_error,
+        "unchanged sync keeps the last state"
+    );
+}

@@ -15,12 +15,33 @@ pub use videos::VideosMsg;
 
 use crate::displays::Display;
 use iced::{Point, Size, window};
+use image::RgbaImage;
 use sda_core::i18n::Strings;
 use sda_core::search::Searcher;
+use sda_core::theme::Background;
+use sda_render::FrameSource;
 use std::fmt;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
+
+/// Which `LiveState` a background worker was started for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BgTarget {
+    /// `app.live`, what the projector shows.
+    Live,
+    /// `app.themes.preview`, the Themes tab player.
+    ThemePreview,
+}
+
+/// A theme background that needed disk work, ready to install.
+#[derive(Debug, Clone)]
+pub enum BackgroundAsset {
+    /// A running ffmpeg decoder for a video background.
+    Video(Arc<FrameSource>),
+    /// A decoded image, for image backgrounds and the video fallback.
+    Still(PathBuf, Arc<RgbaImage>),
+}
 
 /// Carries a value that is not `Clone` through a `Clone` message. Iced
 /// buttons require `Message: Clone`, so a worker puts its result in here and
@@ -107,8 +128,13 @@ pub enum Msg {
     /// `Ok(None)` means the hymns zip was already current.
     Synced(Result<Option<Handoff<Searcher>>, String>),
     Reindexed(Result<Handoff<Searcher>, String>),
-    UpdateChecked(String),
+    /// Translated update text and whether a new version was staged.
+    UpdateChecked(String, bool),
     ForceSync,
+    /// The headless device probe finished. False means no wgpu adapter.
+    GpuProbed(bool),
+    /// A background worker finished for the theme background it was given.
+    BackgroundReady(BgTarget, Background, Result<BackgroundAsset, String>),
     Present(PresentMsg),
     Bible(BibleMsg),
     Videos(VideosMsg),

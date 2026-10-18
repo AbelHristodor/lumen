@@ -16,10 +16,6 @@ use sda_core::library;
 #[path = "screen_picker.rs"]
 pub mod screen_picker;
 
-/// Inter, Noto Serif, Lora and Roboto Slab are bundled. Font and license
-/// names are proper nouns, so this line is not translated.
-const FONT_LICENSES: &str = "Fonts: Inter, Noto Serif and Lora under the SIL Open Font License. Roboto Slab under the Apache 2.0 license.";
-
 fn m(msg: SettingsMsg) -> Msg {
     Msg::Settings(msg)
 }
@@ -126,7 +122,7 @@ fn general(app: &App) -> Column<'_, Msg> {
     );
     let checking = app.status.update.as_deref() == Some(s.update_checking.as_str());
     let mut updates = row![accent(
-        &s.update_checking,
+        &s.check_updates,
         (!checking).then_some(m(SettingsMsg::CheckUpdate)),
     )]
     .spacing(ui_theme::SPACING)
@@ -187,9 +183,12 @@ fn library_section(app: &App) -> Column<'_, Msg> {
         ]
         .spacing(ui_theme::SPACING)
         .align_y(Alignment::Center);
-        if !library::library_available(&lib.path) {
-            r = r.push(chip(s.library_unavailable_suffix.trim().to_string()));
-        }
+        let state = if library::library_available(&lib.path) {
+            &s.library_available
+        } else {
+            &s.library_missing
+        };
+        r = r.push(chip(state.clone()));
         r = r.push(ghost(&s.remove, Some(m(SettingsMsg::RemoveFolder(path)))));
         table = table.push(
             container(r)
@@ -247,7 +246,7 @@ fn display(app: &App) -> Column<'_, Msg> {
     ]
     .spacing(ui_theme::SPACING)
     .align_y(Alignment::Center);
-    column![group([
+    let mut items = vec![
         heading(&s.settings_display),
         container(picker)
             .padding(4)
@@ -258,7 +257,12 @@ fn display(app: &App) -> Column<'_, Msg> {
             })
             .into(),
         controls.into(),
-    ])]
+        hint(&s.identify_hint),
+    ];
+    if app.displays.len() < 2 {
+        items.push(hint(&s.single_display_hint));
+    }
+    column![group(items)]
 }
 
 fn presenting(app: &App) -> Column<'_, Msg> {
@@ -307,7 +311,7 @@ fn about(app: &App) -> Column<'_, Msg> {
         group([
             heading(&s.app_title),
             text(version).size(13).into(),
-            hint(FONT_LICENSES),
+            hint(&s.font_licenses),
         ]),
         group([
             heading(&s.data_folder),

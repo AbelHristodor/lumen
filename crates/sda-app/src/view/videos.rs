@@ -104,14 +104,14 @@ pub fn show(app: &App) -> Element<'_, Msg> {
             );
         }
         Phase::Failed => card = card.push(text(&v.message).size(13)),
-        Phase::Probing => card = card.push(text(&s.videos_fetch).size(13).color(ui_theme::MUTED)),
+        Phase::Probing => card = card.push(text(&s.probing).size(13).color(ui_theme::MUTED)),
         Phase::Idle | Phase::Ready => {}
     }
 
     let mut history = column![text(&s.videos_history).size(15).font(ui_theme::BOLD)]
         .spacing(ui_theme::SPACING / 2.0);
     if app.core.downloads.is_empty() {
-        history = history.push(text(&s.downloader_subtitle).size(13).color(ui_theme::MUTED));
+        history = history.push(text(&s.downloads_empty).size(13).color(ui_theme::MUTED));
     }
     for rec in &app.core.downloads {
         history = history.push(

@@ -157,57 +157,67 @@ impl fmt::Display for FontChoice {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-struct KindChoice(TransitionKind);
-
-impl KindChoice {
-    const ALL: [KindChoice; 8] = [
-        KindChoice(TransitionKind::None),
-        KindChoice(TransitionKind::Fade),
-        KindChoice(TransitionKind::Slide(Direction::Left)),
-        KindChoice(TransitionKind::Slide(Direction::Right)),
-        KindChoice(TransitionKind::Slide(Direction::Up)),
-        KindChoice(TransitionKind::Slide(Direction::Down)),
-        KindChoice(TransitionKind::Scale),
-        KindChoice(TransitionKind::Blur),
-    ];
+/// A pick list entry carrying its translated label. Equality is on the
+/// value so the picker finds the selected one whatever the language.
+#[derive(Debug, Clone)]
+struct Choice<T> {
+    value: T,
+    label: String,
 }
 
-impl fmt::Display for KindChoice {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(match self.0 {
-            TransitionKind::None => "None",
-            TransitionKind::Fade => "Fade",
-            TransitionKind::Slide(Direction::Left) => "Slide left",
-            TransitionKind::Slide(Direction::Right) => "Slide right",
-            TransitionKind::Slide(Direction::Up) => "Slide up",
-            TransitionKind::Slide(Direction::Down) => "Slide down",
-            TransitionKind::Scale => "Scale",
-            TransitionKind::Blur => "Blur",
-        })
+impl<T: PartialEq> PartialEq for Choice<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.value == other.value
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-struct EasingChoice(Easing);
-
-impl EasingChoice {
-    const ALL: [EasingChoice; 3] = [
-        EasingChoice(Easing::Linear),
-        EasingChoice(Easing::EaseInOut),
-        EasingChoice(Easing::EaseOut),
-    ];
-}
-
-impl fmt::Display for EasingChoice {
+impl<T> fmt::Display for Choice<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(match self.0 {
-            Easing::Linear => "Linear",
-            Easing::EaseInOut => "Ease in out",
-            Easing::EaseOut => "Ease out",
-        })
+        f.write_str(&self.label)
     }
 }
+
+fn choice<T>(value: T, label: impl Into<String>) -> Choice<T> {
+    Choice {
+        value,
+        label: label.into(),
+    }
+}
+
+fn kind_label(s: &Strings, kind: TransitionKind) -> String {
+    let slide = |dir: &str| format!("{} {}", s.transition_slide, dir.to_lowercase());
+    match kind {
+        TransitionKind::None => s.transition_none.clone(),
+        TransitionKind::Fade => s.transition_fade.clone(),
+        TransitionKind::Slide(Direction::Left) => slide(&s.align_left),
+        TransitionKind::Slide(Direction::Right) => slide(&s.align_right),
+        TransitionKind::Slide(Direction::Up) => slide(&s.align_top),
+        TransitionKind::Slide(Direction::Down) => slide(&s.align_bottom),
+        TransitionKind::Scale => s.transition_scale.clone(),
+        TransitionKind::Blur => s.transition_blur.clone(),
+    }
+}
+
+const KINDS: [TransitionKind; 8] = [
+    TransitionKind::None,
+    TransitionKind::Fade,
+    TransitionKind::Slide(Direction::Left),
+    TransitionKind::Slide(Direction::Right),
+    TransitionKind::Slide(Direction::Up),
+    TransitionKind::Slide(Direction::Down),
+    TransitionKind::Scale,
+    TransitionKind::Blur,
+];
+
+fn easing_label(s: &Strings, e: Easing) -> &str {
+    match e {
+        Easing::Linear => &s.easing_linear,
+        Easing::EaseInOut => &s.easing_in_out,
+        Easing::EaseOut => &s.easing_out,
+    }
+}
+
+const EASINGS: [Easing; 3] = [Easing::Linear, Easing::EaseInOut, Easing::EaseOut];
 
 fn text_section<'a>(app: &'a App, d: &'a Theme) -> Element<'a, Msg> {
     let s = &app.core.strings;
@@ -261,9 +271,9 @@ fn text_section<'a>(app: &'a App, d: &'a Theme) -> Element<'a, Msg> {
     );
     let h_align = segmented(
         [
-            ("Left", HAlign::Left),
-            ("Center", HAlign::Center),
-            ("Right", HAlign::Right),
+            (s.align_left.as_str(), HAlign::Left),
+            (s.align_center.as_str(), HAlign::Center),
+            (s.align_right.as_str(), HAlign::Right),
         ],
         match t.h_align {
             Prop::Set(a) => a,
@@ -273,9 +283,9 @@ fn text_section<'a>(app: &'a App, d: &'a Theme) -> Element<'a, Msg> {
     );
     let v_align = segmented(
         [
-            ("Top", VAlign::Top),
-            ("Middle", VAlign::Middle),
-            ("Bottom", VAlign::Bottom),
+            (s.align_top.as_str(), VAlign::Top),
+            (s.align_middle.as_str(), VAlign::Middle),
+            (s.align_bottom.as_str(), VAlign::Bottom),
         ],
         t.v_align,
         |a| edit(DraftEdit::VAlign(a)),
@@ -453,7 +463,7 @@ fn background_section<'a>(app: &'a App, d: &'a Theme) -> Element<'a, Msg> {
             }
             rows.push(stop_row.into());
             rows.push(field(
-                "Angle",
+                &s.angle,
                 slide(
                     0.0..=360.0,
                     5.0,
@@ -463,7 +473,7 @@ fn background_section<'a>(app: &'a App, d: &'a Theme) -> Element<'a, Msg> {
                 ),
             ));
             rows.push(field(
-                "Drift",
+                &s.drift,
                 slide(
                     0.0..=1.0,
                     0.05,
@@ -501,7 +511,7 @@ fn background_section<'a>(app: &'a App, d: &'a Theme) -> Element<'a, Msg> {
                 .align_y(Alignment::Center),
             ));
             rows.push(field(
-                "Speed",
+                &s.speed,
                 slide(
                     0.1..=3.0,
                     0.1,
@@ -550,14 +560,24 @@ fn background_section<'a>(app: &'a App, d: &'a Theme) -> Element<'a, Msg> {
 fn transition_section<'a>(app: &'a App, d: &'a Theme) -> Element<'a, Msg> {
     let s = &app.core.strings;
     let tr = d.transition;
-    let kind = pick_list(&KindChoice::ALL[..], Some(KindChoice(tr.kind)), |k| {
-        edit(DraftEdit::TransitionKind(k.0))
+    let kinds: Vec<Choice<TransitionKind>> = KINDS
+        .into_iter()
+        .map(|k| choice(k, kind_label(s, k)))
+        .collect();
+    let kind = pick_list(kinds, Some(choice(tr.kind, kind_label(s, tr.kind))), |k| {
+        edit(DraftEdit::TransitionKind(k.value))
     })
     .text_size(13)
     .padding([4, 8]);
-    let easing = pick_list(&EasingChoice::ALL[..], Some(EasingChoice(tr.easing)), |e| {
-        edit(DraftEdit::Easing(e.0))
-    })
+    let easings: Vec<Choice<Easing>> = EASINGS
+        .into_iter()
+        .map(|e| choice(e, easing_label(s, e)))
+        .collect();
+    let easing = pick_list(
+        easings,
+        Some(choice(tr.easing, easing_label(s, tr.easing))),
+        |e| edit(DraftEdit::Easing(e.value)),
+    )
     .text_size(13)
     .padding([4, 8]);
     let duration = row![
@@ -594,7 +614,10 @@ fn verses_section<'a>(app: &'a App, d: &'a Theme) -> Element<'a, Msg> {
     .spacing(ui_theme::SPACING / 2.0)
     .align_y(Alignment::Center);
     let ref_pos = segmented(
-        [("Top", RefPos::Top), ("Bottom", RefPos::Bottom)],
+        [
+            (s.align_top.as_str(), RefPos::Top),
+            (s.align_bottom.as_str(), RefPos::Bottom),
+        ],
         v.reference_at,
         |p| edit(DraftEdit::RefPos(p)),
     );
@@ -612,7 +635,7 @@ fn verses_section<'a>(app: &'a App, d: &'a Theme) -> Element<'a, Msg> {
                 v.show_numbers,
                 DraftEdit::ShowNumbers,
             ),
-            field(&s.theme_valign_label, ref_pos),
+            field(&s.reference_position, ref_pos),
         ],
     )
 }

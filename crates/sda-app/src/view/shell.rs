@@ -43,20 +43,49 @@ fn top_bar(app: &App) -> Element<'_, Msg> {
 }
 
 fn status_chips(app: &App) -> Element<'_, Msg> {
-    let chip = |line: &str| {
-        container(text(line.to_string()).size(12))
+    let s = &app.core.strings;
+    let st = &app.status;
+    let chip = |line: &str, dot: Option<iced::Color>| {
+        let mut body = row![].spacing(6).align_y(Alignment::Center);
+        if let Some(color) = dot {
+            body = body.push(text("●").size(10).color(color));
+        }
+        container(body.push(text(shorten(line, CHIP_CHARS)).size(12)))
             .padding([4, 10])
             .style(ui_theme::chip)
     };
-    let mut chips = row![chip(&app.status.library)].spacing(ui_theme::SPACING / 2.0);
-    if let Some(update) = app.status.update.as_deref().filter(|u| !u.is_empty()) {
-        chips = chips.push(chip(update));
+    let danger = ui_theme::theme().palette().danger;
+    let library = chip(&st.library, st.library_error.then_some(danger));
+    let mut chips = row![library].spacing(ui_theme::SPACING / 2.0);
+    // An update chip next to a failed library chip reads as a contradiction,
+    // so it only shows when the library is fine.
+    if !st.library_error
+        && let Some(update) = st.update.as_deref().filter(|u| !u.is_empty())
+    {
+        let label = if st.update_staged {
+            s.update_available.as_str()
+        } else {
+            update
+        };
+        chips = chips.push(chip(label, None));
     }
     chips.into()
 }
 
+/// Longest chip text. The Settings Library section shows the full line.
+const CHIP_CHARS: usize = 72;
+
+fn shorten(line: &str, max: usize) -> String {
+    if line.chars().count() <= max {
+        return line.to_string();
+    }
+    let head: String = line.chars().take(max - 1).collect();
+    format!("{}…", head.trim_end())
+}
+
 fn banner(message: &str) -> Element<'_, Msg> {
-    container(text(message).size(13))
+    let warning = ui_theme::theme().palette().warning;
+    container(text(message).size(13).color(warning))
         .padding([6, ui_theme::SPACING as u16])
         .width(Fill)
         .style(|_| container::Style {

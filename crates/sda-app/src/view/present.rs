@@ -63,7 +63,7 @@ fn search_panel(app: &App) -> Element<'_, Msg> {
     }
     if p.hits.is_empty() {
         list = list.push(
-            container(text(&s.search_placeholder).size(13).color(ui_theme::MUTED))
+            container(text(&s.no_results).size(13).color(ui_theme::MUTED))
                 .padding(SPACING)
                 .width(Fill)
                 .center_x(Fill),
@@ -173,7 +173,7 @@ fn center_panel(app: &App) -> Element<'_, Msg> {
     let selected = st::selected_hymn(app).map(|(_, h)| h);
 
     let preview: Element<'_, Msg> = match selected {
-        None => container(text(&s.search_placeholder).size(14).color(ui_theme::MUTED))
+        None => container(text(&s.nothing_selected).size(14).color(ui_theme::MUTED))
             .width(Fill)
             .height(Fill)
             .center(Fill)
@@ -268,7 +268,10 @@ fn center_panel(app: &App) -> Element<'_, Msg> {
         .spacing(2)
         .align_x(Alignment::End);
         if let Some(err) = &p.as_is_error {
-            col = col.push(text(err).size(11).color(ui_theme::theme().palette().danger));
+            let danger = ui_theme::theme().palette().danger;
+            col = col
+                .push(text(&s.render_failed).size(11).color(danger))
+                .push(text(err).size(11).color(danger));
         }
         actions = actions.push(col);
     }
@@ -337,21 +340,26 @@ fn side_panel(app: &App) -> Element<'_, Msg> {
         .and_then(|(_, h)| h.slides.get(app.present.preview_slide))
         .and_then(|sl| sl.notes.as_deref())
         .filter(|n| !n.trim().is_empty());
-    let mut col = column![theme_card].spacing(SPACING).height(Fill);
-    if let Some(notes) = notes {
-        col = col.push(
-            card(
-                column![
-                    text(&s.notes)
-                        .size(12)
-                        .font(ui_theme::BOLD)
-                        .color(ui_theme::MUTED),
-                    scrollable(text(notes).size(13)).height(Fill),
-                ]
-                .spacing(SPACING),
-            )
-            .height(Fill),
-        );
+    let has_notes = notes.is_some();
+    let body: Element<'_, Msg> = match notes {
+        Some(notes) => scrollable(text(notes).size(13)).height(Fill).into(),
+        None => text(&s.no_notes).size(13).color(ui_theme::MUTED).into(),
+    };
+    let mut notes_card = card(
+        column![
+            text(&s.notes)
+                .size(12)
+                .font(ui_theme::BOLD)
+                .color(ui_theme::MUTED),
+            body,
+        ]
+        .spacing(SPACING),
+    );
+    if has_notes {
+        notes_card = notes_card.height(Fill);
     }
-    col.into()
+    column![theme_card, notes_card]
+        .spacing(SPACING)
+        .height(Fill)
+        .into()
 }

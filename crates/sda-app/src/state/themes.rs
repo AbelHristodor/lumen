@@ -3,9 +3,10 @@
 
 use crate::app::App;
 use crate::msg::themes::{BgKind, ColorField, DraftEdit};
-use crate::msg::{Msg, Tab, ThemesMsg};
+use crate::msg::{BgTarget, Msg, Tab, ThemesMsg};
 use crate::state::core::Core;
 use crate::state::live::LiveState;
+use crate::workers;
 use iced::Task;
 use sda_core::i18n::{Language, Strings};
 use sda_core::model::{Paragraph, Run, Slide, TextBox};
@@ -331,19 +332,24 @@ pub fn apply(st: &mut ThemesState, e: DraftEdit) {
     }
 }
 
-/// What the preview plays. An image background with no file yet shows black
-/// instead of a failed decode.
+/// What the preview plays. An image or video background with no file yet
+/// shows black instead of a failed load.
 fn preview_theme(draft: &Theme) -> Theme {
     let mut t = draft.clone();
-    if matches!(&t.background, Background::Image(p) if p.as_os_str().is_empty()) {
+    let empty = match &t.background {
+        Background::Image(p) | Background::Video { path: p } => p.as_os_str().is_empty(),
+        _ => false,
+    };
+    if empty {
         t.background = Background::Solid(Rgba::BLACK);
     }
     t
 }
 
 /// Keep the preview player and the thumbnail cache in step with the draft
-/// and the loaded themes.
-fn sync_preview(app: &mut App) {
+/// and the loaded themes. Returns the background worker when the preview
+/// needs a file loaded.
+fn sync_preview(app: &mut App) -> Task<Msg> {
     let s = &app.core.strings;
     let t = &mut app.themes;
     let shown = preview_theme(&t.draft);
@@ -360,6 +366,14 @@ fn sync_preview(app: &mut App) {
             t.thumbs.insert(key, Arc::new(slide));
         }
     }
+    workers::background(BgTarget::ThemePreview, &t.preview)
+}
+
+/// Make `theme` the live one and start its background worker if needed.
+fn apply_live(app: &mut App, theme: Theme) -> Task<Msg> {
+    app.core.set_active_theme(theme.clone());
+    app.live.set_theme(theme);
+    workers::background(BgTarget::Live, &app.live)
 }
 
 fn tick_later() -> Task<Msg> {
@@ -462,24 +476,24 @@ fn name_collides(core: &Core, draft: &Theme, old: Option<&str>) -> bool {
 
 /// Save the draft. A rename removes the old file. Saving the active theme
 /// applies it to the projector.
-fn save_draft(app: &mut App) {
+fn save_draft(app: &mut App) -> Task<Msg> {
     let draft = app.themes.draft.clone();
     if draft.name.trim().is_empty() {
         app.themes.error = Some(app.core.strings.theme_name_label.clone());
-        return;
+        return Task::none();
     }
     let old = sorted_themes(&app.core)
         .get(app.themes.draft_index)
         .map(|t| t.name.clone());
     if name_collides(&app.core, &draft, old.as_deref()) {
-        app.themes.error = Some(format!("\"{}\" already exists", draft.name));
-        return;
+        app.themes.error = Some(app.core.strings.theme_name_exists.clone());
+        return Task::none();
     }
     let was_active = app.core.active_theme.name == draft.name
         || old.as_deref() == Some(app.core.active_theme.name.as_str());
     if let Err(e) = store::save_theme(&app.core.paths.themes_dir, &draft) {
         app.themes.error = Some(e.to_string());
-        return;
+        return Task::none();
     }
     if let Some(old) = old
         && old != draft.name
@@ -487,12 +501,14 @@ fn save_draft(app: &mut App) {
     {
         log::warn!("removing renamed theme {old} failed: {e}");
     }
-    if was_active {
-        app.core.set_active_theme(draft.clone());
-        app.live.set_theme(draft.clone());
-    }
+    let task = if was_active {
+        apply_live(app, draft.clone())
+    } else {
+        Task::none()
+    };
     app.themes.error = None;
     reload_and_select(app, &draft.name);
+    task
 }
 
 fn pick_file(label: &str, exts: &[&str]) -> Task<Msg> {
@@ -545,35 +561,34 @@ pub fn update(app: &mut App, msg: ThemesMsg) -> Task<Msg> {
         ThemesMsg::Delete => {
             let name = app.themes.draft.name.clone();
             match store::delete_theme(&app.core.paths.themes_dir, &name) {
-                Err(e) => app.themes.error = Some(e.to_string()),
+                Err(e) => {
+                    app.themes.error = Some(e.to_string());
+                    Task::none()
+                }
                 Ok(()) => {
-                    if app.core.active_theme.name == name {
-                        app.core.set_active_theme(Theme::default());
-                        app.live.set_theme(Theme::default());
-                    }
+                    let task = if app.core.active_theme.name == name {
+                        apply_live(app, Theme::default())
+                    } else {
+                        Task::none()
+                    };
                     app.themes.error = None;
                     reload_and_select(app, "Default");
+                    task
                 }
             }
-            Task::none()
         }
-        ThemesMsg::Save => {
-            save_draft(app);
-            Task::none()
-        }
-        ThemesMsg::SetActive(name) => {
-            if let Some(theme) = app.core.theme_named(&name).cloned() {
-                app.core.set_active_theme(theme.clone());
-                app.live.set_theme(theme);
-            }
-            Task::none()
-        }
+        ThemesMsg::Save => save_draft(app),
+        ThemesMsg::SetActive(name) => match app.core.theme_named(&name).cloned() {
+            Some(theme) => apply_live(app, theme),
+            None => Task::none(),
+        },
         ThemesMsg::Favorite(f) => {
             app.themes.draft.favorite = f;
-            if !app.themes.draft.is_builtin_default() {
-                save_draft(app);
+            if app.themes.draft.is_builtin_default() {
+                Task::none()
+            } else {
+                save_draft(app)
             }
-            Task::none()
         }
         ThemesMsg::Draft(e) => {
             apply(&mut app.themes, e);
@@ -606,6 +621,6 @@ pub fn update(app: &mut App, msg: ThemesMsg) -> Task<Msg> {
         }
         ThemesMsg::FilePicked(None) => Task::none(),
     };
-    sync_preview(app);
-    Task::batch([task, ensure_ticking(app)])
+    let preview = sync_preview(app);
+    Task::batch([task, preview, ensure_ticking(app)])
 }
