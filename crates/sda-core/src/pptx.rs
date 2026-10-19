@@ -315,7 +315,9 @@ fn parse_slide_size(xml: &str) -> Option<(f32, f32)> {
     while let Ok(ev) = reader.read_event_into(&mut buf) {
         match ev {
             Event::Start(e) if e.local_name().as_ref() == b"sldSz" => {
-                return Some((attr_f32(&e, b"cx")?, attr_f32(&e, b"cy")?));
+                let (cx, cy) = (attr_f32(&e, b"cx")?, attr_f32(&e, b"cy")?);
+                // A zero side would divide every frame by zero.
+                return (cx > 0.0 && cy > 0.0).then_some((cx, cy));
             }
             Event::Eof => break,
             _ => {}
@@ -659,4 +661,18 @@ fn is_chrome(line: &str) -> bool {
 fn is_standalone_number(line: &str) -> bool {
     let l = line.trim().trim_end_matches('.');
     !l.is_empty() && l.chars().all(|c| c.is_ascii_digit())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn zero_slide_size_falls_back_to_default() {
+        let zero = r#"<p:presentation xmlns:p="x"><p:sldSz cx="0" cy="6858000"/></p:presentation>"#;
+        assert_eq!(parse_slide_size(zero), None);
+        let ok =
+            r#"<p:presentation xmlns:p="x"><p:sldSz cx="12192000" cy="6858000"/></p:presentation>"#;
+        assert_eq!(parse_slide_size(ok), Some((12_192_000.0, 6_858_000.0)));
+    }
 }

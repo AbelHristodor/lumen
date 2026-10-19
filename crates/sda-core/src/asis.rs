@@ -82,7 +82,8 @@ pub fn cached(dir: &Path) -> Option<Vec<PathBuf>> {
     if !dir.join(".done").is_file() {
         return None;
     }
-    Some(sorted_pngs(dir))
+    // A marker with no slides is a wiped or half written cache.
+    Some(sorted_pngs(dir)).filter(|v| !v.is_empty())
 }
 
 fn sorted_pngs(dir: &Path) -> Vec<PathBuf> {
@@ -110,10 +111,11 @@ pub fn render(
     size: (u32, u32),
 ) -> Result<Vec<PathBuf>> {
     std::fs::create_dir_all(out_dir)?;
+    // Drop the marker first so a crash mid cleanup never leaves a valid cache.
+    std::fs::remove_file(out_dir.join(".done")).ok();
     for p in sorted_pngs(out_dir) {
         std::fs::remove_file(p)?;
     }
-    std::fs::remove_file(out_dir.join(".done")).ok();
     match conv {
         Converter::LibreOffice(exe) => render_libreoffice(exe, pptx, out_dir, size)?,
         Converter::PowerPoint(_) => render_powerpoint(pptx, out_dir, size)?,
@@ -126,7 +128,21 @@ pub fn render(
     Ok(pngs)
 }
 
+/// Keep a spawned child from flashing a console window on Windows.
+pub(crate) fn hide_console(cmd: &mut Command) {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x0800_0000);
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = cmd;
+    }
+}
+
 fn run(cmd: &mut Command) -> Result<()> {
+    hide_console(cmd);
     let out = cmd
         .output()
         .with_context(|| format!("spawn {:?}", cmd.get_program()))?;
@@ -182,7 +198,7 @@ fn pdf_to_pngs(pdf_path: &Path, out_dir: &Path, size: (u32, u32)) -> Result<()> 
 }
 
 fn render_powerpoint(pptx: &Path, out_dir: &Path, size: (u32, u32)) -> Result<()> {
-    let pptx = pptx.canonicalize()?;
+    let pptx = strip_verbatim(&pptx.canonicalize()?);
     if cfg!(target_os = "macos") {
         // Checked on PowerPoint 16.x for Mac. The app is sandboxed, so a
         // save to any folder outside its container pops a Grant File Access
@@ -219,10 +235,19 @@ foreach ($s in $pres.Slides) {{ $s.Export((Join-Path '{}' "$i.png"), 'PNG', {});
 $pres.Close()
 if ($pp.Presentations.Count -eq 0) {{ $pp.Quit() }}"#,
             ps_quote(&pptx),
-            ps_quote(out_dir),
+            ps_quote(&strip_verbatim(out_dir)),
             size.0
         );
         run(Command::new("powershell").args(["-NoProfile", "-Command", &script]))
+    }
+}
+
+/// Drop the `\\?\` prefix that canonicalize adds on Windows. COM and
+/// PowerShell do not accept it.
+fn strip_verbatim(path: &Path) -> PathBuf {
+    match path.to_str().and_then(|s| s.strip_prefix(r"\\?\")) {
+        Some(plain) => PathBuf::from(plain),
+        None => path.to_path_buf(),
     }
 }
 
@@ -234,4 +259,21 @@ fn esc(p: &Path) -> String {
     p.to_string_lossy()
         .replace('\\', "\\\\")
         .replace('"', "\\\"")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn strip_verbatim_drops_prefix_only() {
+        assert_eq!(
+            strip_verbatim(Path::new(r"\\?\C:\h\1.pptx")),
+            PathBuf::from(r"C:\h\1.pptx")
+        );
+        assert_eq!(
+            strip_verbatim(Path::new("/h/1.pptx")),
+            PathBuf::from("/h/1.pptx")
+        );
+    }
 }

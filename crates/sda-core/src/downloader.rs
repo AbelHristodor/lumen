@@ -106,7 +106,9 @@ pub fn parse_probe(json: &str) -> anyhow::Result<Probe> {
 /// child process, so call it on a worker thread.
 pub fn probe(url: &str) -> anyhow::Result<Probe> {
     let ytdlp = ensure_ytdlp()?;
-    let out = Command::new(ytdlp)
+    let mut cmd = Command::new(ytdlp);
+    hide_console(&mut cmd);
+    let out = cmd
         .args(["-J", "--no-warnings", "--no-playlist"])
         .args(["--extractor-args", "youtube:player_client=default"])
         .arg(url)
@@ -475,7 +477,9 @@ fn maybe_self_update(ytdlp: &Path) {
         return;
     }
     let _ = std::fs::write(&stamp, now_secs().to_string());
-    let spawned = Command::new(ytdlp)
+    let mut cmd = Command::new(ytdlp);
+    hide_console(&mut cmd);
+    let spawned = cmd
         .arg("-U")
         .stdin(Stdio::null())
         .stdout(Stdio::null())
@@ -558,6 +562,7 @@ fn run_download(
 
     let output_template = dir.join("%(title)s.%(ext)s");
     let mut cmd = Command::new(&ytdlp);
+    hide_console(&mut cmd);
     cmd.arg("--no-playlist")
         .arg("--newline")
         // YouTube now needs a JS runtime for the default web player's signature.
@@ -636,6 +641,19 @@ fn run_download(
             .map(|l| l.to_string())
             .unwrap_or_else(|| format!("yt-dlp exited with {s}"))),
         Err(e) => Err(format!("yt-dlp did not run: {e}")),
+    }
+}
+
+/// Keep a spawned child from flashing a console window on Windows.
+pub(crate) fn hide_console(cmd: &mut Command) {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x0800_0000);
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = cmd;
     }
 }
 

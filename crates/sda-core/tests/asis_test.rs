@@ -50,6 +50,12 @@ fn cache_dir_changes_with_mtime_and_size() {
 #[test]
 fn cached_requires_done_marker_and_sorts_numerically() {
     let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join(".done"), "").unwrap();
+    assert!(
+        cached(dir.path()).is_none(),
+        "marker without pngs is not a cache"
+    );
+    std::fs::remove_file(dir.path().join(".done")).unwrap();
     for n in [10, 2, 1] {
         std::fs::write(dir.path().join(format!("{n}.png")), "").unwrap();
     }

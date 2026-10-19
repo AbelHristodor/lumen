@@ -61,6 +61,19 @@ impl fmt::Debug for FrameSource {
     }
 }
 
+/// Keep a spawned child from flashing a console window on Windows.
+pub(crate) fn hide_console(cmd: &mut Command) {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x0800_0000);
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = cmd;
+    }
+}
+
 /// Start `ffmpeg` decoding `media` in a loop at `size` and feed frames into
 /// the returned source. Fails when `ffmpeg` is not a file or cannot start.
 pub fn spawn_decoder(
@@ -72,7 +85,9 @@ pub fn spawn_decoder(
         anyhow::bail!("ffmpeg not found at {}", ffmpeg.display());
     }
     let (w, h) = size;
-    let mut child = Command::new(ffmpeg)
+    let mut cmd = Command::new(ffmpeg);
+    hide_console(&mut cmd);
+    let mut child = cmd
         // `-re` paces the output at the clip's own frame rate so the newest
         // frame is the one the wall clock asks for.
         .args(["-loglevel", "error", "-re", "-stream_loop", "-1", "-i"])

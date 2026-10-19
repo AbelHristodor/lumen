@@ -6,7 +6,9 @@ use image::RgbaImage;
 
 const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
 
-/// Request any adapter and a default device.
+/// Request any hardware adapter and a default device. A software adapter
+/// such as WARP or llvmpipe is skipped, its output does not match the
+/// goldens drawn on a real GPU.
 pub fn device() -> Option<(wgpu::Device, wgpu::Queue)> {
     let instance = wgpu::Instance::default();
     let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
@@ -15,6 +17,11 @@ pub fn device() -> Option<(wgpu::Device, wgpu::Queue)> {
         ..Default::default()
     }))
     .ok()?;
+    let info = adapter.get_info();
+    if info.device_type == wgpu::DeviceType::Cpu {
+        eprintln!("software adapter {}, skipping", info.name);
+        return None;
+    }
     pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default())).ok()
 }
 

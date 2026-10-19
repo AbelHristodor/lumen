@@ -65,7 +65,10 @@ pub fn save_cache(cache_path: &Path, entries: &[Hymn]) -> anyhow::Result<()> {
     if let Some(parent) = cache_path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    std::fs::write(cache_path, bytes)?;
+    // Write next to the target and rename so a crash never leaves a half file.
+    let tmp = cache_path.with_extension("bin.tmp");
+    std::fs::write(&tmp, bytes)?;
+    std::fs::rename(&tmp, cache_path)?;
     Ok(())
 }
 
