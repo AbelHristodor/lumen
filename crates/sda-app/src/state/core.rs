@@ -29,7 +29,7 @@ impl Paths {
     /// Standard app folders. Falls back to the OS temp dir when the platform
     /// gives no project dirs.
     pub fn standard() -> Paths {
-        let tmp = std::env::temp_dir().join("sda-manager");
+        let tmp = std::env::temp_dir().join("lumen");
         let or = |p: Option<PathBuf>, name: &str| p.unwrap_or_else(|| tmp.join(name));
         Paths {
             themes_dir: or(library::themes_dir(), "themes"),

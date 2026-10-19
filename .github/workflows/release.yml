@@ -96,26 +96,31 @@ jobs:
         if: runner.os != 'Windows'
         shell: bash
         run: |
-          staging="sda-manager-${{ matrix.target }}"
+          staging="lumen-${{ matrix.target }}"
           mkdir "$staging"
-          cp "target/${{ matrix.target }}/release/sda-manager" "$staging/"
+          cp "target/${{ matrix.target }}/release/lumen" "$staging/"
           cp README.md "$staging/" 2>/dev/null || true
+          # Installs from before the rename self update by looking for
+          # sda-manager-<target>/sda-manager. Drop this once they have moved on.
+          legacy="sda-manager-${{ matrix.target }}"
+          mkdir "$legacy"
+          cp "target/${{ matrix.target }}/release/lumen" "$legacy/sda-manager"
           # The bare binary stays for install.sh upgrades. The .app gives
           # macOS a Dock and Finder icon.
           if [ "${{ runner.os }}" = "macOS" ]; then
-            app="$staging/SDA Manager.app/Contents"
+            app="$staging/Lumen.app/Contents"
             mkdir -p "$app/MacOS" "$app/Resources"
-            cp "target/${{ matrix.target }}/release/sda-manager" "$app/MacOS/"
+            cp "target/${{ matrix.target }}/release/lumen" "$app/MacOS/"
             cp assets/icon.icns "$app/Resources/"
             version="${{ inputs.version }}"
             cat > "$app/Info.plist" <<EOF
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
           <plist version="1.0"><dict>
-            <key>CFBundleName</key><string>SDA Manager</string>
-            <key>CFBundleDisplayName</key><string>SDA Manager</string>
-            <key>CFBundleIdentifier</key><string>com.abelhristodor.sda-manager</string>
-            <key>CFBundleExecutable</key><string>sda-manager</string>
+            <key>CFBundleName</key><string>Lumen</string>
+            <key>CFBundleDisplayName</key><string>Lumen</string>
+            <key>CFBundleIdentifier</key><string>com.abelhristodor.lumen</string>
+            <key>CFBundleExecutable</key><string>lumen</string>
             <key>CFBundleIconFile</key><string>icon</string>
             <key>CFBundlePackageType</key><string>APPL</string>
             <key>CFBundleShortVersionString</key><string>${version#v}</string>
@@ -124,18 +129,22 @@ jobs:
           </dict></plist>
           EOF
           fi
-          tar -czf "$staging.tar.gz" "$staging"
+          tar -czf "$staging.tar.gz" "$staging" "$legacy"
           echo "ASSET=$staging.tar.gz" >> "$GITHUB_ENV"
 
       - name: Package (windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          $staging = "sda-manager-${{ matrix.target }}"
+          $staging = "lumen-${{ matrix.target }}"
           New-Item -ItemType Directory -Force -Path $staging | Out-Null
-          Copy-Item "target/${{ matrix.target }}/release/sda-manager.exe" $staging
+          Copy-Item "target/${{ matrix.target }}/release/lumen.exe" $staging
           Copy-Item README.md $staging -ErrorAction SilentlyContinue
-          Compress-Archive -Path $staging -DestinationPath "$staging.zip"
+          # Same legacy path as the unix step, for self update before the rename.
+          $legacy = "sda-manager-${{ matrix.target }}"
+          New-Item -ItemType Directory -Force -Path $legacy | Out-Null
+          Copy-Item "target/${{ matrix.target }}/release/lumen.exe" "$legacy/sda-manager.exe"
+          Compress-Archive -Path $staging,$legacy -DestinationPath "$staging.zip"
           "ASSET=$staging.zip" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: Upload artifact

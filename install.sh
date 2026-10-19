@@ -1,15 +1,15 @@
 #!/bin/sh
-# SDA Manager installer for macOS and Linux.
+# Lumen installer for macOS and Linux.
 #
-#   curl -fsSL https://raw.githubusercontent.com/AbelHristodor/sda_manager/main/install.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/AbelHristodor/lumen/main/install.sh | sh
 #
-# Downloads the latest released `sda-manager` binary for your OS/arch and
+# Downloads the latest released `lumen` binary for your OS/arch and
 # installs it to $BIN_DIR (default ~/.local/bin). Override the destination:
 #
 #   curl -fsSL .../install.sh | BIN_DIR=/usr/local/bin sh
 set -eu
 
-REPO="AbelHristodor/sda_manager"
+REPO="AbelHristodor/lumen"
 BIN_DIR="${BIN_DIR:-$HOME/.local/bin}"
 
 os="$(uname -s)"
@@ -42,7 +42,7 @@ case "$os" in
     ;;
 esac
 
-asset="sda-manager-${target}.tar.gz"
+asset="lumen-${target}.tar.gz"
 url="https://github.com/${REPO}/releases/latest/download/${asset}"
 
 tmp="$(mktemp -d)"
@@ -58,15 +58,18 @@ fi
 tar -xzf "$tmp/$asset" -C "$tmp"
 
 mkdir -p "$BIN_DIR"
-install -m 0755 "$tmp/sda-manager-${target}/sda-manager" "$BIN_DIR/sda-manager"
+install -m 0755 "$tmp/lumen-${target}/lumen" "$BIN_DIR/lumen"
 
-echo "Installed sda-manager to $BIN_DIR/sda-manager"
+echo "Installed lumen to $BIN_DIR/lumen"
 
-if [ "$os" = "Darwin" ] && [ -d "$tmp/sda-manager-${target}/SDA Manager.app" ]; then
+# Before the rename the binary was sda-manager.
+rm -f "$BIN_DIR/sda-manager"
+
+if [ "$os" = "Darwin" ] && [ -d "$tmp/lumen-${target}/Lumen.app" ]; then
   mkdir -p "$HOME/Applications"
-  rm -rf "$HOME/Applications/SDA Manager.app"
-  cp -R "$tmp/sda-manager-${target}/SDA Manager.app" "$HOME/Applications/"
-  echo "Installed SDA Manager.app to $HOME/Applications"
+  rm -rf "$HOME/Applications/Lumen.app"
+  cp -R "$tmp/lumen-${target}/Lumen.app" "$HOME/Applications/"
+  echo "Installed Lumen.app to $HOME/Applications"
 fi
 
 case ":$PATH:" in
@@ -80,6 +83,6 @@ esac
 
 if [ "$os" = "Darwin" ]; then
   echo
-  echo "macOS: the binary is unsigned. The first time, right-click sda-manager"
-  echo "in Finder and choose Open (or run: xattr -d com.apple.quarantine \"$BIN_DIR/sda-manager\")."
+  echo "macOS: the binary is unsigned. The first time, right-click lumen"
+  echo "in Finder and choose Open (or run: xattr -d com.apple.quarantine \"$BIN_DIR/lumen\")."
 fi

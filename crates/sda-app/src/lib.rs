@@ -1,4 +1,4 @@
-//! SDA Manager desktop app. One Iced daemon with an operator window and a
+//! Lumen desktop app. One Iced daemon with an operator window and a
 //! projector window. Logic lives in `sda-core`, drawing in `sda-render`.
 
 pub mod app;
@@ -18,7 +18,7 @@ pub use msg::{Msg, Tab};
 pub fn run() -> iced::Result {
     env_logger::Builder::from_env(
         env_logger::Env::default()
-            .default_filter_or("sda_manager=info,sda_app=info,sda_core=info,sda_render=info"),
+            .default_filter_or("lumen=info,sda_app=info,sda_core=info,sda_render=info"),
     )
     .init();
     let mut daemon = iced::daemon(App::boot, App::update, App::view)

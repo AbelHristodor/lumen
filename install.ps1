@@ -1,22 +1,22 @@
-# SDA Manager installer for Windows.
+# Lumen installer for Windows.
 #
-#   irm https://raw.githubusercontent.com/AbelHristodor/sda_manager/main/install.ps1 | iex
+#   irm https://raw.githubusercontent.com/AbelHristodor/lumen/main/install.ps1 | iex
 #
-# Downloads the latest released sda-manager.exe and installs it to
-# %LOCALAPPDATA%\Programs\sda-manager, adding that directory to the user PATH
+# Downloads the latest released lumen.exe and installs it to
+# %LOCALAPPDATA%\Programs\lumen, adding that directory to the user PATH
 # and creating a Desktop shortcut.
 
 $ErrorActionPreference = "Stop"
 
-$repo   = "AbelHristodor/sda_manager"
+$repo   = "AbelHristodor/lumen"
 $target = "x86_64-pc-windows-msvc"
-$asset  = "sda-manager-$target.zip"
+$asset  = "lumen-$target.zip"
 $url    = "https://github.com/$repo/releases/latest/download/$asset"
 
-$installDir = Join-Path $env:LOCALAPPDATA "Programs\sda-manager"
+$installDir = Join-Path $env:LOCALAPPDATA "Programs\lumen"
 New-Item -ItemType Directory -Force -Path $installDir | Out-Null
 
-$tmp = New-Item -ItemType Directory -Force -Path (Join-Path $env:TEMP "sda-manager-install")
+$tmp = New-Item -ItemType Directory -Force -Path (Join-Path $env:TEMP "lumen-install")
 $zip = Join-Path $tmp $asset
 
 Write-Host "Downloading $asset ..."
@@ -28,23 +28,28 @@ try {
 }
 
 Expand-Archive -Path $zip -DestinationPath $tmp -Force
-$exePath = Join-Path $installDir "sda-manager.exe"
-Copy-Item (Join-Path $tmp "sda-manager-$target\sda-manager.exe") $exePath -Force
+$exePath = Join-Path $installDir "lumen.exe"
+Copy-Item (Join-Path $tmp "lumen-$target\lumen.exe") $exePath -Force
 Remove-Item -Recurse -Force $tmp
 
-Write-Host "Installed sda-manager.exe to $installDir"
+Write-Host "Installed lumen.exe to $installDir"
+
+# Before the rename the app lived in Programs\sda-manager.
+$oldDir = Join-Path $env:LOCALAPPDATA "Programs\sda-manager"
+Remove-Item -Recurse -Force $oldDir -ErrorAction SilentlyContinue
 
 # Create a Desktop shortcut pointing at the installed exe. GetFolderPath resolves
 # a redirected Desktop (e.g. OneDrive) correctly; WScript.Shell ships with Windows.
 try {
     $desktop  = [Environment]::GetFolderPath("Desktop")
-    $lnkPath  = Join-Path $desktop "SDA Manager.lnk"
+    Remove-Item (Join-Path $desktop "SDA Manager.lnk") -ErrorAction SilentlyContinue
+    $lnkPath  = Join-Path $desktop "Lumen.lnk"
     $shell    = New-Object -ComObject WScript.Shell
     $shortcut = $shell.CreateShortcut($lnkPath)
     $shortcut.TargetPath       = $exePath
     $shortcut.WorkingDirectory = $installDir
     $shortcut.IconLocation     = $exePath
-    $shortcut.Description       = "SDA Manager"
+    $shortcut.Description       = "Lumen"
     $shortcut.Save()
     Write-Host "Created Desktop shortcut: $lnkPath"
 } catch {
@@ -53,6 +58,8 @@ try {
 
 # Add to the user PATH if it isn't already there.
 $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
+$userPath = (($userPath -split ";") | Where-Object { $_ -and $_ -ne $oldDir }) -join ";"
+[Environment]::SetEnvironmentVariable("Path", $userPath, "User")
 if ($userPath -notlike "*$installDir*") {
     $newPath = if ($userPath) { "$userPath;$installDir" } else { $installDir }
     [Environment]::SetEnvironmentVariable("Path", $newPath, "User")

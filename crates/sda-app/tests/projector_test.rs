@@ -51,7 +51,7 @@ fn toggle_opens_the_projector_and_the_close_event_clears_it() {
     let id = app.projector.expect("projector opens on display 2");
     assert_ne!(id, app.operator);
     assert_eq!(app.core.cfg.output_display, Some(1));
-    assert_eq!(app.title(id), "SDA Manager Projector");
+    assert_eq!(app.title(id), "Lumen Projector");
 
     let _ = app.update(Msg::ProjectorClosed(id));
     assert!(app.projector.is_none());

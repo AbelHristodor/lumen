@@ -7,7 +7,7 @@ version.workspace = true
 path = "src/lib.rs"
 
 [[bin]]
-name = "sda-manager"
+name = "lumen"
 path = "src/main.rs"
 
 [dependencies]

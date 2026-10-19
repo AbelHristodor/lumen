@@ -203,9 +203,9 @@ impl App {
 
     pub fn title(&self, id: window::Id) -> String {
         if Some(id) == self.projector {
-            "SDA Manager Projector".into()
+            "Lumen Projector".into()
         } else {
-            "SDA Manager".into()
+            "Lumen".into()
         }
     }
 

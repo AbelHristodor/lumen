@@ -180,7 +180,7 @@ fn download_replaces_previous_library_contents() {
 
 #[test]
 fn short_reason_hides_urls_and_names_the_failure() {
-    let chain = "HEAD https://github.com/AbelHristodor/sda_manager/releases/latest/download/hymns.zip: https://github.com/AbelHristodor/sda_manager/releases/latest/download/hymns.zip: status code 404";
+    let chain = "HEAD https://github.com/AbelHristodor/lumen/releases/latest/download/hymns.zip: https://github.com/AbelHristodor/lumen/releases/latest/download/hymns.zip: status code 404";
     assert_eq!(short_reason(chain), "HTTP 404");
     let dns = "HEAD https://github.com/x/hymns.zip: https://github.com/x/hymns.zip: Dns Failed: resolve dns name 'github.com:443': failed to lookup address information";
     assert_eq!(short_reason(dns), "network");

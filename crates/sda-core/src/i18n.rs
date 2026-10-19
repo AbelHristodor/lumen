@@ -438,7 +438,7 @@ impl Strings {
 
     fn en() -> Strings {
         Strings {
-            app_title: "SDA Manager".into(),
+            app_title: "Lumen".into(),
             search_placeholder: "Search by number, title, or lyrics…".into(),
             prev_slide: "‹ Prev".into(),
             next_slide: "Next ›".into(),
@@ -620,7 +620,7 @@ impl Strings {
 
     fn it() -> Strings {
         Strings {
-            app_title: "SDA Manager".into(),
+            app_title: "Lumen".into(),
             search_placeholder: "Cerca per numero, titolo o testo…".into(),
             prev_slide: "‹ Prec".into(),
             next_slide: "Succ ›".into(),
@@ -802,7 +802,7 @@ impl Strings {
 
     fn ro() -> Strings {
         Strings {
-            app_title: "SDA Manager".into(),
+            app_title: "Lumen".into(),
             search_placeholder: "Caută după număr, titlu sau vers…".into(),
             prev_slide: "‹ Înapoi".into(),
             next_slide: "Înainte ›".into(),

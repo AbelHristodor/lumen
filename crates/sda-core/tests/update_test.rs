@@ -20,7 +20,7 @@ fn network_errors_are_transient() {
 fn real_failures_are_not_transient() {
     // A genuine problem we'd want surfaced, not silently softened.
     assert!(!is_transient_failure(
-        "Could not find the required path in the archive: sda-manager"
+        "Could not find the required path in the archive: lumen"
     ));
     assert!(!is_transient_failure("http status: 404"));
     assert!(!is_transient_failure("permission denied (os error 13)"));

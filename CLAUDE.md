@@ -4,7 +4,7 @@ This file guides Claude Code when working in this repository.
 
 ## What this is
 
-SDA Manager 3.0.0 is a desktop app for projecting hymns and Bible verses. It is
+Lumen 3.0.0 is a desktop app for projecting hymns and Bible verses. It is
 written in Rust with Iced 0.14 and a wgpu renderer. There is one operator
 window with five tabs: Present, Bible, Videos, Themes, Settings. A Live strip
 stays visible across tabs and shows what the projector shows. The projector is
@@ -19,7 +19,7 @@ checks GitHub Releases for new versions.
 ## Commands
 
 ```sh
-cargo build --release -p sda-app      # -> target/release/sda-manager
+cargo build --release -p sda-app      # -> target/release/lumen
 cargo run -p sda-app                  # run in debug
 cargo test --workspace                # everything
 cargo test -p sda-core                # core tests
@@ -43,18 +43,20 @@ edition 2024 and let chains.
   `cargo test --workspace` and clippy on `macos-14`, `windows-latest`, and
   `ubuntu-latest`. The `build` job needs `test` and builds `-p sda-app` on the
   same three runners. It publishes a GitHub Release with one archive per
-  target: `sda-manager-<target>.tar.gz` for macOS and Linux and
-  `sda-manager-<target>.zip` for Windows.
+  target: `lumen-<target>.tar.gz` for macOS and Linux and
+  `lumen-<target>.zip` for Windows.
 - Linux CI installs `libxkbcommon-dev libwayland-dev libxcb-render0-dev
   libxcb-shape0-dev libxcb-xfixes0-dev libgtk-3-dev libasound2-dev`.
 - `install.sh` for macOS and Linux and `install.ps1` for Windows are one line
-  installers that fetch the latest `sda-manager` asset. The README has the
+  installers that fetch the latest `lumen` asset. The README has the
   commands.
 - The `hymns` job zips `assets/920` into `hymns.zip`. The app downloads it on
   first run and whenever its ETag changes. Hymn edits reach users on the next
   release. A push alone does nothing.
-- Binary name, config paths, themes dir, hymns sync, and the update check are
-  unchanged from 2.x so installs upgrade in place.
+- The binary was `sda-manager` and the repo `sda_manager` before the rename to
+  Lumen. Release archives also carry `sda-manager-<target>/sda-manager` so old
+  installs can still self update. Config paths, themes dir, and hymns sync are
+  unchanged from 2.x.
 
 ## Architecture
 
@@ -71,7 +73,7 @@ The app stays thin.
   one scene under a caller chosen key and `render` draws it into a viewport
   with a scissor. `trim` runs at the end of every frame and drops scenes not
   prepared for two frames.
-- **`crates/sda-app`**: the Iced daemon, binary `sda-manager`. `build.rs`
+- **`crates/sda-app`**: the Iced daemon, binary `lumen`. `build.rs`
   embeds `assets/icon.ico` on Windows. `#![windows_subsystem = "windows"]`
   hides the console on Windows. Modules:
 

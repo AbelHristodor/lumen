@@ -6,11 +6,11 @@
 use anyhow::Result;
 
 const REPO_OWNER: &str = "AbelHristodor";
-const REPO_NAME: &str = "sda_manager";
-const BIN_NAME: &str = "sda-manager";
+const REPO_NAME: &str = "lumen";
+const BIN_NAME: &str = "lumen";
 
 /// Web page of the newest release, for the update chip.
-pub const RELEASES_URL: &str = "https://github.com/AbelHristodor/sda_manager/releases/latest";
+pub const RELEASES_URL: &str = "https://github.com/AbelHristodor/lumen/releases/latest";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum UpdateOutcome {
@@ -51,8 +51,8 @@ pub fn check_and_stage_update() -> Result<UpdateOutcome> {
             .repo_name(REPO_NAME)
             .bin_name(BIN_NAME)
             // Release archives nest the binary one level deep, as
-            // `sda-manager-<target>/sda-manager` (see .github/workflows/release.yml).
-            // Without this, self_update looks for `sda-manager` at the archive root
+            // `lumen-<target>/lumen` (see .github/workflows/release.yml).
+            // Without this, self_update looks for `lumen` at the archive root
             // and fails with "Could not find the required path in the archive".
             .bin_path_in_archive("{{ bin }}-{{ target }}/{{ bin }}")
             .current_version(current)

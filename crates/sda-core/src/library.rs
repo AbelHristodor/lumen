@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 
 /// Release asset holding the hymn library, downloadable without the GitHub API.
 pub const DEFAULT_HYMNS_URL: &str =
-    "https://github.com/AbelHristodor/sda_manager/releases/latest/download/hymns.zip";
+    "https://github.com/AbelHristodor/lumen/releases/latest/download/hymns.zip";
 
 fn default_hymns_url() -> String {
     DEFAULT_HYMNS_URL.to_string()

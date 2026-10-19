@@ -1,8 +1,8 @@
 <div align="center">
 
-<img src="assets/icon.png" alt="SDA Manager logo" width="128">
+<img src="assets/icon.png" alt="Lumen logo" width="128">
 
-# SDA Manager
+# Lumen
 
 **Find a hymn or a verse and put it on the screen in seconds.**
 
@@ -15,7 +15,7 @@ middle of a service.
 Runs on **macOS**, **Windows**, and **Linux**. Available in **English**,
 **Italian**, and **Romanian**.
 
-[Download](https://github.com/AbelHristodor/sda_manager/releases) ·
+[Download](https://github.com/AbelHristodor/lumen/releases) ·
 [Install](#install) · [Features](#features) · [For developers](#for-developers)
 
 </div>
@@ -25,7 +25,7 @@ Runs on **macOS**, **Windows**, and **Linux**. Available in **English**,
 ## Why
 
 Getting a hymn on the projector often means hunting through folders of
-PowerPoint files while the congregation waits. SDA Manager replaces that with
+PowerPoint files while the congregation waits. Lumen replaces that with
 one search box. Type `plecati`, press Enter, and *Plecaţi-vă* is on the wall.
 
 It ships with a full hymnal that stays current on its own. You can add your own
@@ -73,27 +73,27 @@ folders of slides too.
 ## Install
 
 Prebuilt apps are on the
-[Releases](https://github.com/AbelHristodor/sda_manager/releases) page for
+[Releases](https://github.com/AbelHristodor/lumen/releases) page for
 macOS on Apple Silicon, Windows x86_64, and Linux x86_64.
 
 **macOS and Linux.** Paste into a terminal:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/AbelHristodor/sda_manager/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/AbelHristodor/lumen/main/install.sh | sh
 ```
 
 The macOS app is unsigned. The first time, right click it and choose **Open**.
-It installs `sda-manager` to `~/.local/bin`. Set `BIN_DIR` to change that.
-On macOS it also puts **SDA Manager.app** in `~/Applications`.
+It installs `lumen` to `~/.local/bin`. Set `BIN_DIR` to change that.
+On macOS it also puts **Lumen.app** in `~/Applications`.
 
 **Windows.** Paste into PowerShell:
 
 ```powershell
-irm https://raw.githubusercontent.com/AbelHristodor/sda_manager/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/AbelHristodor/lumen/main/install.ps1 | iex
 ```
 
-It installs to `%LOCALAPPDATA%\Programs\sda-manager`, adds a Desktop shortcut,
-and puts `sda-manager` on your `PATH`.
+It installs to `%LOCALAPPDATA%\Programs\lumen`, adds a Desktop shortcut,
+and puts `lumen` on your `PATH`.
 
 ## Using it
 
@@ -142,7 +142,7 @@ Shortcuts do nothing while a text field has focus.
 
 ## For developers
 
-SDA Manager is written in Rust with Iced 0.14 and wgpu. It reads the text and
+Lumen is written in Rust with Iced 0.14 and wgpu. It reads the text and
 styling out of `.pptx` files and draws the slides itself.
 
 ### Workspace layout
@@ -152,13 +152,13 @@ crates/
   sda-core/    # logic, no UI, no GPU: pptx, index, search, themes, resolve,
                # Bible, history, sync, downloader. Tested with fixtures.
   sda-render/  # wgpu scene renderer, no Iced. Tested headless with golden PNGs.
-  sda-app/     # Iced app, binary `sda-manager`. Tested with iced_test.
+  sda-app/     # Iced app, binary `lumen`. Tested with iced_test.
 ```
 
 ### Building from source
 
 ```sh
-cargo build --release -p sda-app      # binary at target/release/sda-manager
+cargo build --release -p sda-app      # binary at target/release/lumen
 cargo run --release -p sda-app        # build and run
 ```
 
