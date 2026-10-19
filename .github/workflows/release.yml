@@ -48,8 +48,7 @@ jobs:
       - name: Check version matches tag
         shell: bash
         run: |
-          id="$(cargo pkgid -p sda-app)"
-          crate="${id##*[#@]}"
+          crate="$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)"
           [ "v$crate" = "${{ inputs.version }}" ] || { echo "Cargo version v$crate does not match ${{ inputs.version }}"; exit 1; }
 
       # Render goldens skip with a message on runners without a GPU adapter.
