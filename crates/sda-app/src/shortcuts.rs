@@ -12,6 +12,11 @@ pub fn filter(event: Event, status: event::Status, _id: window::Id, tab: Tab) ->
     if let Event::Keyboard(keyboard::Event::ModifiersChanged(m)) = event {
         return Some(Msg::Modifiers(m));
     }
+    // A release can land outside every verse row. It must still end a drag.
+    // `Release` does nothing when no drag runs, so it is safe on every tab.
+    if let Event::Mouse(iced::mouse::Event::ButtonReleased(iced::mouse::Button::Left)) = event {
+        return Some(Msg::Bible(crate::msg::BibleMsg::Release));
+    }
     if status == event::Status::Captured {
         return None;
     }

@@ -205,3 +205,39 @@ fn stale_version_load_is_dropped() {
     assert!(app.bible.bible.is_some());
     assert!(app.bible.busy.is_none());
 }
+
+#[test]
+fn drag_keeps_verses_selected_before_it() {
+    let mut app = app();
+    app.bible.book = 42;
+    app.bible.chapter = 3;
+    press(&mut app, 5);
+    let _ = app.update(Msg::Bible(BibleMsg::Press(3)));
+    let _ = app.update(Msg::Bible(BibleMsg::Enter(6)));
+    assert_eq!(app.bible.selected, BTreeSet::from([3, 4, 5, 6]));
+    let _ = app.update(Msg::Bible(BibleMsg::Enter(4)));
+    assert_eq!(
+        app.bible.selected,
+        BTreeSet::from([3, 4, 5]),
+        "verse 5 stays selected"
+    );
+    let _ = app.update(Msg::Bible(BibleMsg::Release));
+}
+
+#[test]
+fn left_release_anywhere_ends_the_drag() {
+    use iced::{event, mouse, window};
+    let release = sda_app::shortcuts::filter(
+        iced::Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left)),
+        event::Status::Captured,
+        window::Id::unique(),
+        Tab::Present,
+    );
+    assert!(matches!(release, Some(Msg::Bible(BibleMsg::Release))));
+    let mut app = app();
+    app.bible.dragging = true;
+    if let Some(m) = release {
+        let _ = app.update(m);
+    }
+    assert!(!app.bible.dragging);
+}

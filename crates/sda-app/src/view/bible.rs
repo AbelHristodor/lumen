@@ -268,14 +268,10 @@ fn verses_pane(app: &App) -> Element<'_, Msg> {
     let list: Element<'_, Msg> = if st.chapter_count() == 0 {
         center(text(&s.bible_pick_chapter).size(13).color(ui_theme::MUTED)).into()
     } else {
-        // A release on the gap between rows also ends the drag.
-        mouse_area(
-            scrollable(gutter(rows))
-                .direction(thin_scrollbar())
-                .height(Fill),
-        )
-        .on_release(b(BibleMsg::Release))
-        .into()
+        scrollable(gutter(rows))
+            .direction(thin_scrollbar())
+            .height(Fill)
+            .into()
     };
     card(column![header, list].spacing(ui_theme::SPACING))
         .width(Fill)

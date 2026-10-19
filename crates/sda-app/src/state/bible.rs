@@ -12,7 +12,6 @@ use sda_core::present::{Presentation, Source};
 use sda_core::resolve::verse_box_pt;
 use sda_core::sync::sync_file;
 use std::collections::BTreeSet;
-use std::ops::RangeInclusive;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -28,8 +27,9 @@ pub struct BibleState {
     pub anchor: Option<u32>,
     /// True between `Press` and `Release`. `Enter` extends the range then.
     pub dragging: bool,
-    /// Verses the current drag covers. Replaced as the pointer moves.
-    pub drag_range: RangeInclusive<u32>,
+    /// The selection right after the press that began the drag. Each
+    /// `Enter` rebuilds the selection from it plus the drag range.
+    pub drag_base: BTreeSet<u32>,
     pub query: String,
     pub results: Vec<(Reference, String)>,
     pub manage_open: bool,
@@ -52,8 +52,7 @@ impl Default for BibleState {
             selected: BTreeSet::new(),
             anchor: None,
             dragging: false,
-            // Empty until the first press.
-            drag_range: RangeInclusive::new(1, 0),
+            drag_base: BTreeSet::new(),
             query: String::new(),
             results: Vec::new(),
             manage_open: false,
@@ -130,10 +129,8 @@ impl BibleState {
     /// Replace the drag range. Verses selected before the drag began stay.
     pub fn drag_to(&mut self, n: u32) {
         let Some(a) = self.anchor else { return };
-        let range = a.min(n)..=a.max(n);
-        self.selected.retain(|v| !self.drag_range.contains(v));
-        self.selected.extend(range.clone());
-        self.drag_range = range;
+        self.selected = self.drag_base.clone();
+        self.selected.extend(a.min(n)..=a.max(n));
     }
 }
 
@@ -346,7 +343,7 @@ pub fn update(app: &mut App, msg: BibleMsg) -> Task<Msg> {
                     app.bible.selected.insert(n);
                 }
                 app.bible.anchor = Some(n);
-                app.bible.drag_range = n..=n;
+                app.bible.drag_base = app.bible.selected.clone();
                 app.bible.dragging = true;
             }
         }
