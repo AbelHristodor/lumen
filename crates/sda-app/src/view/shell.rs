@@ -5,14 +5,17 @@ use crate::msg::{Msg, Tab};
 use crate::ui_theme;
 use crate::view::{self, live_strip};
 use crate::widgets::segmented::segmented;
-use iced::widget::{button, column, container, row, rule, text, tooltip};
+use iced::widget::{button, column, container, image, row, rule, text, tooltip};
 use iced::{Alignment, Element, Fill};
+use std::sync::OnceLock;
 
 /// Longest chip text. The tooltip and the Settings Library section show
 /// the full line.
 pub const CHIP_CHARS: usize = 48;
 /// Chip height, the same as the tab pill so the top bar reads as one row.
 const CHIP_HEIGHT: f32 = 34.0;
+/// Logo mark size, a hair under the chip so the row keeps one visual height.
+const LOGO_SIZE: f32 = 30.0;
 
 pub fn show(app: &App) -> Element<'_, Msg> {
     let content = match app.tab {
@@ -37,12 +40,28 @@ pub fn show(app: &App) -> Element<'_, Msg> {
     .into()
 }
 
+/// The app mark, decoded once. `Handle::from_bytes` mints a new id per call,
+/// so building it in `view` would re-decode the PNG every frame.
+fn logo() -> image::Handle {
+    static LOGO: OnceLock<image::Handle> = OnceLock::new();
+    LOGO.get_or_init(|| {
+        image::Handle::from_bytes(include_bytes!("../../../../assets/icon.png").as_slice())
+    })
+    .clone()
+}
+
 fn top_bar(app: &App) -> Element<'_, Msg> {
     let s = &app.core.strings;
     let tabs = segmented(Tab::ALL.iter().map(|t| (t.label(s), *t)), app.tab, Msg::Tab);
+    let brand = row![
+        image(logo()).width(LOGO_SIZE).height(LOGO_SIZE),
+        text(&s.app_title).size(18).font(ui_theme::BOLD),
+    ]
+    .spacing(ui_theme::SPACING / 1.5)
+    .align_y(Alignment::Center);
     // Equal side columns keep the tabs centered whatever the chips say.
     row![
-        container(text(&s.app_title).size(18).font(ui_theme::BOLD)).width(Fill),
+        container(brand).width(Fill),
         tabs,
         container(status_chips(app))
             .width(Fill)
