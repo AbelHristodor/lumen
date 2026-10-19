@@ -21,7 +21,9 @@
     <StandardDirectory Id="DesktopFolder" />
 
     <Feature Id="Main">
-      <Component Directory="INSTALLFOLDER">
+      <!-- A file plus a registry key path cannot use an automatic guid.
+           Keep this one fixed so upgrades find the same component. -->
+      <Component Directory="INSTALLFOLDER" Guid="9c1f3e7a-2b4d-4e8a-b5c6-7d0e1f2a3b4c">
         <File Id="LumenExe" Source="$(var.Exe)" KeyPath="no" />
         <RegistryValue Root="HKCU" Key="Software\Lumen" Name="Installed" Type="integer" Value="1" KeyPath="yes" />
         <RemoveFolder Id="RemoveInstallFolder" On="uninstall" />
