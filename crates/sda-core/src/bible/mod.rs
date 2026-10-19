@@ -12,7 +12,9 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
 use crate::fold::fold;
-use crate::resolve::SlideContent;
+use crate::i18n::Language;
+use crate::resolve::{SlideContent, FALLBACK_SPACING};
+use crate::theme::Theme;
 
 pub use names::{EN, IT, RO};
 pub use reference::{book_name, format_reference, parse_reference, Reference};
@@ -214,14 +216,79 @@ pub fn search(bible: &Bible, query: &str, limit: usize) -> Vec<(Reference, Strin
     hits
 }
 
-/// Group verses into slides of `per_slide` verses each. Every slide carries
-/// the same reference string.
-pub fn verse_slides(verses: &[(u32, String)], reference: &str, per_slide: u8) -> Vec<SlideContent> {
-    verses
-        .chunks(per_slide.max(1) as usize)
-        .map(|chunk| SlideContent::Verses {
-            reference: reference.to_string(),
-            verses: chunk.to_vec(),
+/// Greedy grouping. Adds verses to the current slide while `fits` holds,
+/// then starts a new slide. A verse that does not fit alone still takes one
+/// slide and shrinks at render time.
+pub fn pack_verses(
+    verses: &[(u32, String)],
+    fits: impl Fn(&[(u32, String)]) -> bool,
+) -> Vec<Vec<(u32, String)>> {
+    let mut groups: Vec<Vec<(u32, String)>> = Vec::new();
+    let mut current: Vec<(u32, String)> = Vec::new();
+    for v in verses {
+        current.push(v.clone());
+        if current.len() > 1 && !fits(&current) {
+            let last = current.pop().expect("just pushed");
+            groups.push(std::mem::take(&mut current));
+            current.push(last);
+        }
+    }
+    if !current.is_empty() {
+        groups.push(current);
+    }
+    groups
+}
+
+/// Character width as a fraction of the font size. Latin text averages
+/// about half the em.
+const CHAR_EM: f32 = 0.5;
+/// Characters a verse number and its space take in front of the text.
+const NUMBER_CHARS: usize = 3;
+
+/// Estimates whether a group of verses fits a box of `box_pt` points at the
+/// theme's smallest verse size. `box_pt` comes from `resolve::verse_box_pt`.
+// ponytail: character count heuristic. Upgrade is a cosmic-text measure
+// from sda-render passed as the closure at the call site.
+pub fn fits_heuristic(theme: &Theme, box_pt: (f32, f32)) -> impl Fn(&[(u32, String)]) -> bool {
+    let size = theme.verses.min_size.max(1.0);
+    let spacing = theme.text.line_spacing.resolve(None, FALLBACK_SPACING);
+    let numbers = theme.verses.show_numbers;
+    let chars_per_line = ((box_pt.0 / (CHAR_EM * size)).floor() as usize).max(1);
+    let line_h = size * spacing;
+    move |group: &[(u32, String)]| {
+        let lines: usize = group
+            .iter()
+            .map(|(_, v)| {
+                let chars = v.chars().count() + if numbers { NUMBER_CHARS } else { 0 };
+                chars.div_ceil(chars_per_line).max(1)
+            })
+            .sum();
+        lines as f32 * line_h <= box_pt.1
+    }
+}
+
+/// One `SlideContent::Verses` per group. Each slide's reference is its own
+/// range, so slide two of John 3:16-21 reads `John 3:19-21`.
+pub fn verse_slides(
+    r: &Reference,
+    groups: &[Vec<(u32, String)>],
+    lang: Language,
+) -> Vec<SlideContent> {
+    groups
+        .iter()
+        .filter(|g| !g.is_empty())
+        .map(|g| {
+            let first = g.first().map(|v| v.0).unwrap_or(1);
+            let last = g.last().map(|v| v.0).unwrap_or(first);
+            let own = Reference {
+                book: r.book,
+                chapter: r.chapter,
+                verses: Some((first, last)),
+            };
+            SlideContent::Verses {
+                reference: format_reference(&own, lang),
+                verses: g.clone(),
+            }
         })
         .collect()
 }

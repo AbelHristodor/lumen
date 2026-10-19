@@ -1,5 +1,6 @@
 use sda_core::bible::*;
 use sda_core::i18n::Language;
+use sda_core::theme::Theme;
 use std::path::Path;
 
 fn mini() -> Bible {
@@ -73,22 +74,71 @@ fn search_folds_accents_and_limits() {
     assert_eq!(search(&mini(), "v", 3).len(), 3);
 }
 
+fn vs(items: &[(u32, &str)]) -> Vec<(u32, String)> {
+    items.iter().map(|(n, s)| (*n, s.to_string())).collect()
+}
+
 #[test]
-fn verse_slides_groups_per_slide() {
-    let v = vec![
-        (16, "a".to_string()),
-        (17, "b".to_string()),
-        (18, "c".to_string()),
+fn pack_verses_is_greedy_and_never_drops_a_verse() {
+    let v = vs(&[(1, "a"), (2, "b"), (3, "c"), (4, "d"), (5, "e")]);
+    let two_at_most = |g: &[(u32, String)]| g.len() <= 2;
+    let packed = pack_verses(&v, two_at_most);
+    assert_eq!(packed.len(), 3);
+    assert_eq!(packed[0].len(), 2);
+    assert_eq!(packed[2][0].0, 5);
+    let nothing_fits = |_: &[(u32, String)]| false;
+    let packed = pack_verses(&v, nothing_fits);
+    assert_eq!(
+        packed.len(),
+        5,
+        "a verse that never fits still gets a slide"
+    );
+    let all_fit = |_: &[(u32, String)]| true;
+    assert_eq!(pack_verses(&v, all_fit).len(), 1);
+    assert!(pack_verses(&[], all_fit).is_empty());
+}
+
+#[test]
+fn fits_heuristic_tiny_box_one_per_slide_huge_box_all_together() {
+    let t = Theme::default();
+    let v = vs(&[
+        (1, "In the beginning God created the heaven and the earth."),
+        (
+            2,
+            "And the earth was without form, and void; and darkness was upon the face of the deep.",
+        ),
+        (3, "And God said, Let there be light: and there was light."),
+    ]);
+    let tiny = pack_verses(&v, fits_heuristic(&t, (100.0, 30.0)));
+    assert_eq!(tiny.len(), 3);
+    let huge = pack_verses(&v, fits_heuristic(&t, (5000.0, 5000.0)));
+    assert_eq!(huge.len(), 1);
+    let real = pack_verses(&v, fits_heuristic(&t, sda_core::resolve::verse_box_pt(&t)));
+    assert!((1..=3).contains(&real.len()));
+}
+
+#[test]
+fn verse_slides_carry_their_own_reference() {
+    let r = Reference {
+        book: 42,
+        chapter: 3,
+        verses: Some((16, 21)),
+    };
+    let groups = vec![
+        vs(&[(16, "a"), (17, "b"), (18, "c")]),
+        vs(&[(19, "d"), (20, "e"), (21, "f")]),
+        vs(&[(22, "g")]),
     ];
-    let s = verse_slides(&v, "John 3:16-18", 2);
-    assert_eq!(s.len(), 2);
-    match &s[1] {
-        sda_core::resolve::SlideContent::Verses { verses, reference } => {
-            assert_eq!(verses.len(), 1);
-            assert_eq!(reference, "John 3:16-18");
-        }
-        _ => panic!(),
-    }
+    let s = verse_slides(&r, &groups, Language::En);
+    assert_eq!(s.len(), 3);
+    let refs: Vec<&str> = s
+        .iter()
+        .map(|c| match c {
+            sda_core::resolve::SlideContent::Verses { reference, .. } => reference.as_str(),
+            _ => panic!(),
+        })
+        .collect();
+    assert_eq!(refs, ["John 3:16-18", "John 3:19-21", "John 3:22"]);
 }
 
 #[test]

@@ -4,6 +4,7 @@ use sda_app::msg::BibleMsg;
 use sda_app::{App, Msg, Tab};
 use sda_core::bible::{self, Bible};
 use sda_core::present::Source;
+use sda_core::theme::Prop;
 use std::collections::BTreeSet;
 use std::path::Path;
 use std::sync::Arc;
@@ -48,13 +49,22 @@ fn present_builds_verse_slides() {
     app.bible.chapter = 3;
     app.bible.selected = BTreeSet::from([16, 17, 18]);
     let _ = app.update(Msg::Bible(BibleMsg::Present));
-    assert_eq!(app.live.present.slides.len(), 3);
+    let n = app.live.present.slides.len();
+    assert!((1..=3).contains(&n), "packed into {n} slides");
     assert_eq!(app.live.present.title, "John 3:16-18");
     assert!(matches!(
         &app.live.present.source,
         Source::Bible { version, reference }
             if version == "bible_mini" && reference == "John 3:16-18"
     ));
+    app.live.theme.verses.min_size = 60.0;
+    app.live.theme.text.margin = Prop::Set(0.45);
+    let _ = app.update(Msg::Bible(BibleMsg::Present));
+    assert_eq!(
+        app.live.present.slides.len(),
+        3,
+        "a tiny box gives one verse per slide"
+    );
 }
 
 #[test]

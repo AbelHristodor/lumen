@@ -5,9 +5,11 @@ use crate::app::App;
 use crate::msg::{BibleMsg, Msg};
 use iced::Task;
 use sda_core::bible::{
-    self, Bible, Reference, VersionInfo, format_reference, parse_reference, verse_slides,
+    self, Bible, Reference, VersionInfo, fits_heuristic, format_reference, pack_verses,
+    parse_reference, verse_slides,
 };
 use sda_core::present::{Presentation, Source};
+use sda_core::resolve::verse_box_pt;
 use sda_core::sync::sync_file;
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
@@ -273,10 +275,12 @@ fn present(app: &mut App) {
     }
     let reference = format_reference(&r, lang);
     let version = app.bible.version.clone().unwrap_or_else(|| b.code.clone());
+    let theme = &app.live.theme;
+    let groups = pack_verses(&verses, fits_heuristic(theme, verse_box_pt(theme)));
     app.live.go(Presentation {
         title: reference.clone(),
         subtitle: Some(app.bible.abbreviation(&version)),
-        slides: verse_slides(&verses, &reference, 1),
+        slides: verse_slides(&r, &groups, lang),
         source: Source::Bible { version, reference },
         ..Presentation::default()
     });
