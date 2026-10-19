@@ -214,6 +214,24 @@ fn preview_slides_follow_the_selection() {
 }
 
 #[test]
+fn preview_footer_matches_the_projector() {
+    let mut app = app();
+    app.bible.book = 42;
+    app.bible.chapter = 3;
+    app.bible.selected = BTreeSet::from([16, 17, 18]);
+    app.live.theme.footer = true;
+    let slides = sda_app::state::bible::preview_slides(&app);
+    let scene =
+        sda_app::state::bible::preview_scene(&app, &slides[0], (320, 180)).expect("preview scene");
+    match &scene.current {
+        Some(sda_render::Layer::Text(slide)) => {
+            assert_eq!(slide.footer, Some("John 3:16-18".into()));
+        }
+        _ => panic!("text layer"),
+    }
+}
+
+#[test]
 fn stale_version_load_is_dropped() {
     let mut app = App::for_test();
     app.bible.installed = vec!["bible_mini".into(), "other".into()];

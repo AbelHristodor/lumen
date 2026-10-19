@@ -332,13 +332,11 @@ pub fn preview_scene(
     size: (u32, u32),
 ) -> Option<Arc<sda_render::Scene>> {
     let theme = &app.live.theme;
-    let footer = theme.footer.then(|| {
-        app.bible
-            .version
-            .as_deref()
-            .map(|v| app.bible.abbreviation(v))
-            .unwrap_or_default()
-    });
+    // Same footer the projector draws: the presented title, empty dropped.
+    let footer = theme
+        .footer
+        .then(|| format_reference(&app.bible.reference(), app.core.language))
+        .filter(|f| !f.is_empty());
     let resolved = Arc::new(sda_core::resolve::resolve(
         theme,
         content,
@@ -372,6 +370,9 @@ pub fn update(app: &mut App, msg: BibleMsg) -> Task<Msg> {
             }
         }
         BibleMsg::TextMode(on) => {
+            if on == app.bible.text_mode {
+                return Task::none();
+            }
             app.bible.text_mode = on;
             app.bible.input.clear();
             run_search(app);
