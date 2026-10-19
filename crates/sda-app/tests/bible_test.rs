@@ -296,3 +296,53 @@ fn left_release_anywhere_ends_the_drag() {
     }
     assert!(!app.bible.dragging);
 }
+
+fn text_layer(scene: &sda_render::Scene) -> Arc<sda_core::resolve::ResolvedSlide> {
+    match &scene.current {
+        Some(sda_render::Layer::Text(slide)) => slide.clone(),
+        _ => panic!("text layer"),
+    }
+}
+
+#[test]
+fn preview_scene_reuses_the_resolved_slide() {
+    let mut app = app();
+    app.bible.book = 42;
+    app.bible.chapter = 3;
+    app.bible.selected = BTreeSet::from([16, 17, 18]);
+    let slides = sda_app::state::bible::preview_slides(&app);
+    let scene = |app: &App, slides: &[sda_core::resolve::SlideContent]| {
+        sda_app::state::bible::preview_scene(app, &slides[0], (320, 180)).expect("preview scene")
+    };
+    let a = text_layer(&scene(&app, &slides));
+    let b = text_layer(&scene(&app, &slides));
+    assert!(Arc::ptr_eq(&a, &b), "same slide keeps its Arc");
+
+    press(&mut app, 19);
+    let slides = sda_app::state::bible::preview_slides(&app);
+    let c = text_layer(&scene(&app, &slides));
+    assert!(!Arc::ptr_eq(&a, &c), "a new selection resolves anew");
+}
+
+#[test]
+fn preview_slide_resets_from_slide_two() {
+    let mut app = app();
+    app.bible.book = 42;
+    app.bible.chapter = 3;
+    app.live.theme.verses.min_size = 60.0;
+    app.live.theme.text.margin = Prop::Set(0.4);
+    let all: BTreeSet<u32> = bible::verses(
+        app.bible.bible.as_ref().expect("bible"),
+        &app.bible.reference(),
+    )
+    .into_iter()
+    .map(|(n, _)| n)
+    .collect();
+    app.bible.selected = all;
+    let n = sda_app::state::bible::preview_slides(&app).len();
+    assert!(n >= 2, "packed into {n} slides");
+    let _ = app.update(Msg::Bible(BibleMsg::PreviewSlide(1)));
+    assert_eq!(app.bible.preview_slide, 1);
+    press(&mut app, 16);
+    assert_eq!(app.bible.preview_slide, 0);
+}

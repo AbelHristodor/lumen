@@ -1,6 +1,6 @@
 use sda_core::bible::*;
 use sda_core::i18n::Language;
-use sda_core::theme::Theme;
+use sda_core::theme::{Prop, TextSize, Theme};
 use std::path::Path;
 
 fn mini() -> Bible {
@@ -115,6 +115,22 @@ fn fits_heuristic_tiny_box_one_per_slide_huge_box_all_together() {
     assert_eq!(huge.len(), 1);
     let real = pack_verses(&v, fits_heuristic(&t, sda_core::resolve::verse_box_pt(&t)));
     assert!((1..=3).contains(&real.len()));
+}
+
+#[test]
+fn fits_heuristic_packs_by_a_fixed_size_above_min() {
+    let mut t = Theme::default();
+    t.text.size = Prop::Set(TextSize::Pt(200.0));
+    let v = vs(&[
+        (1, "In the beginning God created the heaven and the earth."),
+        (
+            2,
+            "And the earth was without form, and void; and darkness was upon the face of the deep.",
+        ),
+        (3, "And God said, Let there be light: and there was light."),
+    ]);
+    let groups = pack_verses(&v, fits_heuristic(&t, sda_core::resolve::verse_box_pt(&t)));
+    assert_eq!(groups.len(), 3, "fixed size verses never shrink");
 }
 
 #[test]

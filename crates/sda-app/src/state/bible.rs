@@ -9,11 +9,12 @@ use sda_core::bible::{
     parse_reference, verse_slides,
 };
 use sda_core::present::{Presentation, Source};
-use sda_core::resolve::{SlideContent, verse_box_pt};
+use sda_core::resolve::{ResolvedSlide, SlideContent, verse_box_pt};
 use sda_core::sync::sync_file;
 use std::collections::BTreeSet;
+use std::hash::{DefaultHasher, Hash, Hasher};
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 pub struct BibleState {
     pub input: String,
@@ -42,6 +43,10 @@ pub struct BibleState {
     /// Code of the version being downloaded or loaded.
     pub busy: Option<String>,
     pub error: Option<String>,
+    /// The last resolved preview slide and its key. The renderer keys its
+    /// textures by `Arc` address, so the view must hand it the same `Arc`
+    /// every frame.
+    pub preview_cache: Mutex<Option<(u64, Arc<ResolvedSlide>)>>,
 }
 
 impl Default for BibleState {
@@ -64,6 +69,7 @@ impl Default for BibleState {
             installed: Vec::new(),
             busy: None,
             error: None,
+            preview_cache: Mutex::new(None),
         }
     }
 }
@@ -337,11 +343,31 @@ pub fn preview_scene(
         .footer
         .then(|| format_reference(&app.bible.reference(), app.core.language))
         .filter(|f| !f.is_empty());
-    let resolved = Arc::new(sda_core::resolve::resolve(
-        theme,
-        content,
-        footer.as_deref(),
-    )?);
+    let mut h = DefaultHasher::new();
+    theme.cache_key().hash(&mut h);
+    match content {
+        SlideContent::Verses { reference, verses } => {
+            reference.hash(&mut h);
+            verses.hash(&mut h);
+        }
+        other => format!("{other:?}").hash(&mut h),
+    }
+    footer.hash(&mut h);
+    let key = h.finish();
+    let mut cache = app.bible.preview_cache.lock().ok()?;
+    let resolved = match &*cache {
+        Some((k, r)) if *k == key => r.clone(),
+        _ => {
+            let r = Arc::new(sda_core::resolve::resolve(
+                theme,
+                content,
+                footer.as_deref(),
+            )?);
+            *cache = Some((key, r.clone()));
+            r
+        }
+    };
+    drop(cache);
     Some(crate::state::present::still(
         theme,
         &app.live.bitmaps,

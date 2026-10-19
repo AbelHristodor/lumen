@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use crate::fold::fold;
 use crate::i18n::Language;
 use crate::resolve::{SlideContent, FALLBACK_SPACING};
-use crate::theme::Theme;
+use crate::theme::{Prop, TextSize, Theme};
 
 pub use names::{EN, IT, RO};
 pub use reference::{book_name, format_reference, parse_reference, Reference};
@@ -243,14 +243,19 @@ pub fn pack_verses(
 /// about half the em.
 const CHAR_EM: f32 = 0.5;
 /// Characters a verse number and its space take in front of the text.
-const NUMBER_CHARS: usize = 3;
+const NUMBER_CHARS: usize = 2;
 
 /// Estimates whether a group of verses fits a box of `box_pt` points at the
-/// theme's smallest verse size. `box_pt` comes from `resolve::verse_box_pt`.
+/// theme's smallest verse size, or its fixed size when larger since fixed
+/// size verses never shrink. `box_pt` comes from `resolve::verse_box_pt`.
 // ponytail: character count heuristic. Upgrade is a cosmic-text measure
 // from sda-render passed as the closure at the call site.
 pub fn fits_heuristic(theme: &Theme, box_pt: (f32, f32)) -> impl Fn(&[(u32, String)]) -> bool {
-    let size = theme.verses.min_size.max(1.0);
+    let fixed = match theme.text.size {
+        Prop::Set(TextSize::Pt(p)) => p,
+        _ => 0.0,
+    };
+    let size = theme.verses.min_size.max(fixed).max(1.0);
     let spacing = theme.text.line_spacing.resolve(None, FALLBACK_SPACING);
     let numbers = theme.verses.show_numbers;
     let chars_per_line = ((box_pt.0 / (CHAR_EM * size)).floor() as usize).max(1);
