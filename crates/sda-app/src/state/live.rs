@@ -68,6 +68,23 @@ impl LiveState {
         }
         self.theme = theme;
         self.clear_cache();
+        self.prune_bitmaps();
+    }
+
+    /// Drop every decoded image the current presentation and theme do not
+    /// use, so old as is slides and old image backgrounds free their memory.
+    fn prune_bitmaps(&mut self) {
+        let background = match &self.theme.background {
+            Background::Image(p) | Background::Video { path: p } => Some(p),
+            _ => None,
+        };
+        let slides = &self.present.slides;
+        self.bitmaps.retain(|path, _| {
+            background == Some(path)
+                || slides
+                    .iter()
+                    .any(|s| matches!(s, SlideContent::Bitmap(p) if p == path))
+        });
     }
 
     /// True when the background needs a worker: a video with no decoder
@@ -163,6 +180,7 @@ impl LiveState {
         let prev = self.snapshot();
         self.present = presentation;
         self.clear_cache();
+        self.prune_bitmaps();
         self.step(prev);
     }
 

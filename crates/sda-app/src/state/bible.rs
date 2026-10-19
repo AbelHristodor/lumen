@@ -197,13 +197,14 @@ pub fn bible_download(dir: PathBuf, code: String) -> Task<Msg> {
 
 /// Parse one installed version file.
 pub fn bible_load(dir: PathBuf, code: String) -> Task<Msg> {
+    let for_code = code.clone();
     Task::perform(
         blocking(move || {
             bible::load(&version_path(&dir, &code))
                 .map(Arc::new)
                 .map_err(|e| e.to_string())
         }),
-        |r| Msg::Bible(BibleMsg::Loaded(flatten(r))),
+        move |r| Msg::Bible(BibleMsg::Loaded(for_code.clone(), flatten(r))),
     )
 }
 
@@ -293,6 +294,9 @@ pub fn update(app: &mut App, msg: BibleMsg) -> Task<Msg> {
             app.bible.reference_input = text;
         }
         BibleMsg::Version(code) => {
+            if app.bible.busy.is_some() {
+                return Task::none();
+            }
             if app.bible.version.as_deref() != Some(&code) || app.bible.bible.is_none() {
                 return switch_version(app, code);
             }
@@ -366,7 +370,11 @@ pub fn update(app: &mut App, msg: BibleMsg) -> Task<Msg> {
                 Err(e) => app.bible.error = Some(e),
             }
         }
-        BibleMsg::Loaded(r) => {
+        BibleMsg::Loaded(code, r) => {
+            if app.bible.version.as_deref() != Some(&code) {
+                log::debug!("dropping stale bible load for {code}");
+                return Task::none();
+            }
             app.bible.busy = None;
             match r {
                 Ok(b) => {

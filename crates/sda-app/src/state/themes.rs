@@ -591,6 +591,35 @@ fn save_draft(app: &mut App) -> Task<Msg> {
     task
 }
 
+/// Flip the favorite flag on the saved copy of the draft theme. Unsaved
+/// draft edits stay in the form and are not written.
+fn set_favorite(app: &mut App, favorite: bool) {
+    if app.themes.draft.is_builtin_default() {
+        return;
+    }
+    let Some(mut saved) = sorted_themes(&app.core)
+        .get(app.themes.draft_index)
+        .cloned()
+        .cloned()
+    else {
+        return;
+    };
+    saved.favorite = favorite;
+    if let Err(e) = store::save_theme(&app.core.paths.themes_dir, &saved) {
+        app.themes.error = Some(e.to_string());
+        return;
+    }
+    if app.core.active_theme.name == saved.name {
+        app.core.active_theme.favorite = favorite;
+    }
+    app.themes.error = None;
+    app.core.reload_themes();
+    app.themes.draft_index = sorted_themes(&app.core)
+        .iter()
+        .position(|t| t.name == saved.name)
+        .unwrap_or(0);
+}
+
 fn pick_file(label: &str, exts: &[&str]) -> Task<Msg> {
     let label = label.to_string();
     let exts: Vec<String> = exts.iter().map(|e| e.to_string()).collect();
@@ -664,11 +693,8 @@ pub fn update(app: &mut App, msg: ThemesMsg) -> Task<Msg> {
         },
         ThemesMsg::Favorite(f) => {
             app.themes.draft.favorite = f;
-            if app.themes.draft.is_builtin_default() {
-                Task::none()
-            } else {
-                save_draft(app)
-            }
+            set_favorite(app, f);
+            Task::none()
         }
         ThemesMsg::Draft(e) => {
             apply(&mut app.themes, e);

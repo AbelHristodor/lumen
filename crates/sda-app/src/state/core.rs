@@ -70,6 +70,9 @@ pub struct Core {
     pub overrides: Overrides,
     pub downloads: Vec<DownloadRecord>,
     pub converter: Option<Converter>,
+    /// Bumped every time an index worker starts. A result that carries an
+    /// older value lost to a newer start and is dropped.
+    pub index_gen: u64,
 }
 
 impl Core {
@@ -110,6 +113,7 @@ impl Core {
             themes: Vec::new(),
             active_theme: Theme::default(),
             converter: None,
+            index_gen: 0,
         };
         core.reload_themes();
         core.active_theme = match core.cfg.active_theme.as_deref() {
@@ -166,6 +170,17 @@ impl Core {
         self.cfg.active_theme = Some(t.name.clone());
         self.active_theme = t;
         self.save_cfg();
+    }
+
+    /// Mark a new index worker start and return its generation.
+    pub fn next_index_gen(&mut self) -> u64 {
+        self.index_gen += 1;
+        self.index_gen
+    }
+
+    /// True when a result from generation `g` is still the newest one.
+    pub fn index_current(&self, g: u64) -> bool {
+        g >= self.index_gen
     }
 
     /// The loaded theme with this name, if any.

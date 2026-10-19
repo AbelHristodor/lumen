@@ -1,6 +1,6 @@
 use iced::{event, keyboard, window};
 use sda_app::displays::Display;
-use sda_app::{App, Msg};
+use sda_app::{App, Msg, Tab};
 use std::time::{Duration, Instant};
 
 fn two_displays() -> Vec<Display> {
@@ -24,8 +24,17 @@ fn two_displays() -> Vec<Display> {
 
 fn app() -> App {
     let mut app = App::for_test();
+    app.gpu_ok = true;
     let _ = app.update(Msg::DisplaysListed(two_displays()));
     app
+}
+
+#[test]
+fn toggle_without_a_gpu_does_nothing() {
+    let mut app = app();
+    app.gpu_ok = false;
+    let _ = app.update(Msg::ProjectorToggle);
+    assert!(app.projector.is_none());
 }
 
 #[test]
@@ -88,7 +97,12 @@ fn escape_maps_to_stop() {
         repeat: false,
     });
     assert!(matches!(
-        sda_app::shortcuts::filter(esc, event::Status::Ignored, window::Id::unique()),
+        sda_app::shortcuts::filter(
+            esc,
+            event::Status::Ignored,
+            window::Id::unique(),
+            Tab::Present
+        ),
         Some(Msg::LiveStop)
     ));
 }
@@ -105,7 +119,14 @@ fn identify_opens_one_window_per_display_then_closes_them() {
     let _ = app.update(Msg::ProjectorClosed(first));
     assert_eq!(app.identify.len(), 1, "a closed identify window drops out");
 
-    let _ = app.update(Msg::IdentifyDone);
+    let stale = app.identify_seq - 1;
+    let _ = app.update(Msg::IdentifyDone(stale));
+    assert_eq!(
+        app.identify.len(),
+        1,
+        "an old timer does not close new windows"
+    );
+    let _ = app.update(Msg::IdentifyDone(app.identify_seq));
     assert!(app.identify.is_empty());
 }
 

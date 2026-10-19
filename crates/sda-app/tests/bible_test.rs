@@ -99,3 +99,33 @@ fn search_result_jumps_and_selects() {
     assert_eq!(app.bible.chapter, 3);
     assert_eq!(app.bible.selected, BTreeSet::from([16]));
 }
+
+#[test]
+fn stale_version_load_is_dropped() {
+    let mut app = App::for_test();
+    app.bible.installed = vec!["bible_mini".into(), "other".into()];
+    let _ = app.update(Msg::Bible(BibleMsg::Version("other".into())));
+    assert_eq!(app.bible.version.as_deref(), Some("other"));
+    assert_eq!(app.bible.busy.as_deref(), Some("other"));
+
+    let _ = app.update(Msg::Bible(BibleMsg::Loaded(
+        "bible_mini".into(),
+        Ok(mini()),
+    )));
+    assert!(
+        app.bible.bible.is_none(),
+        "a load for another code is dropped"
+    );
+    assert_eq!(app.bible.busy.as_deref(), Some("other"), "still loading");
+
+    let _ = app.update(Msg::Bible(BibleMsg::Version("bible_mini".into())));
+    assert_eq!(
+        app.bible.version.as_deref(),
+        Some("other"),
+        "the picker is a no op while a load runs"
+    );
+
+    let _ = app.update(Msg::Bible(BibleMsg::Loaded("other".into(), Ok(mini()))));
+    assert!(app.bible.bible.is_some());
+    assert!(app.bible.busy.is_none());
+}

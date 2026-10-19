@@ -32,7 +32,9 @@ fn searcher(hymns: Vec<sda_core::model::Hymn>) -> Handoff<Searcher> {
 
 /// Index from disk, download the hymns zip if it changed, then check for a
 /// new app version. On a first run the library is downloaded before indexing.
-pub fn boot(core: &Core) -> Task<Msg> {
+/// Converter detection and the font list run beside that chain.
+pub fn boot(core: &mut Core) -> Task<Msg> {
+    let generation = core.next_index_gen();
     let cfg = core.cfg.clone();
     let present = refresh::default_library_present();
     let index = {
@@ -45,21 +47,21 @@ pub fn boot(core: &Core) -> Task<Msg> {
                     refresh::load_library(cfg, false)
                 }
             }),
-            |r| Msg::Indexed(r.map(searcher)),
+            move |r| Msg::Indexed(generation, r.map(searcher)),
         )
     };
     let sync = if present {
-        Task::perform(blocking(move || sync_if_changed(&cfg)), |r| {
-            Msg::Synced(r.and_then(|inner| inner))
+        Task::perform(blocking(move || sync_if_changed(&cfg)), move |r| {
+            Msg::Synced(generation, r.and_then(|inner| inner))
         })
     } else {
         Task::none()
     };
-    index
-        .chain(sync)
-        .chain(update_check(core))
-        .chain(converter_detect())
-        .chain(fonts_list())
+    Task::batch([
+        index.chain(sync).chain(update_check(core)),
+        converter_detect(),
+        fonts_list(),
+    ])
 }
 
 /// Download when the ETag changed and reindex. `Ok(None)` means unchanged.
@@ -73,22 +75,24 @@ fn sync_if_changed(cfg: &Config) -> Result<Option<Handoff<Searcher>>, String> {
 }
 
 /// Wipe the built in library and cache, then download and index again.
-pub fn force_sync(core: &Core) -> Task<Msg> {
+pub fn force_sync(core: &mut Core) -> Task<Msg> {
+    let generation = core.next_index_gen();
     let cfg = core.cfg.clone();
     Task::perform(
         blocking(move || match refresh::force_clean() {
             Ok(()) => Ok(Some(searcher(refresh::load_library(cfg, true)))),
             Err(e) => Err(format!("force clean failed: {e}")),
         }),
-        |r| Msg::Synced(r.and_then(|inner| inner)),
+        move |r| Msg::Synced(generation, r.and_then(|inner| inner)),
     )
 }
 
 /// Reindex after the library folder list changed.
-pub fn reindex(core: &Core) -> Task<Msg> {
+pub fn reindex(core: &mut Core) -> Task<Msg> {
+    let generation = core.next_index_gen();
     let cfg = core.cfg.clone();
-    Task::perform(blocking(move || refresh::load_local(cfg)), |r| {
-        Msg::Reindexed(r.map(searcher))
+    Task::perform(blocking(move || refresh::load_local(cfg)), move |r| {
+        Msg::Reindexed(generation, r.map(searcher))
     })
 }
 

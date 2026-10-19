@@ -83,7 +83,8 @@ fn shortcut_filter_ignores_captured_and_maps_keys() {
         sda_app::shortcuts::filter(
             plain(Key::Named(Named::ArrowRight)),
             event::Status::Ignored,
-            window::Id::unique()
+            window::Id::unique(),
+            Tab::Present
         ),
         Some(Msg::LiveNext)
     ));
@@ -91,7 +92,8 @@ fn shortcut_filter_ignores_captured_and_maps_keys() {
         sda_app::shortcuts::filter(
             plain(Key::Named(Named::ArrowRight)),
             event::Status::Captured,
-            window::Id::unique()
+            window::Id::unique(),
+            Tab::Present
         )
         .is_none()
     );
@@ -99,7 +101,8 @@ fn shortcut_filter_ignores_captured_and_maps_keys() {
         sda_app::shortcuts::filter(
             plain(Key::Character("3".into())),
             event::Status::Ignored,
-            window::Id::unique()
+            window::Id::unique(),
+            Tab::Present
         ),
         Some(Msg::LiveJump(3))
     ));
@@ -108,7 +111,8 @@ fn shortcut_filter_ignores_captured_and_maps_keys() {
         sda_app::shortcuts::filter(
             press(Key::Character("3".into()), cmd),
             event::Status::Ignored,
-            window::Id::unique()
+            window::Id::unique(),
+            Tab::Present
         ),
         Some(Msg::Tab(Tab::Videos))
     ));
@@ -116,7 +120,8 @@ fn shortcut_filter_ignores_captured_and_maps_keys() {
         sda_app::shortcuts::filter(
             press(Key::Character("k".into()), cmd),
             event::Status::Ignored,
-            window::Id::unique()
+            window::Id::unique(),
+            Tab::Present
         ),
         Some(Msg::FocusSearch)
     ));
@@ -124,10 +129,42 @@ fn shortcut_filter_ignores_captured_and_maps_keys() {
         sda_app::shortcuts::filter(
             plain(Key::Character("x".into())),
             event::Status::Ignored,
-            window::Id::unique()
+            window::Id::unique(),
+            Tab::Present
         )
         .is_none()
     );
+}
+
+#[test]
+fn enter_goes_live_only_on_the_present_tab() {
+    use keyboard::{Key, key::Named};
+    let enter = || plain(Key::Named(Named::Enter));
+    assert!(matches!(
+        sda_app::shortcuts::filter(
+            enter(),
+            event::Status::Ignored,
+            window::Id::unique(),
+            Tab::Present
+        ),
+        Some(Msg::GoLive)
+    ));
+    for tab in [Tab::Bible, Tab::Videos, Tab::Themes, Tab::Settings] {
+        assert!(
+            sda_app::shortcuts::filter(enter(), event::Status::Ignored, window::Id::unique(), tab)
+                .is_none(),
+            "{tab:?} ignores Enter"
+        );
+    }
+    assert!(matches!(
+        sda_app::shortcuts::filter(
+            plain(Key::Named(Named::ArrowRight)),
+            event::Status::Ignored,
+            window::Id::unique(),
+            Tab::Bible
+        ),
+        Some(Msg::LiveNext)
+    ));
 }
 
 #[test]
@@ -467,7 +504,7 @@ fn status_chip_colors_follow_the_library_state_and_cuts_long_text() {
     use sda_app::view::shell::{CHIP_CHARS, shorten};
     let mut app = app();
     let long = "x".repeat(CHIP_CHARS + 20);
-    let _ = app.update(Msg::Synced(Err(long.clone())));
+    let _ = app.update(Msg::Synced(0, Err(long.clone())));
     let short = shorten(&app.status.library, CHIP_CHARS);
     assert_eq!(short.chars().count(), CHIP_CHARS);
     assert!(short.ends_with('…'));
@@ -492,7 +529,7 @@ fn sync_error_chip_shows_a_short_reason_and_keeps_the_full_error() {
     let mut app = app();
     let chain =
         "HEAD https://github.com/x/hymns.zip: https://github.com/x/hymns.zip: status code 404";
-    let _ = app.update(Msg::Synced(Err(chain.into())));
+    let _ = app.update(Msg::Synced(0, Err(chain.into())));
     assert_eq!(
         app.status.library,
         app.core
@@ -511,14 +548,14 @@ fn sync_error_marks_the_chip_and_hides_the_update_chip() {
     let mut app = app();
     let up_to_date = app.core.strings.update_up_to_date.clone();
     let _ = app.update(Msg::UpdateChecked(up_to_date.clone(), false));
-    let _ = app.update(Msg::Synced(Err("HEAD failed".into())));
+    let _ = app.update(Msg::Synced(0, Err("HEAD failed".into())));
     assert!(app.status.library_error);
     {
         let mut ui = Simulator::new(app.view_operator());
         assert!(ui.find(&*app.status.library).is_ok());
         assert!(ui.find(&*up_to_date).is_err());
     }
-    let _ = app.update(Msg::Synced(Ok(None)));
+    let _ = app.update(Msg::Synced(0, Ok(None)));
     assert!(
         app.status.library_error,
         "unchanged sync keeps the last state"

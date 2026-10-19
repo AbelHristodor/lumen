@@ -23,5 +23,7 @@ pub enum BibleMsg {
     IndexLoaded(Result<Vec<VersionInfo>, String>),
     /// The code of the version that finished downloading.
     Downloaded(Result<String, String>),
-    Loaded(Result<Arc<Bible>, String>),
+    /// The code the load was started for and its result. Dropped when the
+    /// user picked another version while it loaded.
+    Loaded(String, Result<Arc<Bible>, String>),
 }

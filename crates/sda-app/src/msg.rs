@@ -71,7 +71,7 @@ impl<T> fmt::Debug for Handoff<T> {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Tab {
     Present,
     Bible,
@@ -124,10 +124,12 @@ pub enum Msg {
     ProjectorDisplay(usize),
     ProjectorClosed(window::Id),
     Tick(Instant),
-    Indexed(Result<Handoff<Searcher>, String>),
+    /// The index generation the worker was started with, then its result.
+    /// A result below `core.index_gen` lost to a newer start and is dropped.
+    Indexed(u64, Result<Handoff<Searcher>, String>),
     /// `Ok(None)` means the hymns zip was already current.
-    Synced(Result<Option<Handoff<Searcher>>, String>),
-    Reindexed(Result<Handoff<Searcher>, String>),
+    Synced(u64, Result<Option<Handoff<Searcher>>, String>),
+    Reindexed(u64, Result<Handoff<Searcher>, String>),
     /// Translated update text and whether a new version was staged.
     UpdateChecked(String, bool),
     ForceSync,
@@ -140,8 +142,6 @@ pub enum Msg {
     Videos(VideosMsg),
     Themes(ThemesMsg),
     Settings(SettingsMsg),
-    AsIsToggle(bool),
-    AsIsRendered(Result<(PathBuf, Vec<PathBuf>), String>),
     DisplaysListed(Vec<Display>),
     FontsListed(Vec<String>),
     WindowMoved(window::Id, Point),
@@ -150,6 +150,6 @@ pub enum Msg {
     SaveWindow(u64),
     OpenReleases,
     Identify,
-    IdentifyDone,
-    Noop,
+    /// Close the Identify windows when `seq` is still the latest Identify.
+    IdentifyDone(u64),
 }

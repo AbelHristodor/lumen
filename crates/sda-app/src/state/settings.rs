@@ -3,6 +3,7 @@
 use crate::app::App;
 use crate::msg::settings::Section;
 use crate::msg::{Msg, SettingsMsg};
+use crate::state::projector;
 use crate::workers;
 use iced::Task;
 use sda_core::library;
@@ -60,13 +61,18 @@ fn pick_folder() -> Task<Msg> {
 fn folders_changed(app: &mut App) -> Task<Msg> {
     app.core.save_cfg();
     app.status.library = app.core.strings.status_indexing.clone();
-    workers::reindex(&app.core)
+    workers::reindex(&mut app.core)
 }
 
 pub fn update(app: &mut App, msg: SettingsMsg) -> Task<Msg> {
     match msg {
         SettingsMsg::Noop => {}
-        SettingsMsg::Section(s) => app.settings.section = s,
+        SettingsMsg::Section(s) => {
+            app.settings.section = s;
+            if s == Section::Display {
+                return projector::refresh_displays();
+            }
+        }
         SettingsMsg::Language(lang) => app.core.set_language(lang),
         SettingsMsg::CheckUpdate => {
             app.status.update = Some(app.core.strings.update_checking.clone());
@@ -105,7 +111,7 @@ pub fn update(app: &mut App, msg: SettingsMsg) -> Task<Msg> {
             app.core.save_cfg();
         }
         SettingsMsg::RevealData => {
-            if let Err(e) = open::that(data_dir(app)) {
+            if let Err(e) = open::that_detached(data_dir(app)) {
                 log::warn!("opening the data folder failed: {e}");
             }
         }

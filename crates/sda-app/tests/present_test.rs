@@ -243,3 +243,52 @@ fn selected_path(app: &App) -> std::path::PathBuf {
         .path
         .clone()
 }
+
+#[test]
+fn going_live_with_another_hymn_drops_the_old_bitmaps() {
+    let mut app = app();
+    let _ = app.update(Msg::Search("150".into()));
+    let _ = app.update(Msg::GoLive);
+    let png = app.core.paths.asis_cache.join("old.png");
+    app.live
+        .bitmaps
+        .insert(png.clone(), Arc::new(image::RgbaImage::new(4, 4)));
+    app.live.present.slides = vec![SlideContent::Bitmap(png.clone())];
+    assert_eq!(app.live.bitmaps.len(), 1);
+
+    let _ = app.update(Msg::Search("001".into()));
+    let _ = app.update(Msg::GoLive);
+    assert!(!app.live.bitmaps.contains_key(&png));
+    assert!(app.live.bitmaps.is_empty());
+}
+
+#[test]
+fn stale_reindex_result_is_dropped() {
+    use sda_app::msg::Handoff;
+    use sda_core::search::Searcher;
+    let mut app = app();
+    let first = app.core.next_index_gen();
+    let second = app.core.next_index_gen();
+    assert!(first < second);
+
+    let newer = Handoff::new(Searcher::new(Vec::new()));
+    let _ = app.update(Msg::Reindexed(second, Ok(newer)));
+    assert_eq!(app.core.searcher.as_ref().unwrap().len(), 0);
+
+    let fixtures = std::path::Path::new(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../sda-core/tests/fixtures"
+    ));
+    let hymns = sda_core::index::refresh_index(fixtures, "test", &[]);
+    let older = Handoff::new(Searcher::new(hymns));
+    let _ = app.update(Msg::Reindexed(first, Ok(older.clone())));
+    assert_eq!(
+        app.core.searcher.as_ref().unwrap().len(),
+        0,
+        "the older result that arrived last is ignored"
+    );
+    assert!(older.take().is_some(), "the stale handoff was not consumed");
+
+    let _ = app.update(Msg::Synced(first, Err("late failure".into())));
+    assert!(!app.status.library_error, "a stale sync error is ignored");
+}

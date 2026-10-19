@@ -11,6 +11,10 @@ use sda_core::downloader::{self, DownloadEvent, DownloadRecord, Probe};
 use sda_core::library;
 use std::io::Read;
 use std::path::PathBuf;
+use std::time::Duration;
+
+/// Download records kept, newest first.
+pub const DOWNLOADS_CAP: usize = 50;
 
 #[derive(Debug, Clone, PartialEq, Default)]
 pub enum Phase {
@@ -154,6 +158,7 @@ pub fn update(app: &mut App, msg: VideosMsg) -> Task<Msg> {
                         at,
                     },
                 );
+                app.core.downloads.truncate(DOWNLOADS_CAP);
                 app.core.save_downloads();
             }
             DownloadEvent::Failed { message } => {
@@ -202,7 +207,10 @@ fn thumbnail(url: String) -> Task<Msg> {
         async move {
             tokio::task::spawn_blocking(move || {
                 let mut bytes = Vec::new();
-                ureq::get(&url)
+                ureq::AgentBuilder::new()
+                    .timeout(Duration::from_secs(30))
+                    .build()
+                    .get(&url)
                     .call()
                     .ok()?
                     .into_reader()

@@ -384,3 +384,21 @@ fn opening_themes_resyncs_the_preview_with_the_hymn_picked_in_present() {
         "a new preview slide rebuilds the thumbnails"
     );
 }
+
+#[test]
+fn favorite_saves_only_the_flag_and_keeps_the_draft_edits() {
+    let mut app = themes_app();
+    send(&mut app, ThemesMsg::New);
+    let name = app.themes.draft.name.clone();
+    send(&mut app, ThemesMsg::Draft(DraftEdit::Footer(false)));
+    send(&mut app, ThemesMsg::Favorite(true));
+    assert!(app.themes.draft.favorite);
+    assert!(
+        !app.themes.draft.footer,
+        "the unsaved edit stays in the form"
+    );
+    let saved = app.core.theme_named(&name).expect("saved theme");
+    assert!(saved.favorite);
+    assert!(saved.footer, "the unsaved edit was not written");
+    assert_eq!(sorted_themes(&app.core)[0].name, name);
+}

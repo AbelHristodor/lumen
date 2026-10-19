@@ -6,7 +6,9 @@ use iced::keyboard::key::Named;
 use iced::keyboard::{self, Key};
 use iced::{Event, event, window};
 
-pub fn filter(event: Event, status: event::Status, _id: window::Id) -> Option<Msg> {
+/// Map a key press to a message. Enter goes live only on the Present tab,
+/// so a stray Enter on another tab never changes the projector.
+pub fn filter(event: Event, status: event::Status, _id: window::Id, tab: Tab) -> Option<Msg> {
     if status == event::Status::Captured {
         return None;
     }
@@ -30,7 +32,7 @@ pub fn filter(event: Event, status: event::Status, _id: window::Id) -> Option<Ms
         Key::Named(Named::ArrowLeft) => Msg::LivePrev,
         Key::Named(Named::ArrowUp) => Msg::MoveSelection(-1),
         Key::Named(Named::ArrowDown) => Msg::MoveSelection(1),
-        Key::Named(Named::Enter) => Msg::GoLive,
+        Key::Named(Named::Enter) if tab == Tab::Present => Msg::GoLive,
         Key::Named(Named::Escape) => Msg::LiveStop,
         _ => return None,
     })

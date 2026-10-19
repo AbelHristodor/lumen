@@ -89,6 +89,9 @@ pub struct App {
     pub window_geom_seq: u64,
     /// Windows opened by Identify.
     pub identify: Vec<window::Id>,
+    /// Bumped on every Identify. An `IdentifyDone` carrying an older value
+    /// is a timer from a previous Identify and does nothing.
+    pub identify_seq: u64,
     /// The last frame time. Views draw the live scene at this instant.
     pub now: Instant,
 }
@@ -118,6 +121,7 @@ impl App {
             window_geom: None,
             window_geom_seq: 0,
             identify: Vec::new(),
+            identify_seq: 0,
             now: Instant::now(),
         }
     }
@@ -147,7 +151,7 @@ impl App {
             open.discard(),
             workers::gpu_probe(),
             workers::background(BgTarget::Live, &mut app.live),
-            workers::boot(&app.core),
+            workers::boot(&mut app.core),
             Task::perform(async { displays::list() }, Msg::DisplaysListed),
         ]);
         (app, task)
@@ -222,8 +226,13 @@ impl App {
         // The projector has no decorations, so a close request only comes
         // from the OS. The default `exit_on_close_request` lets Iced close
         // that window itself and `close_events` then clears our state.
+        // `listen_with` takes a plain fn, so the tab rides along through
+        // `with` and the shortcut filter runs in a non capturing closure.
+        let shortcuts = event::listen_with(|e, status, id| Some((e, status, id)))
+            .with(self.tab)
+            .filter_map(|(tab, (e, status, id))| shortcuts::filter(e, status, id, tab));
         let mut subs = vec![
-            event::listen_with(shortcuts::filter),
+            shortcuts,
             event::listen_with(window_geometry),
             window::close_events().map(Msg::ProjectorClosed),
         ];
@@ -310,8 +319,17 @@ impl App {
             }
             Msg::Tick(now) => projector::tick(self, now),
             Msg::Identify => return projector::identify(self),
-            Msg::IdentifyDone => return projector::identify_done(self),
-            Msg::Indexed(r) | Msg::Reindexed(r) => match r {
+            Msg::IdentifyDone(seq) => {
+                if seq == self.identify_seq {
+                    return projector::identify_done(self);
+                }
+            }
+            Msg::Indexed(g, _) | Msg::Reindexed(g, _) | Msg::Synced(g, _)
+                if !self.core.index_current(g) =>
+            {
+                log::debug!("dropping stale index result {g} < {}", self.core.index_gen);
+            }
+            Msg::Indexed(_, r) | Msg::Reindexed(_, r) => match r {
                 Ok(h) => {
                     if let Some(n) = self.install_searcher(&h) {
                         self.status.library = s.status_indexed_fmt.replace("{}", &n.to_string());
@@ -326,7 +344,7 @@ impl App {
                     self.status.library_detail = Some(e);
                 }
             },
-            Msg::Synced(r) => {
+            Msg::Synced(_, r) => {
                 self.status.sync_busy = false;
                 match r {
                     Ok(Some(h)) => {
@@ -385,14 +403,13 @@ impl App {
                 self.status.library_error = false;
                 self.status.library_detail = None;
                 self.status.library = s.status_re_cloning;
-                return workers::force_sync(&self.core);
+                return workers::force_sync(&mut self.core);
             }
             Msg::Present(m) => return state::present::update(self, m),
             Msg::Bible(m) => return state::bible::update(self, m),
             Msg::Videos(m) => return state::videos::update(self, m),
             Msg::Themes(m) => return state::themes::update(self, m),
             Msg::Settings(m) => return state::settings::update(self, m),
-            Msg::AsIsToggle(_) | Msg::AsIsRendered(_) => {}
             Msg::DisplaysListed(list) => {
                 let saved = self
                     .core
@@ -437,7 +454,6 @@ impl App {
                     log::warn!("opening the release page failed: {e}");
                 }
             }
-            Msg::Noop => {}
         }
         Task::none()
     }

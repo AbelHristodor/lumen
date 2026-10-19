@@ -76,6 +76,13 @@ fn top_row(app: &App) -> Element<'_, Msg> {
         .version
         .as_deref()
         .and_then(|v| choices.iter().find(|c| c.code == v).cloned());
+    // A pick list cannot be disabled, so while a version loads the picker
+    // only offers the current choice and a pick of it is a no op.
+    let choices = if st.busy.is_some() {
+        selected.iter().cloned().collect()
+    } else {
+        choices
+    };
     let picker = pick_list(choices, selected, |c| b(BibleMsg::Version(c.code)))
         .placeholder(s.bible_version.as_str())
         .style(ui_theme::picker)

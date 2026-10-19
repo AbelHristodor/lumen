@@ -2,7 +2,7 @@
 //! clock the live scene is drawn with.
 
 use crate::app::App;
-use crate::displays::Display;
+use crate::displays::{self, Display};
 use crate::msg::Msg;
 use iced::{Point, Size, Task, window};
 use std::time::{Duration, Instant};
@@ -43,19 +43,33 @@ pub fn close(app: &mut App) -> Task<Msg> {
     }
 }
 
-/// Close when open, else open on the chosen display.
+/// Close when open, else open on the chosen display. Without a GPU the
+/// projector would show plain text, so the toggle does nothing. With fewer
+/// than two displays known the list is refreshed, a projector may have
+/// been plugged in since boot.
 pub fn toggle(app: &mut App) -> Task<Msg> {
     if app.projector.is_some() {
         return close(app);
+    }
+    if !app.gpu_ok {
+        return Task::none();
     }
     let Some(d) = app
         .projector_display
         .and_then(|i| app.displays.get(i))
         .cloned()
     else {
-        return Task::none();
+        return refresh_displays();
     };
+    if app.displays.len() < 2 {
+        return Task::batch([refresh_displays(), open(app, &d)]);
+    }
     open(app, &d)
+}
+
+/// Ask the OS for the display list again.
+pub fn refresh_displays() -> Task<Msg> {
+    Task::perform(async { displays::list() }, Msg::DisplaysListed)
 }
 
 /// Pick the display and move an open projector there.
@@ -82,9 +96,11 @@ pub fn identify(app: &mut App) -> Task<Msg> {
         app.identify.push(id);
         tasks.push(task.discard());
     }
+    app.identify_seq += 1;
+    let seq = app.identify_seq;
     tasks.push(Task::perform(
         async { tokio::time::sleep(IDENTIFY_FOR).await },
-        |_| Msg::IdentifyDone,
+        move |_| Msg::IdentifyDone(seq),
     ));
     Task::batch(tasks)
 }
