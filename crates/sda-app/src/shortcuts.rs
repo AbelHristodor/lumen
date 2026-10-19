@@ -9,6 +9,9 @@ use iced::{Event, event, window};
 /// Map a key press to a message. Enter goes live only on the Present tab,
 /// so a stray Enter on another tab never changes the projector.
 pub fn filter(event: Event, status: event::Status, _id: window::Id, tab: Tab) -> Option<Msg> {
+    if let Event::Keyboard(keyboard::Event::ModifiersChanged(m)) = event {
+        return Some(Msg::Modifiers(m));
+    }
     if status == event::Status::Captured {
         return None;
     }

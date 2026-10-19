@@ -6,8 +6,8 @@ use crate::state::bible::BibleState;
 use crate::ui_theme;
 use crate::widgets::card::card;
 use iced::widget::{
-    Column, Row, button, center, checkbox, column, container, mouse_area, opaque, pick_list, row,
-    scrollable, space, stack, text, text_input,
+    Column, Row, button, center, column, container, mouse_area, opaque, pick_list, row, scrollable,
+    space, stack, text, text_input,
 };
 use iced::{Alignment, Element, Fill};
 use sda_core::bible::{VersionInfo, book_name, format_reference};
@@ -240,54 +240,42 @@ fn verses_pane(app: &App) -> Element<'_, Msg> {
     .spacing(ui_theme::SPACING)
     .align_y(Alignment::Center);
 
-    let last = st.selected.last().copied();
     let rows = Column::with_children(st.chapter_verses().into_iter().map(|(n, verse)| {
-        let checked = st.selected.contains(&n);
-        // The box sits on the first line of the verse, so a long verse does
-        // not pull it down to the middle. The text toggles too.
-        let body = mouse_area(
-            row![
-                text(n.to_string())
-                    .size(12)
-                    .font(ui_theme::BOLD)
-                    .color(ui_theme::MUTED)
-                    .width(26),
-                text(verse).size(14).width(Fill),
-            ]
-            .spacing(4)
-            .align_y(Alignment::Start),
-        )
-        .on_press(b(BibleMsg::ToggleVerse(n)));
-        let mut line = row![
-            container(
-                checkbox(checked)
-                    .size(16)
-                    .on_toggle(move |_| b(BibleMsg::ToggleVerse(n)))
-            )
-            .padding(iced::Padding::ZERO.top(2)),
-            body,
+        let selected = st.selected.contains(&n);
+        let line = row![
+            text(n.to_string())
+                .size(12)
+                .font(ui_theme::BOLD)
+                .color(ui_theme::MUTED)
+                .width(26),
+            text(verse).size(14).width(Fill),
         ]
-        .spacing(ui_theme::SPACING / 2.0)
+        .spacing(4)
         .align_y(Alignment::Start);
-        // Extend the selection down to this verse. Stands in for Shift click.
-        if let Some(first) = last.filter(|l| n > *l) {
-            line = line.push(
-                button(text(&s.select_to_here).size(11))
-                    .padding([2, 6])
-                    .style(ui_theme::ghost_button)
-                    .on_press(b(BibleMsg::SelectRange(first, n))),
-            );
-        }
-        line.into()
+        mouse_area(
+            container(line)
+                .padding([4, 8])
+                .width(Fill)
+                .style(ui_theme::verse_row(selected)),
+        )
+        .interaction(iced::mouse::Interaction::Pointer)
+        .on_press(b(BibleMsg::Press(n)))
+        .on_enter(b(BibleMsg::Enter(n)))
+        .on_release(b(BibleMsg::Release))
+        .into()
     }))
-    .spacing(6);
+    .spacing(2);
     let list: Element<'_, Msg> = if st.chapter_count() == 0 {
         center(text(&s.bible_pick_chapter).size(13).color(ui_theme::MUTED)).into()
     } else {
-        scrollable(gutter(rows))
-            .direction(thin_scrollbar())
-            .height(Fill)
-            .into()
+        // A release on the gap between rows also ends the drag.
+        mouse_area(
+            scrollable(gutter(rows))
+                .direction(thin_scrollbar())
+                .height(Fill),
+        )
+        .on_release(b(BibleMsg::Release))
+        .into()
     };
     card(column![header, list].spacing(ui_theme::SPACING))
         .width(Fill)

@@ -123,6 +123,15 @@ pub fn ghost_button(_theme: &Theme, status: button::Status) -> button::Style {
     }
 }
 
+/// A verse row. Selected rows get the accent tint, others are flat.
+pub fn verse_row(selected: bool) -> impl Fn(&Theme) -> container::Style {
+    move |_| container::Style {
+        background: selected.then(|| with_alpha(ACCENT, 0.22).into()),
+        border: Border::default().rounded(RADIUS),
+        ..container::Style::default()
+    }
+}
+
 /// A row in a list or a card in a picker. The selected one carries a
 /// tinted accent surface, hover a raised surface.
 pub fn list_row(selected: bool) -> impl Fn(&Theme, button::Status) -> button::Style {

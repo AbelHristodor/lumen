@@ -115,6 +115,8 @@ pub enum Msg {
     GoLive,
     GoLiveAt(usize),
     FocusSearch,
+    /// Shift, Ctrl, Alt, Cmd state. Updated on every change, captured or not.
+    Modifiers(iced::keyboard::Modifiers),
     LiveNext,
     LivePrev,
     LiveBlank,

@@ -94,6 +94,8 @@ pub struct App {
     pub identify_seq: u64,
     /// The last frame time. Views draw the live scene at this instant.
     pub now: Instant,
+    /// Modifier keys held right now. Shift click in the Bible tab reads it.
+    pub modifiers: iced::keyboard::Modifiers,
 }
 
 impl App {
@@ -123,6 +125,7 @@ impl App {
             identify: Vec::new(),
             identify_seq: 0,
             now: Instant::now(),
+            modifiers: iced::keyboard::Modifiers::empty(),
         }
     }
 
@@ -279,6 +282,7 @@ impl App {
                     _ => Task::none(),
                 };
             }
+            Msg::Modifiers(m) => self.modifiers = m,
             Msg::Search(q) => {
                 self.present.query = q;
                 present::run_search(self);

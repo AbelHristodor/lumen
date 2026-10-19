@@ -1,4 +1,6 @@
+use iced::keyboard::Modifiers;
 use iced::keyboard::{Key, key::Named};
+use iced::{Settings, Size};
 use iced_test::{Simulator, selector};
 use sda_app::msg::BibleMsg;
 use sda_app::{App, Msg, Tab};
@@ -77,21 +79,86 @@ fn version_pick_list_lists_installed() {
     );
 }
 
+fn press(app: &mut App, n: u32) {
+    let _ = app.update(Msg::Bible(BibleMsg::Press(n)));
+    let _ = app.update(Msg::Bible(BibleMsg::Release));
+}
+
 #[test]
-fn toggle_and_range_select_verses() {
+fn click_toggles_shift_click_ranges() {
     let mut app = app();
     app.bible.book = 42;
     app.bible.chapter = 3;
-    let _ = app.update(Msg::Bible(BibleMsg::ToggleVerse(2)));
-    let _ = app.update(Msg::Bible(BibleMsg::SelectRange(2, 5)));
-    assert_eq!(app.bible.selected, BTreeSet::from([2, 3, 4, 5]));
-    let _ = app.update(Msg::Bible(BibleMsg::ToggleVerse(3)));
-    assert_eq!(app.bible.selected, BTreeSet::from([2, 4, 5]));
+    press(&mut app, 2);
+    assert_eq!(app.bible.selected, BTreeSet::from([2]));
+    press(&mut app, 4);
+    assert_eq!(app.bible.selected, BTreeSet::from([2, 4]));
+    press(&mut app, 2);
+    assert_eq!(
+        app.bible.selected,
+        BTreeSet::from([4]),
+        "second click deselects"
+    );
+    assert_eq!(app.bible.anchor, Some(2));
+
+    let _ = app.update(Msg::Modifiers(Modifiers::SHIFT));
+    press(&mut app, 6);
+    assert_eq!(app.bible.selected, BTreeSet::from([2, 3, 4, 5, 6]));
+    assert_eq!(app.bible.anchor, Some(2), "shift keeps the anchor");
+    let _ = app.update(Msg::Modifiers(Modifiers::empty()));
+
     let _ = app.update(Msg::Bible(BibleMsg::ClearSelection));
     assert!(app.bible.selected.is_empty());
     let _ = app.update(Msg::Bible(BibleMsg::Book(0)));
-    assert_eq!(app.bible.book, 0);
     assert_eq!(app.bible.chapter, 1);
+    assert_eq!(app.bible.anchor, None);
+}
+
+#[test]
+fn drag_selects_a_range() {
+    let mut app = app();
+    app.bible.book = 42;
+    app.bible.chapter = 3;
+    let _ = app.update(Msg::Bible(BibleMsg::Press(3)));
+    assert!(app.bible.dragging);
+    let _ = app.update(Msg::Bible(BibleMsg::Enter(5)));
+    assert_eq!(app.bible.selected, BTreeSet::from([3, 4, 5]));
+    let _ = app.update(Msg::Bible(BibleMsg::Enter(1)));
+    assert_eq!(
+        app.bible.selected,
+        BTreeSet::from([1, 2, 3]),
+        "drag upward replaces the drag range"
+    );
+    let _ = app.update(Msg::Bible(BibleMsg::Release));
+    assert!(!app.bible.dragging);
+    let _ = app.update(Msg::Bible(BibleMsg::Enter(9)));
+    assert_eq!(
+        app.bible.selected,
+        BTreeSet::from([1, 2, 3]),
+        "hover after release does nothing"
+    );
+}
+
+#[test]
+fn verse_row_click_selects_without_a_checkbox() {
+    let mut app = app();
+    app.bible.book = 42;
+    app.bible.chapter = 3;
+    // Tall enough that verse 16 is on screen without scrolling.
+    let mut ui = Simulator::with_size(
+        Settings::default(),
+        Size::new(1400.0, 3000.0),
+        app.view_operator(),
+    );
+    assert!(ui.find("Select to here").is_err());
+    ui.click("For God so loved the world").expect("verse row");
+    for m in ui.into_messages() {
+        let _ = app.update(m);
+    }
+    // The simulator click emits only the press, so end the drag here.
+    let _ = app.update(Msg::Bible(BibleMsg::Release));
+    assert!(!app.bible.dragging);
+    assert_eq!(app.bible.selected, BTreeSet::from([16]));
 }
 
 #[test]

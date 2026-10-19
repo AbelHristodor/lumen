@@ -11,8 +11,13 @@ pub enum BibleMsg {
     Version(String),
     Book(usize),
     Chapter(u32),
-    ToggleVerse(u32),
-    SelectRange(u32, u32),
+    /// Mouse down on a verse row. Toggles it, or with Shift selects from
+    /// the anchor to it.
+    Press(u32),
+    /// The pointer entered a verse row. Extends a drag.
+    Enter(u32),
+    /// Mouse up anywhere on the list. Ends a drag.
+    Release,
     ClearSelection,
     Search(String),
     Present,

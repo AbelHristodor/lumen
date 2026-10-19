@@ -12,6 +12,7 @@ use sda_core::present::{Presentation, Source};
 use sda_core::resolve::verse_box_pt;
 use sda_core::sync::sync_file;
 use std::collections::BTreeSet;
+use std::ops::RangeInclusive;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -23,6 +24,12 @@ pub struct BibleState {
     pub book: usize,
     pub chapter: u32,
     pub selected: BTreeSet<u32>,
+    /// Last verse clicked without Shift. Shift click and drag range from it.
+    pub anchor: Option<u32>,
+    /// True between `Press` and `Release`. `Enter` extends the range then.
+    pub dragging: bool,
+    /// Verses the current drag covers. Replaced as the pointer moves.
+    pub drag_range: RangeInclusive<u32>,
     pub query: String,
     pub results: Vec<(Reference, String)>,
     pub manage_open: bool,
@@ -43,6 +50,10 @@ impl Default for BibleState {
             book: 0,
             chapter: 1,
             selected: BTreeSet::new(),
+            anchor: None,
+            dragging: false,
+            // Empty until the first press.
+            drag_range: RangeInclusive::new(1, 0),
             query: String::new(),
             results: Vec::new(),
             manage_open: false,
@@ -113,6 +124,16 @@ impl BibleState {
             Some((a, b)) => (a..=b).collect(),
             None => BTreeSet::new(),
         };
+        self.anchor = None;
+    }
+
+    /// Replace the drag range. Verses selected before the drag began stay.
+    pub fn drag_to(&mut self, n: u32) {
+        let Some(a) = self.anchor else { return };
+        let range = a.min(n)..=a.max(n);
+        self.selected.retain(|v| !self.drag_range.contains(v));
+        self.selected.extend(range.clone());
+        self.drag_range = range;
     }
 }
 
@@ -308,18 +329,37 @@ pub fn update(app: &mut App, msg: BibleMsg) -> Task<Msg> {
             app.bible.book = i;
             app.bible.chapter = 1;
             app.bible.selected.clear();
+            app.bible.anchor = None;
         }
         BibleMsg::Chapter(c) => {
             app.bible.chapter = c.max(1);
             app.bible.selected.clear();
+            app.bible.anchor = None;
         }
-        BibleMsg::ToggleVerse(n) => {
-            if !app.bible.selected.remove(&n) {
-                app.bible.selected.insert(n);
+        BibleMsg::Press(n) => {
+            if app.modifiers.shift()
+                && let Some(a) = app.bible.anchor
+            {
+                app.bible.selected.extend(a.min(n)..=a.max(n));
+            } else {
+                if !app.bible.selected.remove(&n) {
+                    app.bible.selected.insert(n);
+                }
+                app.bible.anchor = Some(n);
+                app.bible.drag_range = n..=n;
+                app.bible.dragging = true;
             }
         }
-        BibleMsg::SelectRange(a, b) => app.bible.selected.extend(a.min(b)..=a.max(b)),
-        BibleMsg::ClearSelection => app.bible.selected.clear(),
+        BibleMsg::Enter(n) => {
+            if app.bible.dragging {
+                app.bible.drag_to(n);
+            }
+        }
+        BibleMsg::Release => app.bible.dragging = false,
+        BibleMsg::ClearSelection => {
+            app.bible.selected.clear();
+            app.bible.anchor = None;
+        }
         BibleMsg::Search(q) => {
             app.bible.query = q;
             run_search(app);
@@ -385,6 +425,7 @@ pub fn update(app: &mut App, msg: BibleMsg) -> Task<Msg> {
                         app.bible.book = 0;
                         app.bible.chapter = 1;
                         app.bible.selected.clear();
+                        app.bible.anchor = None;
                     }
                     app.bible.bible = Some(b);
                     run_search(app);
