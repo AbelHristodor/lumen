@@ -89,19 +89,6 @@ fn set_overrides_pptx() {
 }
 
 #[test]
-fn verses_make_one_box_plus_reference_line() {
-    let c = SlideContent::Verses {
-        reference: "John 3:16".into(),
-        verses: vec![(16, "For God".into())],
-    };
-    let r = resolve(&Theme::default(), &c, None).unwrap();
-    assert_eq!(r.boxes.len(), 1);
-    let last = r.boxes[0].lines.last().unwrap();
-    assert_eq!(last.runs[0].text, "John 3:16");
-    assert!(r.boxes[0].lines[0].runs[0].text.starts_with("16 "));
-}
-
-#[test]
 fn bitmap_resolves_to_none_and_footer_passes_through() {
     assert!(resolve(
         &Theme::default(),
@@ -116,36 +103,6 @@ fn bitmap_resolves_to_none_and_footer_passes_through() {
     )
     .unwrap();
     assert_eq!(r.footer.as_deref(), Some("150 · Title"));
-}
-
-#[test]
-fn verses_reference_small_fixed_size_and_no_numbers() {
-    let mut t = Theme::default();
-    t.text.size = Prop::Set(TextSize::Pt(50.0));
-    t.verses.show_numbers = false;
-    let c = SlideContent::Verses {
-        reference: "John 3:16".into(),
-        verses: vec![(16, "For God".into())],
-    };
-    let r = resolve(&t, &c, None).unwrap();
-    assert_eq!(r.boxes[0].lines[0].runs[0].text, "For God");
-    assert_eq!(r.boxes[0].lines[0].runs[0].size, TextSize::Pt(50.0));
-    let reference = &r.boxes[0].lines[1];
-    assert_eq!(reference.runs[0].text, "John 3:16");
-    assert!(matches!(reference.runs[0].size, TextSize::Pt(p) if (p - 30.0).abs() < 1e-4));
-}
-
-#[test]
-fn verses_without_reference_have_only_verse_lines() {
-    let mut t = Theme::default();
-    t.verses.show_reference = false;
-    let c = SlideContent::Verses {
-        reference: "John 3:16".into(),
-        verses: vec![(16, "a".into()), (17, "b".into())],
-    };
-    let r = resolve(&t, &c, None).unwrap();
-    assert_eq!(r.boxes[0].lines.len(), 2);
-    assert_eq!(r.boxes[0].lines[1].runs[0].text, "17 b");
 }
 
 #[test]
@@ -190,4 +147,139 @@ fn box_without_frame_gets_margin_frame() {
     let f = r.boxes[0].frame;
     assert!((f.x - FALLBACK_MARGIN).abs() < 1e-6);
     assert!((f.w - (1.0 - 2.0 * FALLBACK_MARGIN)).abs() < 1e-6);
+}
+
+fn verses_content() -> SlideContent {
+    SlideContent::Verses {
+        reference: "John 3:16".into(),
+        verses: vec![(16, "For God".into())],
+    }
+}
+
+#[test]
+fn verses_make_a_verse_box_and_a_reference_box() {
+    let r = resolve(&Theme::default(), &verses_content(), None).unwrap();
+    assert_eq!(r.boxes.len(), 2);
+    assert!(r.boxes[0].lines[0].runs[0].text.starts_with("16 "));
+    assert_eq!(r.boxes[1].lines[0].runs[0].text, "John 3:16");
+    assert_eq!(r.boxes[1].v_align, VAlign::Bottom);
+}
+
+#[test]
+fn reference_band_does_not_overlap_the_verses() {
+    for side in [VAlign::Top, VAlign::Bottom] {
+        let mut t = Theme::default();
+        t.reference.v_align = side;
+        let r = resolve(&t, &verses_content(), None).unwrap();
+        let v = r.boxes[0].frame;
+        let rf = r.boxes[1].frame;
+        assert!((rf.h - REF_BAND).abs() < 1e-5, "{side:?} band height");
+        let v_bottom = v.y + v.h;
+        let rf_bottom = rf.y + rf.h;
+        assert!(
+            v_bottom <= rf.y + 1e-5 || rf_bottom <= v.y + 1e-5,
+            "{side:?} frames overlap: verses {v:?} reference {rf:?}"
+        );
+    }
+}
+
+#[test]
+fn reference_middle_keeps_the_whole_frame() {
+    let mut t = Theme::default();
+    t.reference.v_align = VAlign::Middle;
+    let r = resolve(&t, &verses_content(), None).unwrap();
+    assert_eq!(r.boxes[0].frame, r.boxes[1].frame);
+}
+
+#[test]
+fn reference_inherits_from_verse_text_at_sixty_percent() {
+    let mut t = Theme::default();
+    t.text.size = Prop::Set(TextSize::Pt(50.0));
+    t.text.color = Prop::Set(Rgba::new(1, 2, 3, 255));
+    t.text.font = Prop::Set(Font::Bundled(BundledFont::Lora));
+    t.verses.show_numbers = false;
+    let r = resolve(&t, &verses_content(), None).unwrap();
+    let verse = &r.boxes[0].lines[0].runs[0];
+    let reference = &r.boxes[1].lines[0].runs[0];
+    assert_eq!(verse.text, "For God");
+    assert_eq!(verse.size, TextSize::Pt(50.0));
+    assert!(matches!(reference.size, TextSize::Pt(p) if (p - 30.0).abs() < 1e-4));
+    assert_eq!(reference.color, Rgba::new(1, 2, 3, 255));
+    assert_eq!(reference.font, Font::Bundled(BundledFont::Lora));
+}
+
+#[test]
+fn reference_set_values_win_over_verse_text() {
+    let mut t = Theme::default();
+    t.text.color = Prop::Set(Rgba::new(1, 2, 3, 255));
+    t.reference.color = Prop::Set(Rgba::new(9, 9, 9, 255));
+    t.reference.h_align = Prop::Set(HAlign::Right);
+    let r = resolve(&t, &verses_content(), None).unwrap();
+    let line = &r.boxes[1].lines[0];
+    assert_eq!(line.runs[0].color, Rgba::new(9, 9, 9, 255));
+    assert_eq!(line.align, HAlign::Right);
+}
+
+#[test]
+fn verses_without_reference_have_one_box() {
+    let mut t = Theme::default();
+    t.verses.show_reference = false;
+    let c = SlideContent::Verses {
+        reference: "John 3:16".into(),
+        verses: vec![(16, "a".into()), (17, "b".into())],
+    };
+    let r = resolve(&t, &c, None).unwrap();
+    assert_eq!(r.boxes.len(), 1);
+    assert_eq!(r.boxes[0].lines.len(), 2);
+    assert_eq!(r.boxes[0].lines[1].runs[0].text, "17 b");
+    let full = Frame {
+        x: 0.06,
+        y: 0.06,
+        w: 0.88,
+        h: 0.88,
+    };
+    assert_eq!(r.boxes[0].frame, full);
+}
+
+#[test]
+fn frame_cut_splits_a_band_off_one_side() {
+    let f = Frame {
+        x: 0.1,
+        y: 0.1,
+        w: 0.8,
+        h: 0.8,
+    };
+    let (strip, rest) = f.cut(VAlign::Top, 0.2);
+    assert_eq!(
+        strip,
+        Frame {
+            x: 0.1,
+            y: 0.1,
+            w: 0.8,
+            h: 0.2
+        }
+    );
+    assert!((rest.y - 0.3).abs() < 1e-6 && (rest.h - 0.6).abs() < 1e-6);
+    let (strip, rest) = f.cut(VAlign::Bottom, 0.2);
+    assert!((strip.y - 0.7).abs() < 1e-6 && (strip.h - 0.2).abs() < 1e-6);
+    assert_eq!(
+        rest,
+        Frame {
+            x: 0.1,
+            y: 0.1,
+            w: 0.8,
+            h: 0.6
+        }
+    );
+    let (strip, rest) = f.cut(VAlign::Middle, 0.2);
+    assert_eq!(strip, f);
+    assert_eq!(rest, f);
+}
+
+#[test]
+fn verse_box_pt_is_the_verse_frame_on_a_720_slide() {
+    let t = Theme::default();
+    let (w, h) = verse_box_pt(&t);
+    assert!((w - 0.88 * 720.0).abs() < 1e-3);
+    assert!((h - (0.88 - REF_BAND) * 405.0).abs() < 1e-3);
 }

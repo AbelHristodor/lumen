@@ -44,6 +44,38 @@ pub struct Frame {
     pub h: f32,
 }
 
+impl Frame {
+    /// Split a horizontal band of height `band` off `side`. Returns the
+    /// band and what is left. `Middle` returns the whole frame twice, so a
+    /// centered reference overlays the verses.
+    pub fn cut(self, side: crate::theme::VAlign, band: f32) -> (Frame, Frame) {
+        use crate::theme::VAlign;
+        let band = band.min(self.h);
+        match side {
+            VAlign::Top => (
+                Frame { h: band, ..self },
+                Frame {
+                    y: self.y + band,
+                    h: self.h - band,
+                    ..self
+                },
+            ),
+            VAlign::Bottom => (
+                Frame {
+                    y: self.y + self.h - band,
+                    h: band,
+                    ..self
+                },
+                Frame {
+                    h: self.h - band,
+                    ..self
+                },
+            ),
+            VAlign::Middle => (self, self),
+        }
+    }
+}
+
 /// One paragraph of runs with its own alignment and line spacing.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Paragraph {

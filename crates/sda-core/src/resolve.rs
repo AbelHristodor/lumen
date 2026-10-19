@@ -59,7 +59,11 @@ pub struct ResolvedSlide {
 pub const FALLBACK_COLOR: Rgba = Rgba::WHITE;
 pub const FALLBACK_SPACING: f32 = 1.1;
 pub const FALLBACK_MARGIN: f32 = 0.06;
-const REFERENCE_SCALE: f32 = 0.6;
+pub const REFERENCE_SCALE: f32 = 0.6;
+/// Slide height fraction the reference strip takes above or below the verses.
+pub const REF_BAND: f32 = 0.12;
+/// A 16 by 9 slide measured in points, the unit `TextSize::Pt` uses.
+pub const SLIDE_PT: (f32, f32) = (720.0, 405.0);
 
 /// Resolve `content` under `theme`. Returns `None` for bitmaps, which the
 /// renderer draws as they are.
@@ -82,7 +86,7 @@ pub fn resolve(
         }),
         SlideContent::Verses { reference, verses } => Some(ResolvedSlide {
             background: solid_background(theme, None),
-            boxes: vec![resolve_verses(theme, reference, verses)],
+            boxes: resolve_verses(theme, reference, verses),
             footer,
         }),
     }
@@ -145,26 +149,86 @@ fn resolve_box(text: &TextStyle, b: &TextBox) -> ResolvedBox {
     }
 }
 
-fn resolve_verses(theme: &Theme, reference: &str, verses: &[(u32, String)]) -> ResolvedBox {
-    let text = &theme.text;
-    let size = text.size.resolve(None, TextSize::Auto);
-    let run = |s: String, size: TextSize| ResolvedRun {
+/// The reference style with every `Prop` resolved. `Inherit` takes the
+/// verse text value, size at `REFERENCE_SCALE` of the verse size.
+pub fn reference_style(theme: &Theme) -> TextStyle {
+    let t = &theme.text;
+    let r = &theme.reference;
+    let verse_size = t.size.resolve(None, TextSize::Auto);
+    let small = match verse_size {
+        TextSize::Pt(p) => TextSize::Pt(p * REFERENCE_SCALE),
+        TextSize::Auto => TextSize::Auto,
+    };
+    TextStyle {
+        font: Prop::Set(r.font.resolve(
+            Some(t.font.resolve(None, Font::Bundled(BundledFont::Inter))),
+            Font::Bundled(BundledFont::Inter),
+        )),
+        size: Prop::Set(r.size.resolve(Some(small), TextSize::Auto)),
+        bold: Prop::Set(r.bold.resolve(Some(t.bold.resolve(None, false)), false)),
+        color: Prop::Set(
+            r.color
+                .resolve(Some(t.color.resolve(None, FALLBACK_COLOR)), FALLBACK_COLOR),
+        ),
+        h_align: Prop::Set(r.h_align.resolve(
+            Some(t.h_align.resolve(None, HAlign::Center)),
+            HAlign::Center,
+        )),
+        v_align: r.v_align,
+        line_spacing: Prop::Set(r.line_spacing.resolve(
+            Some(t.line_spacing.resolve(None, FALLBACK_SPACING)),
+            FALLBACK_SPACING,
+        )),
+        margin: Prop::Set(r.margin.resolve(
+            Some(t.margin.resolve(None, FALLBACK_MARGIN)),
+            FALLBACK_MARGIN,
+        )),
+        opacity: r.opacity,
+        shadow: r.shadow,
+        outline: r.outline,
+    }
+}
+
+/// The frame the verses fill after the reference band is taken off.
+pub fn verse_frame(theme: &Theme) -> Frame {
+    let full = margin_frame(&theme.text);
+    if !theme.verses.show_reference {
+        return full;
+    }
+    full.cut(theme.reference.v_align, REF_BAND).1
+}
+
+/// `verse_frame` in points on a 720 by 405 slide, for `bible::fits_heuristic`.
+pub fn verse_box_pt(theme: &Theme) -> (f32, f32) {
+    let f = verse_frame(theme);
+    (f.w * SLIDE_PT.0, f.h * SLIDE_PT.1)
+}
+
+fn plain_run(text: &TextStyle, s: String) -> ResolvedRun {
+    ResolvedRun {
         text: s,
         font: text.font.resolve(None, Font::Bundled(BundledFont::Inter)),
-        size,
+        size: text.size.resolve(None, TextSize::Auto),
         bold: text.bold.resolve(None, false),
         italic: false,
         color: text.color.resolve(None, FALLBACK_COLOR),
         opacity: text.opacity,
         shadow: text.shadow,
         outline: text.outline,
-    };
-    let line = |r: ResolvedRun| ResolvedLine {
+    }
+}
+
+fn plain_line(text: &TextStyle, r: ResolvedRun) -> ResolvedLine {
+    ResolvedLine {
         align: text.h_align.resolve(None, HAlign::Center),
         spacing: text.line_spacing.resolve(None, FALLBACK_SPACING),
         runs: vec![r],
-    };
-    let mut lines: Vec<ResolvedLine> = verses
+    }
+}
+
+fn resolve_verses(theme: &Theme, reference: &str, verses: &[(u32, String)]) -> Vec<ResolvedBox> {
+    let text = &theme.text;
+    let lines = verses
         .iter()
         .map(|(n, v)| {
             let s = if theme.verses.show_numbers {
@@ -172,20 +236,22 @@ fn resolve_verses(theme: &Theme, reference: &str, verses: &[(u32, String)]) -> R
             } else {
                 v.clone()
             };
-            line(run(s, size))
+            plain_line(text, plain_run(text, s))
         })
         .collect();
-    if theme.verses.show_reference {
-        let small = match size {
-            TextSize::Pt(p) => TextSize::Pt(p * REFERENCE_SCALE),
-            TextSize::Auto => TextSize::Auto,
-        };
-        let r = line(run(reference.to_string(), small));
-        lines.push(r);
-    }
-    ResolvedBox {
-        frame: margin_frame(text),
+    let mut boxes = vec![ResolvedBox {
+        frame: verse_frame(theme),
         v_align: text.v_align,
         lines,
+    }];
+    if theme.verses.show_reference {
+        let style = reference_style(theme);
+        let frame = margin_frame(&style).cut(style.v_align, REF_BAND).0;
+        boxes.push(ResolvedBox {
+            frame,
+            v_align: style.v_align,
+            lines: vec![plain_line(&style, plain_run(&style, reference.to_string()))],
+        });
     }
+    boxes
 }
