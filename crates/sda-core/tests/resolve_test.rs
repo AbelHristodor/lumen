@@ -119,21 +119,20 @@ fn bitmap_resolves_to_none_and_footer_passes_through() {
 }
 
 #[test]
-fn verses_reference_at_top_with_small_fixed_size_and_no_numbers() {
+fn verses_reference_small_fixed_size_and_no_numbers() {
     let mut t = Theme::default();
     t.text.size = Prop::Set(TextSize::Pt(50.0));
-    t.verses.reference_at = RefPos::Top;
     t.verses.show_numbers = false;
     let c = SlideContent::Verses {
         reference: "John 3:16".into(),
         verses: vec![(16, "For God".into())],
     };
     let r = resolve(&t, &c, None).unwrap();
-    let first = &r.boxes[0].lines[0];
-    assert_eq!(first.runs[0].text, "John 3:16");
-    assert!(matches!(first.runs[0].size, TextSize::Pt(p) if (p - 30.0).abs() < 1e-4));
-    assert_eq!(r.boxes[0].lines[1].runs[0].text, "For God");
-    assert_eq!(r.boxes[0].lines[1].runs[0].size, TextSize::Pt(50.0));
+    assert_eq!(r.boxes[0].lines[0].runs[0].text, "For God");
+    assert_eq!(r.boxes[0].lines[0].runs[0].size, TextSize::Pt(50.0));
+    let reference = &r.boxes[0].lines[1];
+    assert_eq!(reference.runs[0].text, "John 3:16");
+    assert!(matches!(reference.runs[0].size, TextSize::Pt(p) if (p - 30.0).abs() < 1e-4));
 }
 
 #[test]

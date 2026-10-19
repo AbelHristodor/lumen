@@ -377,30 +377,31 @@ impl Default for Transition {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum RefPos {
-    Top,
-    Bottom,
-}
-
-/// How Bible verses are split and labeled.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+/// How Bible verses are split and labeled. Verses pack into a slide while
+/// they fit at `min_size` points, see `bible::pack_verses`.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct VerseLayout {
-    pub per_slide: u8,
+    pub min_size: f32,
     pub show_reference: bool,
     pub show_numbers: bool,
-    pub reference_at: RefPos,
 }
 
 impl Default for VerseLayout {
     fn default() -> Self {
         VerseLayout {
-            per_slide: 1,
+            min_size: 28.0,
             show_reference: true,
             show_numbers: true,
-            reference_at: RefPos::Bottom,
         }
+    }
+}
+
+impl Hash for VerseLayout {
+    fn hash<H: Hasher>(&self, h: &mut H) {
+        self.min_size.to_bits().hash(h);
+        self.show_reference.hash(h);
+        self.show_numbers.hash(h);
     }
 }
 
@@ -410,6 +411,7 @@ impl Default for VerseLayout {
 pub struct Theme {
     pub name: String,
     pub text: TextStyle,
+    pub reference: TextStyle,
     pub background: Background,
     /// Blended over black. 1.0 shows the background as is.
     pub background_opacity: f32,
@@ -424,6 +426,7 @@ impl Default for Theme {
         Theme {
             name: "Default".into(),
             text: TextStyle::default(),
+            reference: reference_default(),
             background: Background::Solid(Rgba::BLACK),
             background_opacity: 1.0,
             transition: Transition::default(),
@@ -438,6 +441,7 @@ impl Hash for Theme {
     fn hash<H: Hasher>(&self, h: &mut H) {
         self.name.hash(h);
         self.text.hash(h);
+        self.reference.hash(h);
         self.background.hash(h);
         self.background_opacity.to_bits().hash(h);
         self.transition.hash(h);
@@ -478,6 +482,8 @@ struct ThemeV3 {
     #[serde(default = "default_name")]
     name: String,
     text: TextStyle,
+    #[serde(default = "reference_default")]
+    reference: TextStyle,
     #[serde(default = "default_background")]
     background: Background,
     #[serde(default = "one")]
@@ -490,6 +496,14 @@ struct ThemeV3 {
     verses: VerseLayout,
     #[serde(default)]
     favorite: bool,
+}
+
+/// The reference sits under the verses unless a theme moves it.
+fn reference_default() -> TextStyle {
+    TextStyle {
+        v_align: VAlign::Bottom,
+        ..TextStyle::default()
+    }
 }
 
 fn default_name() -> String {
@@ -554,6 +568,8 @@ impl Default for ThemeV2 {
     }
 }
 
+// Lives only while one file parses, so the size gap between variants is fine.
+#[allow(clippy::large_enum_variant)]
 #[derive(Deserialize)]
 #[serde(untagged)]
 enum ThemeV2OrV3 {
@@ -567,6 +583,7 @@ impl From<ThemeV2OrV3> for Theme {
             ThemeV2OrV3::V3(t) => Theme {
                 name: t.name,
                 text: t.text,
+                reference: t.reference,
                 background: t.background,
                 background_opacity: t.background_opacity,
                 transition: t.transition,
@@ -589,6 +606,7 @@ impl From<ThemeV2OrV3> for Theme {
                 },
                 background: Background::Solid(t.bg_color),
                 footer: t.footer,
+                reference: reference_default(),
                 ..Theme::default()
             },
         }

@@ -48,8 +48,7 @@ fn present_builds_verse_slides() {
     app.bible.chapter = 3;
     app.bible.selected = BTreeSet::from([16, 17, 18]);
     let _ = app.update(Msg::Bible(BibleMsg::Present));
-    let per_slide = app.live.theme.verses.per_slide.max(1) as usize;
-    assert_eq!(app.live.present.slides.len(), 3usize.div_ceil(per_slide));
+    assert_eq!(app.live.present.slides.len(), 3);
     assert_eq!(app.live.present.title, "John 3:16-18");
     assert!(matches!(
         &app.live.present.source,

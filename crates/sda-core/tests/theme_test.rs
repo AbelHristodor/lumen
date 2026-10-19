@@ -11,7 +11,7 @@ fn default_theme_inherits_text_and_has_black_fade() {
     assert_eq!(t.transition.kind, TransitionKind::Fade);
     assert_eq!(t.transition.duration_ms, 400);
     assert!(t.footer);
-    assert_eq!(t.verses.per_slide, 1);
+    assert_eq!(t.verses.min_size, 28.0);
 }
 
 #[test]
@@ -135,4 +135,40 @@ fn rgba_hex_round_trips() {
     );
     assert_eq!(Rgba::from_hex("#FF"), None);
     assert_eq!(Rgba::from_hex("#GGGGGG"), None);
+}
+
+#[test]
+fn reference_style_defaults_to_bottom_and_inherit() {
+    let t = Theme::default();
+    assert_eq!(t.reference.v_align, VAlign::Bottom);
+    assert_eq!(t.reference.font, Prop::Inherit);
+    assert_eq!(t.reference.size, Prop::Inherit);
+    assert_eq!(t.verses.min_size, 28.0);
+}
+
+#[test]
+fn v3_theme_without_reference_and_with_per_slide_loads() {
+    let old = r##"{"name":"Three","text":{},"verses":{"per_slide":2,"show_reference":false,"reference_at":"Top"}}"##;
+    let t = Theme::from_json(old).unwrap();
+    assert_eq!(t.name, "Three");
+    assert!(!t.verses.show_reference);
+    assert_eq!(t.verses.min_size, 28.0);
+    assert_eq!(
+        t.reference,
+        TextStyle {
+            v_align: VAlign::Bottom,
+            ..TextStyle::default()
+        }
+    );
+}
+
+#[test]
+fn cache_key_changes_with_reference_and_min_size() {
+    let a = Theme::default();
+    let mut b = a.clone();
+    b.reference.color = Prop::Set(Rgba::new(1, 2, 3, 255));
+    assert_ne!(a.cache_key(), b.cache_key());
+    let mut c = a.clone();
+    c.verses.min_size = 40.0;
+    assert_ne!(a.cache_key(), c.cache_key());
 }

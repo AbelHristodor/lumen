@@ -273,11 +273,10 @@ fn present(app: &mut App) {
     }
     let reference = format_reference(&r, lang);
     let version = app.bible.version.clone().unwrap_or_else(|| b.code.clone());
-    let per_slide = app.live.theme.verses.per_slide;
     app.live.go(Presentation {
         title: reference.clone(),
         subtitle: Some(app.bible.abbreviation(&version)),
-        slides: verse_slides(&verses, &reference, per_slide),
+        slides: verse_slides(&verses, &reference, 1),
         source: Source::Bible { version, reference },
         ..Presentation::default()
     });

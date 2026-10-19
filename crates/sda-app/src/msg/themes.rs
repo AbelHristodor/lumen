@@ -1,6 +1,6 @@
 //! Themes tab messages. Owned by the Themes tab task.
 
-use sda_core::theme::{Easing, Font, HAlign, RefPos, Rgba, TransitionKind, VAlign};
+use sda_core::theme::{Easing, Font, HAlign, Rgba, TransitionKind, VAlign};
 use std::path::PathBuf;
 
 /// Which background shape the segmented control picked.
@@ -78,10 +78,9 @@ pub enum DraftEdit {
     TransitionKind(TransitionKind),
     Duration(u32),
     Easing(Easing),
-    PerSlide(u8),
+    MinSize(f32),
     ShowReference(bool),
     ShowNumbers(bool),
-    RefPos(RefPos),
     Footer(bool),
 }
 

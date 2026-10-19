@@ -390,10 +390,9 @@ pub fn apply(st: &mut ThemesState, e: DraftEdit) {
         DraftEdit::TransitionKind(k) => d.transition.kind = k,
         DraftEdit::Duration(ms) => d.transition.duration_ms = ms,
         DraftEdit::Easing(e) => d.transition.easing = e,
-        DraftEdit::PerSlide(n) => d.verses.per_slide = n.max(1),
+        DraftEdit::MinSize(v) => d.verses.min_size = v.clamp(16.0, 60.0),
         DraftEdit::ShowReference(b) => d.verses.show_reference = b,
         DraftEdit::ShowNumbers(b) => d.verses.show_numbers = b,
-        DraftEdit::RefPos(p) => d.verses.reference_at = p,
         DraftEdit::Footer(b) => d.footer = b,
     }
 }

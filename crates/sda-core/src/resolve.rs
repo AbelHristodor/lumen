@@ -4,8 +4,8 @@
 
 use crate::model::{Frame, Slide, TextBox};
 use crate::theme::{
-    Background, BundledFont, Font, HAlign, Outline, Prop, RefPos, Rgba, Shadow, TextSize,
-    TextStyle, Theme, VAlign,
+    Background, BundledFont, Font, HAlign, Outline, Prop, Rgba, Shadow, TextSize, TextStyle, Theme,
+    VAlign,
 };
 use std::path::PathBuf;
 
@@ -181,10 +181,7 @@ fn resolve_verses(theme: &Theme, reference: &str, verses: &[(u32, String)]) -> R
             TextSize::Auto => TextSize::Auto,
         };
         let r = line(run(reference.to_string(), small));
-        match theme.verses.reference_at {
-            RefPos::Top => lines.insert(0, r),
-            RefPos::Bottom => lines.push(r),
-        }
+        lines.push(r);
     }
     ResolvedBox {
         frame: margin_frame(text),

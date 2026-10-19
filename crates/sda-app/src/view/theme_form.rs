@@ -16,7 +16,7 @@ use iced::widget::{
 use iced::{Alignment, Border, Element, Fill};
 use sda_core::i18n::Strings;
 use sda_core::theme::{
-    Background, BundledFont, Direction, Easing, Font, HAlign, Prop, RefPos, Rgba, TextSize, Theme,
+    Background, BundledFont, Direction, Easing, Font, HAlign, Prop, Rgba, TextSize, Theme,
     TransitionKind, VAlign,
 };
 use std::fmt;
@@ -668,26 +668,19 @@ fn transition_section<'a>(app: &'a App, d: &'a Theme) -> Element<'a, Msg> {
 fn verses_section<'a>(app: &'a App, d: &'a Theme) -> Element<'a, Msg> {
     let s = &app.core.strings;
     let v = d.verses;
-    let per_slide = row![
-        slider(1..=6u8, v.per_slide, |n| edit(DraftEdit::PerSlide(n))).width(SLIDER_W),
-        text(v.per_slide.to_string())
-            .size(13)
-            .color(ui_theme::MUTED),
-    ]
-    .spacing(ui_theme::SPACING / 2.0)
-    .align_y(Alignment::Center);
-    let ref_pos = segmented(
-        [
-            (s.align_top.as_str(), RefPos::Top),
-            (s.align_bottom.as_str(), RefPos::Bottom),
-        ],
-        v.reference_at,
-        |p| edit(DraftEdit::RefPos(p)),
-    );
     section(
         &s.theme_verses,
         vec![
-            field(&s.theme_per_slide, per_slide),
+            field(
+                &s.theme_min_size,
+                slide(
+                    16.0..=60.0,
+                    1.0,
+                    v.min_size,
+                    format!("{:.0} pt", v.min_size),
+                    DraftEdit::MinSize,
+                ),
+            ),
             check(
                 &s.theme_show_reference,
                 v.show_reference,
@@ -698,7 +691,6 @@ fn verses_section<'a>(app: &'a App, d: &'a Theme) -> Element<'a, Msg> {
                 v.show_numbers,
                 DraftEdit::ShowNumbers,
             ),
-            field(&s.reference_position, ref_pos),
         ],
     )
 }
