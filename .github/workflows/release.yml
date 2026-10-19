@@ -1,14 +1,20 @@
 name: Release
 
 # Manual-only release. Run from the Actions tab ("Run workflow") and supply a
-# version such as v2.0.0. That value becomes the Git tag and the Release name.
+# version such as v2.0.1. That value becomes the Git tag and the Release name.
+# Turn off "publish" for a dry run: every package is built and kept as a
+# workflow artifact, and nothing is released.
 on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Release version / tag (e.g. v2.0.0)"
+        description: "Release version / tag (e.g. v2.0.1)"
         required: true
         type: string
+      publish:
+        description: "Publish the GitHub Release"
+        type: boolean
+        default: true
 
 permissions:
   contents: write
@@ -58,115 +64,126 @@ jobs:
       - name: Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
 
-  build:
-    name: Build ${{ matrix.target }}
+  # One universal dmg for Apple Silicon and Intel.
+  macos:
+    name: Package macOS
+    needs: test
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin, x86_64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: release-macos
+      - name: Build
+        run: |
+          cargo build --release -p sda-app --target aarch64-apple-darwin
+          cargo build --release -p sda-app --target x86_64-apple-darwin
+      - name: Package dmg
+        run: |
+          tag="${{ inputs.version }}"
+          packaging/macos/package.sh "${tag#v}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-macos
+          path: dist/*
+          if-no-files-found: error
+
+  # Per user msi plus a portable zip. The zip is what self update downloads.
+  windows:
+    name: Package Windows
+    needs: test
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: release-windows
+      - name: Build
+        run: cargo build --release -p sda-app
+      - name: Install WiX
+        run: dotnet tool install --global wix --version 5.0.2
+      - name: Package msi and portable zip
+        shell: pwsh
+        run: |
+          $version = "${{ inputs.version }}".TrimStart("v")
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          $exe = Resolve-Path target/release/lumen.exe
+          $icon = Resolve-Path assets/icon.ico
+          wix build -arch x64 -d Version=$version -d Exe=$exe -d Icon=$icon `
+            packaging/windows/lumen.wxs -o "dist/lumen-$version-windows-x64.msi"
+          Compress-Archive -Path "$exe" -DestinationPath "dist/lumen-$version-windows-x64-portable.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-windows
+          path: dist/*.*
+          if-no-files-found: error
+
+  # deb, rpm, AppImage, and a flat tar.gz. The tar.gz is what self update
+  # downloads.
+  linux:
+    name: Package Linux ${{ matrix.arch }}
     needs: test
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - target: aarch64-apple-darwin
-            os: macos-14
-            archive: tar.gz
-          # Cross compiles from the arm runner. The macOS SDK has both.
-          - target: x86_64-apple-darwin
-            os: macos-14
-            archive: tar.gz
-          - target: x86_64-pc-windows-msvc
-            os: windows-latest
-            archive: zip
-          - target: x86_64-unknown-linux-gnu
+          - arch: x86_64
             os: ubuntu-latest
-            archive: tar.gz
-          - target: aarch64-unknown-linux-gnu
+          - arch: aarch64
             os: ubuntu-24.04-arm
-            archive: tar.gz
     steps:
       - uses: actions/checkout@v4
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
         with:
-          targets: ${{ matrix.target }}
-
-      - name: Cache cargo + target
-        uses: Swatinem/rust-cache@v2
-        with:
-          key: ${{ matrix.target }}
-
-      # Iced on winit, rfd GTK dialogs, and ALSA headers.
+          key: release-linux-${{ matrix.arch }}
       - name: Install Linux GUI dependencies
-        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             libxkbcommon-dev libwayland-dev libxcb-render0-dev libxcb-shape0-dev \
             libxcb-xfixes0-dev libgtk-3-dev libasound2-dev
-
-      - name: Build
-        run: cargo build --release -p sda-app --target ${{ matrix.target }}
-
-      - name: Package (unix)
-        if: runner.os != 'Windows'
-        shell: bash
-        run: |
-          staging="lumen-${{ matrix.target }}"
-          mkdir "$staging"
-          cp "target/${{ matrix.target }}/release/lumen" "$staging/"
-          cp README.md "$staging/" 2>/dev/null || true
-          # v1.x installs self update by looking for
-          # hymnal-gui-<target>/hymnal-gui. Drop this once they have moved on.
-          legacy="hymnal-gui-${{ matrix.target }}"
-          mkdir "$legacy"
-          cp "target/${{ matrix.target }}/release/lumen" "$legacy/hymnal-gui"
-          # The bare binary stays for install.sh upgrades. The .app gives
-          # macOS a Dock and Finder icon.
-          if [ "${{ runner.os }}" = "macOS" ]; then
-            app="$staging/Lumen.app/Contents"
-            mkdir -p "$app/MacOS" "$app/Resources"
-            cp "target/${{ matrix.target }}/release/lumen" "$app/MacOS/"
-            cp assets/icon.icns "$app/Resources/"
-            version="${{ inputs.version }}"
-            cat > "$app/Info.plist" <<EOF
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0"><dict>
-            <key>CFBundleName</key><string>Lumen</string>
-            <key>CFBundleDisplayName</key><string>Lumen</string>
-            <key>CFBundleIdentifier</key><string>com.abelhristodor.lumen</string>
-            <key>CFBundleExecutable</key><string>lumen</string>
-            <key>CFBundleIconFile</key><string>icon</string>
-            <key>CFBundlePackageType</key><string>APPL</string>
-            <key>CFBundleShortVersionString</key><string>${version#v}</string>
-            <key>CFBundleVersion</key><string>${version#v}</string>
-            <key>NSHighResolutionCapable</key><true/>
-          </dict></plist>
-          EOF
-          fi
-          tar -czf "$staging.tar.gz" "$staging" "$legacy"
-          echo "ASSET=$staging.tar.gz" >> "$GITHUB_ENV"
-
-      - name: Package (windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          $staging = "lumen-${{ matrix.target }}"
-          New-Item -ItemType Directory -Force -Path $staging | Out-Null
-          Copy-Item "target/${{ matrix.target }}/release/lumen.exe" $staging
-          Copy-Item README.md $staging -ErrorAction SilentlyContinue
-          # Same legacy path as the unix step, for v1.x self update.
-          $legacy = "hymnal-gui-${{ matrix.target }}"
-          New-Item -ItemType Directory -Force -Path $legacy | Out-Null
-          Copy-Item "target/${{ matrix.target }}/release/lumen.exe" "$legacy/hymnal-gui.exe"
-          Compress-Archive -Path $staging,$legacy -DestinationPath "$staging.zip"
-          "ASSET=$staging.zip" | Out-File -FilePath $env:GITHUB_ENV -Append
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
+      - uses: taiki-e/install-action@v2
         with:
-          name: ${{ matrix.target }}
-          path: ${{ env.ASSET }}
+          tool: cargo-deb,cargo-generate-rpm
+      - name: Build
+        run: cargo build --release -p sda-app
+      - name: Package
+        run: |
+          tag="${{ inputs.version }}"
+          name="lumen-${tag#v}-linux-${{ matrix.arch }}"
+          mkdir -p dist
+          tar -czf "dist/$name.tar.gz" -C target/release lumen
+          # Both take the version from Cargo.toml, which the test job
+          # checked against the tag.
+          cargo deb -p sda-app --no-build -o "dist/$name.deb"
+          cargo generate-rpm -p crates/sda-app -o "dist/$name.rpm"
+
+          appdir="$RUNNER_TEMP/Lumen.AppDir"
+          mkdir -p "$appdir/usr/bin"
+          cp target/release/lumen "$appdir/usr/bin/"
+          ln -s usr/bin/lumen "$appdir/AppRun"
+          cp packaging/linux/lumen.desktop "$appdir/"
+          cp assets/icon.png "$appdir/lumen.png"
+          curl -fsSL -o "$RUNNER_TEMP/appimagetool" \
+            "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-${{ matrix.arch }}.AppImage"
+          chmod +x "$RUNNER_TEMP/appimagetool"
+          APPIMAGE_EXTRACT_AND_RUN=1 ARCH=${{ matrix.arch }} \
+            "$RUNNER_TEMP/appimagetool" "$appdir" "dist/$name.AppImage"
+      - name: Check the packages
+        run: |
+          dpkg-deb --info dist/*.deb
+          dpkg-deb --contents dist/*.deb
+          tar -tzf dist/*.tar.gz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-linux-${{ matrix.arch }}
+          path: dist/*
           if-no-files-found: error
 
   hymns:
@@ -185,19 +202,27 @@ jobs:
 
   release:
     name: Publish release
-    needs: [build, hymns]
+    needs: [macos, windows, linux, hymns]
+    if: inputs.publish
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
           path: artifacts
           merge-multiple: true
-
+      - name: Checksums
+        run: cd artifacts && sha256sum * > SHA256SUMS.txt && cat SHA256SUMS.txt
+      # Notes come from this version's CHANGELOG.md section when it has one.
+      - name: Release notes
+        run: |
+          awk -v v="## ${{ inputs.version }}" '$0==v{on=1;next} /^## /{on=0} on' CHANGELOG.md > notes.md
+          [ -s notes.md ] || echo "See the commits for what changed." > notes.md
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ inputs.version }}
-          name: ${{ inputs.version }}
-          generate_release_notes: true
+          name: Lumen ${{ inputs.version }}
+          body_path: notes.md
           files: artifacts/*

@@ -4,6 +4,13 @@
 
 # Lumen
 
+[![Latest release](https://img.shields.io/github/v/release/AbelHristodor/lumen?label=release&color=4F8CFF)](https://github.com/AbelHristodor/lumen/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/AbelHristodor/lumen/total?color=F5B83D)](https://github.com/AbelHristodor/lumen/releases)
+[![Release build](https://img.shields.io/github/actions/workflow/status/AbelHristodor/lumen/release.yml?label=release%20build)](https://github.com/AbelHristodor/lumen/actions/workflows/release.yml)
+[![Platforms](https://img.shields.io/badge/platforms-macOS%20%7C%20Windows%20%7C%20Linux-8A909C)](#install)
+[![Rust 1.88+](https://img.shields.io/badge/rust-1.88%2B-orange?logo=rust)](https://www.rust-lang.org)
+[![Languages](https://img.shields.io/badge/languages-EN%20%7C%20IT%20%7C%20RO-3DD68C)](#features)
+
 **Find a hymn or a verse and put it on the screen in seconds.**
 
 A free, cross-platform desktop app for projecting hymns and Bible verses
@@ -15,7 +22,7 @@ middle of a service.
 Runs on **macOS**, **Windows**, and **Linux**. Available in **English**,
 **Italian**, and **Romanian**.
 
-[Download](https://github.com/AbelHristodor/lumen/releases) ·
+[Download](https://github.com/AbelHristodor/lumen/releases/latest) ·
 [Install](#install) · [Features](#features) · [For developers](#for-developers)
 
 </div>
@@ -72,28 +79,45 @@ folders of slides too.
 
 ## Install
 
-Prebuilt apps are on the
-[Releases](https://github.com/AbelHristodor/lumen/releases) page for
-macOS on Apple Silicon and Intel, Windows x86_64, and Linux x86_64 and arm64.
+Download the file for your system from the
+[latest release](https://github.com/AbelHristodor/lumen/releases/latest):
 
-**macOS and Linux.** Paste into a terminal:
+| System | File |
+|---|---|
+| macOS, Apple Silicon or Intel | `lumen-<version>-macos-universal.dmg` |
+| Windows x64 | `lumen-<version>-windows-x64.msi` |
+| Debian, Ubuntu | `lumen-<version>-linux-<arch>.deb` |
+| Fedora, openSUSE | `lumen-<version>-linux-<arch>.rpm` |
+| Any Linux | `lumen-<version>-linux-<arch>.AppImage` |
+
+`<arch>` is `x86_64` or `aarch64`. There is also a portable
+`windows-x64-portable.zip` and a portable Linux `.tar.gz` that hold only the
+program. `SHA256SUMS.txt` has a checksum for every file.
+
+The apps are unsigned. On macOS, right click Lumen and choose **Open** the
+first time. On Windows, choose **More info** and then **Run anyway**.
+
+**Or use the one line installers.** On macOS and Linux:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/AbelHristodor/lumen/main/install.sh | sh
 ```
 
-The macOS app is unsigned. The first time, right click it and choose **Open**.
-It installs `lumen` to `~/.local/bin`. Set `BIN_DIR` to change that.
-On macOS it also puts **Lumen.app** in `~/Applications`.
+macOS gets **Lumen.app** in `~/Applications`. Linux gets the portable
+`lumen` in `~/.local/bin` and a menu entry. Set `BIN_DIR` to change the
+folder.
 
-**Windows.** Paste into PowerShell:
+On Windows, in PowerShell:
 
 ```powershell
 irm https://raw.githubusercontent.com/AbelHristodor/lumen/main/install.ps1 | iex
 ```
 
-It installs to `%LOCALAPPDATA%\Programs\lumen`, adds a Desktop shortcut,
-and puts `lumen` on your `PATH`.
+It runs the msi for your user only. No admin rights needed.
+
+**Updates.** The Windows msi and the portable files update themselves. The
+macOS app, the deb, the rpm, and the AppImage tell you when a new version is
+out and open the release page.
 
 ## Using it
 
@@ -239,7 +263,10 @@ Apache 2.0 license.
 
 ### Releases
 
-Run the **Release** workflow from the Actions tab with a tag like `v2.0.0`. It
-tests on all three platforms, then publishes one archive per platform plus
-`hymns.zip` built from `assets/920`. Running apps pick up the new `hymns.zip`
+Run the **Release** workflow from the Actions tab with a tag like `vX.Y.Z`.
+The tag must match the version in `Cargo.toml`. It tests on all three
+platforms, then builds the dmg, msi, deb, rpm, AppImage, and portable files,
+`SHA256SUMS.txt`, and `hymns.zip` from `assets/920`. The release notes come
+from the matching section of `CHANGELOG.md`. Untick **publish** for a dry run
+that only keeps the files as workflow artifacts. Running apps pick up the new `hymns.zip`
 on their next launch.

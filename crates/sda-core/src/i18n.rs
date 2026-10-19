@@ -131,6 +131,7 @@ pub struct Strings {
     pub status_synced_fmt: String,          // one `{}` = hymn count
     pub status_sync_failed_fmt: String,     // one `{}` = error
     pub update_staged_fmt: String,          // one `{}` = version
+    pub update_ready_fmt: String,           // one `{}` = version
     pub slide_counter_fmt: String,          // "{} — slide {}/{}" = title, idx, count
     pub slide_zero_fmt: String,             // "{} — 0 slides" = title
     pub status_indexing: String,            // "Indexing…"
@@ -323,6 +324,7 @@ impl Strings {
             &self.status_synced_fmt,
             &self.status_sync_failed_fmt,
             &self.update_staged_fmt,
+            &self.update_ready_fmt,
             &self.slide_counter_fmt,
             &self.slide_zero_fmt,
             &self.status_indexing,
@@ -505,6 +507,7 @@ impl Strings {
             status_synced_fmt: "Synced — indexed {} hymns.".into(),
             status_sync_failed_fmt: "Sync failed: {}".into(),
             update_staged_fmt: "Update {} staged — restart to apply.".into(),
+            update_ready_fmt: "Lumen {} is ready to download.".into(),
             slide_counter_fmt: "{} — slide {}/{}".into(),
             slide_zero_fmt: "{} — 0 slides".into(),
             status_indexing: "Indexing…".into(),
@@ -687,6 +690,7 @@ impl Strings {
             status_synced_fmt: "Sincronizzato — {} inni indicizzati.".into(),
             status_sync_failed_fmt: "Sincronizzazione non riuscita: {}".into(),
             update_staged_fmt: "Aggiornamento {} pronto — riavvia per applicarlo.".into(),
+            update_ready_fmt: "Lumen {} è pronto da scaricare.".into(),
             slide_counter_fmt: "{} — diapositiva {}/{}".into(),
             slide_zero_fmt: "{} — 0 diapositive".into(),
             status_indexing: "Indicizzazione…".into(),
@@ -869,6 +873,7 @@ impl Strings {
             status_synced_fmt: "Sincronizat — {} imnuri indexate.".into(),
             status_sync_failed_fmt: "Sincronizare eșuată: {}".into(),
             update_staged_fmt: "Actualizarea {} este pregătită — repornește pentru a o aplica.".into(),
+            update_ready_fmt: "Lumen {} poate fi descărcat.".into(),
             slide_counter_fmt: "{} — diapozitivul {}/{}".into(),
             slide_zero_fmt: "{} — 0 diapozitive".into(),
             status_indexing: "Se indexează…".into(),

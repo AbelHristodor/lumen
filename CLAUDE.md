@@ -4,7 +4,7 @@ This file guides Claude Code when working in this repository.
 
 ## What this is
 
-Lumen 2.0.0 is a desktop app for projecting hymns and Bible verses. It is
+Lumen 2.0.1 is a desktop app for projecting hymns and Bible verses. It is
 written in Rust with Iced 0.14 and a wgpu renderer. There is one operator
 window with five tabs: Present, Bible, Videos, Themes, Settings. A Live strip
 stays visible across tabs and shows what the projector shows. The projector is
@@ -39,26 +39,37 @@ edition 2024 and let chains.
 ### Releases and distribution
 
 - Releases are built by `.github/workflows/release.yml` by manual trigger only.
-  It takes a `version` input like `v2.0.0`. A `test` job runs
+  It takes a `version` input like `v2.0.1` and a `publish` flag. Off means a
+  dry run that keeps the packages as workflow artifacts. A `test` job runs
   `cargo test --workspace` and clippy on `macos-14`, `windows-latest`, and
-  `ubuntu-latest`, and fails when the tag is not the Cargo version. The `build`
-  job needs `test` and builds `-p sda-app` for macOS arm and x64, Windows x64,
-  and Linux x64 and arm64. Release builds use fat LTO and opt-level "s" for
-  size. It publishes a GitHub Release with one archive per
-  target: `lumen-<target>.tar.gz` for macOS and Linux and
-  `lumen-<target>.zip` for Windows.
+  `ubuntu-latest`, and fails when the tag is not the Cargo version. Release
+  builds use fat LTO and opt-level "s" for size. Packaging jobs:
+  - `macos`: builds both Apple targets, then `packaging/macos/package.sh`
+    makes `lumen-<v>-macos-universal.dmg` with an ad hoc signed Lumen.app.
+  - `windows`: WiX 5 builds `lumen-<v>-windows-x64.msi` from
+    `packaging/windows/lumen.wxs`, a per user install in
+    `%LOCALAPPDATA%\Programs\Lumen`, plus `lumen-<v>-windows-x64-portable.zip`.
+  - `linux` on x86_64 and aarch64: `.deb` by cargo-deb, `.rpm` by
+    cargo-generate-rpm, both from `[package.metadata.*]` in
+    `crates/sda-app/Cargo.toml`, an `.AppImage` by appimagetool, and a flat
+    `.tar.gz`. `packaging/linux/lumen.desktop` is the menu entry.
+  - `release` adds `SHA256SUMS.txt` and takes the notes from the matching
+    `CHANGELOG.md` section.
+- Self update in `update.rs` downloads only the portable files, matched by
+  `portable_asset`. The macOS app, AppImage, deb, rpm, or a folder it cannot
+  write report `UpdateOutcome::Available` and the chip opens the release
+  page. `update` also skips major version bumps.
 - Linux CI installs `libxkbcommon-dev libwayland-dev libxcb-render0-dev
   libxcb-shape0-dev libxcb-xfixes0-dev libgtk-3-dev libasound2-dev`.
 - `install.sh` for macOS and Linux and `install.ps1` for Windows are one line
-  installers that fetch the latest `lumen` asset. The README has the
-  commands.
+  installers. `install.sh` copies Lumen.app from the dmg on macOS and the
+  portable binary plus a menu entry on Linux. `install.ps1` runs the msi.
 - The `hymns` job zips `assets/920` into `hymns.zip`. The app downloads it on
   first run and whenever its ETag changes. Hymn edits reach users on the next
   release. A push alone does nothing.
 - v1.x shipped the binary `hymnal-gui` from the repo `sda_manager`. GitHub
-  redirects the old repo. Release archives also carry
-  `hymnal-gui-<target>/hymnal-gui` so v1.x installs can still self update.
-  The installers remove the v1.x binary, folder, and PATH entry. Config
+  redirects the old repo. v1.x cannot self update to 2.x, so users reinstall
+  once. The installers remove the v1.x binary, folder, and PATH entry. Config
   paths, themes dir, and hymns sync are unchanged from 1.x.
 
 ## Architecture

@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Lumen
+Comment=Project hymns and Bible verses
+Exec=lumen
+Icon=lumen
+Terminal=false
+Categories=Office;Presentation;
+Keywords=hymns;bible;projector;church;

@@ -22,6 +22,7 @@ fn format_strings_keep_their_placeholders() {
         let s = Strings::for_language(lang);
         assert!(s.status_synced_fmt.contains("{}"), "{:?} synced fmt", lang);
         assert!(s.update_staged_fmt.contains("{}"), "{:?} staged fmt", lang);
+        assert!(s.update_ready_fmt.contains("{}"), "{:?} ready fmt", lang);
         assert_eq!(
             s.slide_counter_fmt.matches("{}").count(),
             3,
@@ -51,7 +52,7 @@ fn italian_and_romanian_are_translated_not_copied() {
 
 #[test]
 fn field_count_matches_struct() {
-    assert_eq!(Strings::for_language(Language::En).as_fields().len(), 177);
+    assert_eq!(Strings::for_language(Language::En).as_fields().len(), 178);
 }
 
 #[test]

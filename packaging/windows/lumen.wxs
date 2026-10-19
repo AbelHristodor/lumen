@@ -1,0 +1,42 @@
+<!--
+  Per user MSI for Lumen. Installs to %LOCALAPPDATA%\Programs\Lumen so the
+  app can update itself without admin rights. Built by release.yml:
+  wix build -arch x64 -d Version=2.0.1 -d Exe=...\lumen.exe -d Icon=...\icon.ico
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="Lumen" Manufacturer="Abel Hristodor" Version="$(var.Version)"
+           UpgradeCode="5b0e4c9a-3f1d-4a7e-9c62-8d1f0a7b4e35" Scope="perUser">
+    <MajorUpgrade DowngradeErrorMessage="A newer version of Lumen is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <Icon Id="LumenIcon" SourceFile="$(var.Icon)" />
+    <Property Id="ARPPRODUCTICON" Value="LumenIcon" />
+
+    <StandardDirectory Id="LocalAppDataFolder">
+      <Directory Id="ProgramsDir" Name="Programs">
+        <Directory Id="INSTALLFOLDER" Name="Lumen" />
+      </Directory>
+    </StandardDirectory>
+    <StandardDirectory Id="ProgramMenuFolder" />
+    <StandardDirectory Id="DesktopFolder" />
+
+    <Feature Id="Main">
+      <Component Directory="INSTALLFOLDER">
+        <File Id="LumenExe" Source="$(var.Exe)" KeyPath="no" />
+        <RegistryValue Root="HKCU" Key="Software\Lumen" Name="Installed" Type="integer" Value="1" KeyPath="yes" />
+        <RemoveFolder Id="RemoveInstallFolder" On="uninstall" />
+        <RemoveFolder Id="RemoveProgramsDir" Directory="ProgramsDir" On="uninstall" />
+      </Component>
+      <Component Directory="ProgramMenuFolder">
+        <Shortcut Id="StartMenuShortcut" Name="Lumen" Target="[INSTALLFOLDER]lumen.exe"
+                  WorkingDirectory="INSTALLFOLDER" Icon="LumenIcon" />
+        <RegistryValue Root="HKCU" Key="Software\Lumen" Name="StartMenuShortcut" Type="integer" Value="1" KeyPath="yes" />
+      </Component>
+      <Component Directory="DesktopFolder">
+        <Shortcut Id="DesktopShortcut" Name="Lumen" Target="[INSTALLFOLDER]lumen.exe"
+                  WorkingDirectory="INSTALLFOLDER" Icon="LumenIcon" />
+        <RegistryValue Root="HKCU" Key="Software\Lumen" Name="DesktopShortcut" Type="integer" Value="1" KeyPath="yes" />
+      </Component>
+    </Feature>
+  </Package>
+</Wix>

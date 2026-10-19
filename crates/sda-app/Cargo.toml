@@ -34,3 +34,29 @@ iced_test = "0.14"
 
 [target.'cfg(windows)'.build-dependencies]
 winresource = "0.1"
+
+# Linux packages, built by .github/workflows/release.yml after
+# `cargo build --release`. Paths are relative to this crate.
+[package.metadata.deb]
+name = "lumen"
+maintainer = "Abel Hristodor <habelor@gmail.com>"
+copyright = "Abel Hristodor"
+extended-description = "Project hymns and Bible verses on a second screen."
+section = "graphics"
+depends = "$auto"
+assets = [
+    ["target/release/lumen", "usr/bin/", "755"],
+    ["../../packaging/linux/lumen.desktop", "usr/share/applications/", "644"],
+    ["../../assets/icon.png", "usr/share/icons/hicolor/512x512/apps/lumen.png", "644"],
+]
+
+[package.metadata.generate-rpm]
+name = "lumen"
+summary = "Project hymns and Bible verses"
+license = "NOASSERTION"
+auto-req = "builtin"
+assets = [
+    { source = "target/release/lumen", dest = "/usr/bin/lumen", mode = "755" },
+    { source = "../../packaging/linux/lumen.desktop", dest = "/usr/share/applications/lumen.desktop", mode = "644" },
+    { source = "../../assets/icon.png", dest = "/usr/share/icons/hicolor/512x512/apps/lumen.png", mode = "644" },
+]

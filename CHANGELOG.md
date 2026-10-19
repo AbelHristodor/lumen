@@ -1,5 +1,41 @@
 # Changelog
 
+## v2.0.1
+
+Lumen now ships as real installers instead of archives.
+
+### Downloads
+
+| System | File |
+|---|---|
+| macOS, Apple Silicon or Intel | `lumen-2.0.1-macos-universal.dmg` |
+| Windows x64 | `lumen-2.0.1-windows-x64.msi` |
+| Debian, Ubuntu | `lumen-2.0.1-linux-x86_64.deb` or `linux-aarch64.deb` |
+| Fedora, openSUSE | `lumen-2.0.1-linux-x86_64.rpm` or `linux-aarch64.rpm` |
+| Any Linux | `lumen-2.0.1-linux-x86_64.AppImage` or `linux-aarch64.AppImage` |
+
+- The macOS dmg holds one app that runs on both Apple Silicon and Intel.
+  Drag it to Applications.
+- The Windows msi installs for your user only, with Start menu and Desktop
+  shortcuts. No admin rights needed. Uninstall it from Windows Settings.
+- The deb and rpm add Lumen to the app menu.
+- Portable files are still there for people who want only the program:
+  `windows-x64-portable.zip` and a Linux `.tar.gz` per architecture.
+- `SHA256SUMS.txt` lists a checksum for every file.
+
+### Updates
+
+- The msi and the portable files update themselves.
+- The macOS app, the deb, the rpm, and the AppImage cannot replace
+  themselves. When a new version is out, Lumen says so and the update button
+  opens the release page.
+
+### Installers
+
+- `install.sh` installs Lumen.app from the dmg on macOS. On Linux it
+  installs the portable program and adds a menu entry.
+- `install.ps1` runs the msi.
+
 ## v2.0.0
 
 SDA Manager is now **Lumen**. This is a full rewrite with a new look, a new
@@ -70,9 +106,8 @@ projector shows.
 
 ### Upgrading from 1.x
 
-- **Self update works.** A 1.x install finds 2.0.0 and updates itself. It
-  keeps its old file name until you reinstall.
-- **Or reinstall** with the commands in the [README](README.md#install).
+- **Reinstall once.** A 1.x install does not update itself across a major
+  version. Use a package or the commands in the [README](README.md#install).
   The installers remove the old `hymnal-gui` program, its folder, its PATH
   entry, and the old desktop shortcut.
 - Settings, themes, history, and downloaded hymns stay where they are.

@@ -106,6 +106,9 @@ pub fn update_check(core: &Core) -> Task<Msg> {
             Ok(Ok(UpdateOutcome::Updated { version })) => {
                 (s.update_staged_fmt.replace("{}", &version), true)
             }
+            Ok(Ok(UpdateOutcome::Available { version })) => {
+                (s.update_ready_fmt.replace("{}", &version), true)
+            }
             Ok(Ok(UpdateOutcome::CheckUnavailable)) => (s.update_unavailable, false),
             Ok(Err(e)) => {
                 log::warn!("update check failed: {e}");

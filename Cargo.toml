@@ -4,7 +4,7 @@ members = ["crates/sda-core", "crates/sda-render", "crates/sda-app"]
 
 [workspace.package]
 edition = "2021"
-version = "2.0.0"
+version = "2.0.1"
 
 [workspace.dependencies]
 serde = { version = "1", features = ["derive"] }
