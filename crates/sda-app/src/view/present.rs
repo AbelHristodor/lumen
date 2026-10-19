@@ -25,6 +25,8 @@ const RIGHT_WIDTH: f32 = 280.0;
 const ROW_H: f32 = 36.0;
 /// Longest title in a result row before the ellipsis.
 const TITLE_CHARS: usize = 28;
+/// Longest title in a history row before the ellipsis.
+const HISTORY_TITLE_CHARS: usize = 22;
 const THUMB: (f32, f32) = (128.0, 72.0);
 /// Inset between the tile border and the slide, so the border shows.
 const THUMB_PAD: f32 = 3.0;
@@ -367,7 +369,7 @@ fn side_panel(app: &App) -> Element<'_, Msg> {
                 .font(ui_theme::BOLD)
                 .color(color)
                 .width(44),
-            text(shorten(&e.title, 22))
+            text(shorten(&e.title, HISTORY_TITLE_CHARS))
                 .size(13)
                 .color(color)
                 .width(Fill)

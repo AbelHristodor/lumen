@@ -177,7 +177,9 @@ and `window::close_events`. It adds `window::frames` as `Msg::Tick` only while
 ### Keyboard
 
 `shortcuts::filter` runs on every event the widgets did not capture, so
-nothing fires while a text field has focus.
+nothing fires while a text field has focus. Modifier changes and left button
+releases are forwarded before the captured check, as `Msg::Modifiers` and
+`BibleMsg::Release`.
 
 | Key | Action |
 |---|---|
@@ -241,8 +243,9 @@ clicked verse, and dragging selects a range. `shortcuts::filter` forwards
   belongs to its owner. The app only marks what it knows. Do not present an
   unknown version as free.
 - `bible/names.rs` has book names and aliases for en, it, and ro.
-  `parse_reference` accepts `:` or `,` between chapter and verse and `-` for
-  ranges, after folding. `search` folds both sides and scans all verses.
+  `parse_reference` accepts `:`, `,`, or a space as in `mat 10 1` between
+  chapter and verse and `-` for ranges, after folding. `search` folds both
+  sides and scans all verses.
   `pack_verses` groups a selection into as few slides as fit under
   `fits_heuristic`, a character count estimate of the verse box at the theme's
   `min_size`. Each slide carries its own reference range.

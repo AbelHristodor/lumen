@@ -1,5 +1,7 @@
 //! Keyboard shortcuts. Runs on every event the widgets did not capture, so
-//! nothing fires while a text field has focus.
+//! nothing fires while a text field has focus. Modifier changes and left
+//! button releases are forwarded before the captured check, as
+//! `Msg::Modifiers` and `BibleMsg::Release`.
 
 use crate::msg::{Msg, Tab};
 use iced::keyboard::key::Named;
