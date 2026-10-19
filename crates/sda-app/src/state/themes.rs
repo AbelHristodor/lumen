@@ -2,7 +2,7 @@
 //! edited, a `LiveState` that plays the preview, and the thumbnail cache.
 
 use crate::app::App;
-use crate::msg::themes::{BgKind, ColorField, DraftEdit};
+use crate::msg::themes::{BgKind, ColorField, DraftEdit, Sample};
 use crate::msg::{BgTarget, Msg, Tab, ThemesMsg};
 use crate::state::core::Core;
 use crate::state::live::LiveState;
@@ -14,7 +14,8 @@ use sda_core::model::{Paragraph, Run, Slide, TextBox};
 use sda_core::present::{Presentation, Source};
 use sda_core::resolve::{ResolvedSlide, SlideContent, resolve};
 use sda_core::theme::{
-    Background, BundledFont, Font, HAlign, Outline, Prop, Rgba, Shadow, TextSize, Theme, store,
+    Background, BundledFont, Font, HAlign, Outline, Prop, Rgba, Shadow, TextSize, TextStyle, Theme,
+    store,
 };
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -54,6 +55,10 @@ pub struct ThemesState {
     /// Never reset. Drives animated thumbnails so they do not jump.
     pub clock: Instant,
     pub stash: InheritStash,
+    /// Same as `stash`, for the reference style.
+    pub ref_stash: InheritStash,
+    /// What the preview player shows.
+    pub sample: Sample,
     /// Plays the draft with two sample slides so the transition loops.
     pub preview: LiveState,
     /// The color field being typed into and its raw text.
@@ -64,14 +69,16 @@ pub struct ThemesState {
     pub error: Option<String>,
     /// Resolved sample slide per theme cache key, for the list thumbnails.
     pub thumbs: HashMap<u64, Arc<ResolvedSlide>>,
-    /// Which sample the preview player and `thumbs` were built for. A change
-    /// reloads the player and clears the cache.
+    /// Which sample the preview player was built for. A change reloads it.
     sample_for: SampleKey,
+    /// Which hymn sample and title `thumbs` were built for. A change clears
+    /// the cache.
+    thumbs_for: (SampleKey, String),
 }
 
-/// Identifies the slide the previews show: a hymn path and slide index, or
-/// `None` for the fixed sample line.
-type SampleKey = Option<(PathBuf, usize)>;
+/// Identifies the slide the previews show: the sample kind plus a hymn path
+/// and slide index, or `None` for the fixed sample line.
+type SampleKey = (Sample, Option<(PathBuf, usize)>);
 
 impl Default for ThemesState {
     fn default() -> Self {
@@ -87,12 +94,15 @@ impl Default for ThemesState {
             preview_flip: false,
             clock: Instant::now(),
             stash: InheritStash::default(),
+            ref_stash: InheritStash::default(),
+            sample: Sample::Hymn,
             preview,
             hex_edit: None,
             ticking: false,
             error: None,
             thumbs: HashMap::new(),
-            sample_for: None,
+            sample_for: (Sample::Hymn, None),
+            thumbs_for: ((Sample::Hymn, None), String::new()),
         }
     }
 }
@@ -137,10 +147,35 @@ fn fixed_sample_presentation(s: &Strings) -> Presentation {
     p
 }
 
-/// What every theme preview shows: the previewed hymn's current slide and
-/// its title when a hymn is selected, else the fixed sample line. The
-/// Present theme picker and the Themes tab both draw this.
+/// The Bible sample: John 3:16 and 17 under the reference.
+fn bible_sample(s: &Strings) -> SlideContent {
+    SlideContent::Verses {
+        reference: s.theme_preview_reference.clone(),
+        verses: vec![
+            (16, s.theme_preview_verse_1.clone()),
+            (17, s.theme_preview_verse_2.clone()),
+        ],
+    }
+}
+
+/// What the preview player shows: the Bible sample when picked, else the
+/// hymn sample.
 pub fn sample(app: &App) -> (SlideContent, String, SampleKey) {
+    let s = &app.core.strings;
+    if app.themes.sample == Sample::Bible {
+        return (
+            bible_sample(s),
+            s.theme_preview_reference.clone(),
+            (Sample::Bible, None),
+        );
+    }
+    hymn_sample(app)
+}
+
+/// What every theme thumbnail shows: the previewed hymn's current slide and
+/// its title when a hymn is selected, else the fixed sample line. The
+/// Present theme picker and the Themes list both draw this.
+pub fn hymn_sample(app: &App) -> (SlideContent, String, SampleKey) {
     if let Some((_, hymn)) = present::selected_hymn(app) {
         let i = app
             .present
@@ -150,14 +185,14 @@ pub fn sample(app: &App) -> (SlideContent, String, SampleKey) {
             return (
                 SlideContent::Styled(slide.clone()),
                 present::title_of(hymn),
-                Some((hymn.path.clone(), i)),
+                (Sample::Hymn, Some((hymn.path.clone(), i))),
             );
         }
     }
     (
         sample_slide(PREVIEW_SAMPLE),
         app.core.strings.theme_preview_sample.clone(),
-        None,
+        (Sample::Hymn, None),
     )
 }
 
@@ -172,7 +207,7 @@ pub fn thumb_for(app: &App, theme: &Theme) -> Option<Arc<ResolvedSlide>> {
     if let Some(slide) = app.themes.thumbs.get(&theme.cache_key()) {
         return Some(slide.clone());
     }
-    let (content, title, _) = sample(app);
+    let (content, title, _) = hymn_sample(app);
     thumb_slide(theme, &content, &title).map(Arc::new)
 }
 
@@ -180,6 +215,22 @@ pub fn thumb_for(app: &App, theme: &Theme) -> Option<Arc<ResolvedSlide>> {
 /// its own slides, the sample plays two lines so the transition loops.
 fn sample_presentation(app: &App) -> Presentation {
     let s = &app.core.strings;
+    if app.themes.sample == Sample::Bible {
+        let mut p = Presentation::default();
+        p.load(
+            s.theme_preview_reference.clone(),
+            None,
+            vec![
+                bible_sample(s),
+                SlideContent::Verses {
+                    reference: s.theme_preview_reference.clone(),
+                    verses: vec![(17, s.theme_preview_verse_2.clone())],
+                },
+            ],
+            Source::None,
+        );
+        return p;
+    }
     let Some((_, hymn)) = present::selected_hymn(app) else {
         return fixed_sample_presentation(s);
     };
@@ -266,64 +317,66 @@ fn toggle<T: Clone>(p: &mut Prop<T>, stash: &mut Option<T>, inherit: bool, fallb
     }
 }
 
-/// Apply one form edit to the draft.
-pub fn apply(st: &mut ThemesState, e: DraftEdit) {
-    let d = &mut st.draft;
-    let t = &mut d.text;
-    let stash = &mut st.stash;
+/// Apply a text edit to one `TextStyle`. Returns false when `e` is not a
+/// text edit, so the caller handles it.
+fn apply_text(
+    t: &mut TextStyle,
+    stash: &mut InheritStash,
+    hex_edit: &mut Option<(ColorField, String)>,
+    e: &DraftEdit,
+) -> bool {
     match e {
-        DraftEdit::Name(n) => d.name = n,
         DraftEdit::FontInherit(i) => toggle(
             &mut t.font,
             &mut stash.font,
-            i,
+            *i,
             Font::Bundled(BundledFont::Inter),
         ),
-        DraftEdit::Font(f) => t.font = Prop::Set(f),
-        DraftEdit::SizeInherit(i) => toggle(&mut t.size, &mut stash.size, i, TextSize::Auto),
+        DraftEdit::Font(f) => t.font = Prop::Set(f.clone()),
+        DraftEdit::SizeInherit(i) => toggle(&mut t.size, &mut stash.size, *i, TextSize::Auto),
         DraftEdit::SizeAuto(auto) => {
-            t.size = Prop::Set(if auto {
+            t.size = Prop::Set(if *auto {
                 TextSize::Auto
             } else {
                 TextSize::Pt(48.0)
             })
         }
-        DraftEdit::SizePt(pt) => t.size = Prop::Set(TextSize::Pt(pt)),
-        DraftEdit::BoldInherit(i) => toggle(&mut t.bold, &mut stash.bold, i, false),
-        DraftEdit::Bold(b) => t.bold = Prop::Set(b),
+        DraftEdit::SizePt(pt) => t.size = Prop::Set(TextSize::Pt(*pt)),
+        DraftEdit::BoldInherit(i) => toggle(&mut t.bold, &mut stash.bold, *i, false),
+        DraftEdit::Bold(b) => t.bold = Prop::Set(*b),
         DraftEdit::ColorInherit(i) => {
-            toggle(&mut t.color, &mut stash.color, i, Rgba::WHITE);
-            st.hex_edit = None;
+            toggle(&mut t.color, &mut stash.color, *i, Rgba::WHITE);
+            *hex_edit = None;
         }
-        DraftEdit::Color(c) => t.color = Prop::Set(c),
+        DraftEdit::Color(c) => t.color = Prop::Set(*c),
         DraftEdit::HAlignInherit(i) => {
-            toggle(&mut t.h_align, &mut stash.h_align, i, HAlign::Center)
+            toggle(&mut t.h_align, &mut stash.h_align, *i, HAlign::Center)
         }
-        DraftEdit::HAlign(a) => t.h_align = Prop::Set(a),
-        DraftEdit::VAlign(a) => t.v_align = a,
+        DraftEdit::HAlign(a) => t.h_align = Prop::Set(*a),
+        DraftEdit::VAlign(a) => t.v_align = *a,
         DraftEdit::SpacingInherit(i) => {
-            toggle(&mut t.line_spacing, &mut stash.line_spacing, i, 1.1)
+            toggle(&mut t.line_spacing, &mut stash.line_spacing, *i, 1.1)
         }
-        DraftEdit::Spacing(v) => t.line_spacing = Prop::Set(v),
-        DraftEdit::MarginInherit(i) => toggle(&mut t.margin, &mut stash.margin, i, 0.06),
-        DraftEdit::Margin(v) => t.margin = Prop::Set(v),
-        DraftEdit::Opacity(v) => t.opacity = v,
+        DraftEdit::Spacing(v) => t.line_spacing = Prop::Set(*v),
+        DraftEdit::MarginInherit(i) => toggle(&mut t.margin, &mut stash.margin, *i, 0.06),
+        DraftEdit::Margin(v) => t.margin = Prop::Set(*v),
+        DraftEdit::Opacity(v) => t.opacity = *v,
         DraftEdit::ShadowOn(on) => {
             t.shadow = on.then_some(Shadow {
                 color: Rgba::BLACK,
                 offset: (2.0, 2.0),
                 blur: 4.0,
             });
-            st.hex_edit = None;
+            *hex_edit = None;
         }
         DraftEdit::ShadowColor(c) => {
             if let Some(sh) = &mut t.shadow {
-                sh.color = c;
+                sh.color = *c;
             }
         }
         DraftEdit::ShadowOffset(o) => {
             if let Some(sh) = &mut t.shadow {
-                sh.offset = (o, o);
+                sh.offset = (*o, *o);
             }
         }
         DraftEdit::OutlineOn(on) => {
@@ -331,18 +384,42 @@ pub fn apply(st: &mut ThemesState, e: DraftEdit) {
                 color: Rgba::BLACK,
                 width: 2.0,
             });
-            st.hex_edit = None;
+            *hex_edit = None;
         }
         DraftEdit::OutlineColor(c) => {
             if let Some(o) = &mut t.outline {
-                o.color = c;
+                o.color = *c;
             }
         }
         DraftEdit::OutlineWidth(w) => {
             if let Some(o) = &mut t.outline {
-                o.width = w;
+                o.width = *w;
             }
         }
+        _ => return false,
+    }
+    true
+}
+
+/// Apply one form edit to the draft. Reference and verse edits switch the
+/// preview to the Bible sample so the change is visible.
+pub fn apply(st: &mut ThemesState, e: DraftEdit) {
+    if let DraftEdit::Reference(inner) = e {
+        apply_text(
+            &mut st.draft.reference,
+            &mut st.ref_stash,
+            &mut st.hex_edit,
+            &inner,
+        );
+        st.sample = Sample::Bible;
+        return;
+    }
+    if apply_text(&mut st.draft.text, &mut st.stash, &mut st.hex_edit, &e) {
+        return;
+    }
+    let d = &mut st.draft;
+    match e {
+        DraftEdit::Name(n) => d.name = n,
         DraftEdit::BgKind(k) => {
             if bg_kind(&d.background) != k {
                 d.background = background_of_kind(k, &d.background);
@@ -390,10 +467,21 @@ pub fn apply(st: &mut ThemesState, e: DraftEdit) {
         DraftEdit::TransitionKind(k) => d.transition.kind = k,
         DraftEdit::Duration(ms) => d.transition.duration_ms = ms,
         DraftEdit::Easing(e) => d.transition.easing = e,
-        DraftEdit::MinSize(v) => d.verses.min_size = v.clamp(16.0, 60.0),
-        DraftEdit::ShowReference(b) => d.verses.show_reference = b,
-        DraftEdit::ShowNumbers(b) => d.verses.show_numbers = b,
+        DraftEdit::MinSize(v) => {
+            d.verses.min_size = v.clamp(16.0, 60.0);
+            st.sample = Sample::Bible;
+        }
+        DraftEdit::ShowReference(b) => {
+            d.verses.show_reference = b;
+            st.sample = Sample::Bible;
+        }
+        DraftEdit::ShowNumbers(b) => {
+            d.verses.show_numbers = b;
+            st.sample = Sample::Bible;
+        }
         DraftEdit::Footer(b) => d.footer = b,
+        // Text edits were handled by `apply_text` above.
+        _ => {}
     }
 }
 
@@ -415,7 +503,8 @@ fn preview_theme(draft: &Theme) -> Theme {
 /// and the loaded themes. Returns the background worker when the preview
 /// needs a file loaded.
 fn sync_preview(app: &mut App) -> Task<Msg> {
-    let (content, title, sample_key) = sample(app);
+    let (_, title, sample_key) = sample(app);
+    let (content, thumb_title, thumb_key) = hymn_sample(app);
     let presentation = sample_presentation(app);
     let t = &mut app.themes;
     let shown = preview_theme(&t.draft);
@@ -427,8 +516,14 @@ fn sync_preview(app: &mut App) -> Task<Msg> {
     // language for the fixed sample.
     if t.sample_for != sample_key || t.preview.present.title != title {
         t.preview.go(presentation);
-        t.thumbs.clear();
         t.sample_for = sample_key;
+    }
+    // Thumbnails always show the hymn sample, so they only rebuild when it
+    // changes.
+    let thumbs_for = (thumb_key, thumb_title);
+    if t.thumbs_for != thumbs_for {
+        t.thumbs.clear();
+        t.thumbs_for = thumbs_for;
     }
     t.preview.adopt_video(&app.live);
     let keys: Vec<u64> = app.core.themes.iter().map(Theme::cache_key).collect();
@@ -436,7 +531,7 @@ fn sync_preview(app: &mut App) -> Task<Msg> {
     for theme in &app.core.themes {
         let key = theme.cache_key();
         if !t.thumbs.contains_key(&key)
-            && let Some(slide) = thumb_slide(theme, &content, &title)
+            && let Some(slide) = thumb_slide(theme, &content, &t.thumbs_for.1)
         {
             t.thumbs.insert(key, Arc::new(slide));
         }
@@ -725,6 +820,10 @@ pub fn update(app: &mut App, msg: ThemesMsg) -> Task<Msg> {
             Task::none()
         }
         ThemesMsg::FilePicked(None) => Task::none(),
+        ThemesMsg::Sample(k) => {
+            app.themes.sample = k;
+            Task::none()
+        }
     };
     let preview = sync_preview(app);
     Task::batch([task, preview, ensure_ticking(app)])

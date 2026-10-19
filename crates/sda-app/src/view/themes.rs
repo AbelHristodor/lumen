@@ -2,13 +2,15 @@
 //! the live preview and the form on the right.
 
 use crate::app::App;
+use crate::msg::themes::Sample;
 use crate::msg::{Msg, ThemesMsg};
 use crate::state::themes::{PREVIEW_SAMPLE, sorted_themes, thumb_for};
 use crate::ui_theme;
 use crate::widgets::card::card;
 use crate::widgets::scene_view::{key, scene_view};
+use crate::widgets::segmented::segmented;
 use iced::widget::{
-    Column, button, checkbox, column, container, row, scrollable, space, stack, text,
+    Column, button, checkbox, column, container, responsive, row, scrollable, space, stack, text,
 };
 use iced::{Alignment, Border, Color, Element, Fill};
 use sda_core::resolve::ResolvedSlide;
@@ -24,9 +26,8 @@ pub mod theme_form;
 const LIST_WIDTH: f32 = 300.0;
 const THUMB_W: f32 = 96.0;
 const THUMB_H: f32 = 54.0;
-/// The pinned preview frame, 16 by 9 like the projector.
-const PREVIEW_W: f32 = 480.0;
-const PREVIEW_H: f32 = 270.0;
+/// The preview frame is 16 by 9 like the projector, at most this tall.
+const PREVIEW_MAX_H: f32 = 540.0;
 /// Scrollbar width plus margin, so the form never sits under the bar.
 const SCROLL_GUTTER: f32 = 10.0;
 
@@ -276,24 +277,30 @@ fn theme_list(app: &App) -> Element<'_, Msg> {
     .into()
 }
 
-fn preview(app: &App) -> Element<'_, Msg> {
+/// The preview card, `w` points wide inside the card padding.
+fn preview(app: &App, w: f32) -> Element<'_, Msg> {
     let s = &app.core.strings;
+    let w = w.max(1.0);
+    let h = (w * 9.0 / 16.0).min(PREVIEW_MAX_H);
+    let w = h * 16.0 / 9.0;
     let frame: Element<'_, Msg> = if app.gpu_ok {
         container(scene_view(
             key("theme_preview"),
-            app.themes.preview.scene((960, 540), Instant::now()),
+            app.themes
+                .preview
+                .scene((w as u32 * 2, h as u32 * 2), Instant::now()),
         ))
-        .width(PREVIEW_W)
-        .height(PREVIEW_H)
+        .width(w)
+        .height(h)
         .style(ui_theme::thumb_frame)
         .into()
     } else {
         let color = swatch_color(&app.themes.draft.background);
         container(text(PREVIEW_SAMPLE).size(20).center())
-            .width(PREVIEW_W)
-            .height(PREVIEW_H)
-            .center_x(Fill)
-            .center_y(Fill)
+            .width(w)
+            .height(h)
+            .center_x(w)
+            .center_y(h)
             .style(move |_| container::Style {
                 background: Some(color.into()),
                 border: Border::default().rounded(4.0),
@@ -308,7 +315,15 @@ fn preview(app: &App) -> Element<'_, Msg> {
         .get(app.themes.draft_index)
         .is_none_or(|t| *t != draft);
     let can_save = dirty && !draft.is_builtin_default();
-    let mut toolbar = column![
+    let mut toolbar = row![
+        segmented(
+            [
+                (s.theme_sample_hymn.as_str(), Sample::Hymn),
+                (s.theme_sample_bible.as_str(), Sample::Bible),
+            ],
+            app.themes.sample,
+            |k| Msg::Themes(ThemesMsg::Sample(k)),
+        ),
         button(text(s.theme_save.as_str()).size(13))
             .padding([6, 14])
             .style(ui_theme::accent_button)
@@ -329,39 +344,46 @@ fn preview(app: &App) -> Element<'_, Msg> {
             ),
     ]
     .spacing(ui_theme::SPACING)
-    .align_x(Alignment::Start);
+    .align_y(Alignment::Center);
     if let Some(e) = &app.themes.error {
         toolbar = toolbar.push(text(e.as_str()).size(12).color(ui_theme::MUTED));
     }
-    // The actions sit beside the frame, so the card stays short and the
-    // form below gets the room.
     card(
-        column![
-            ui_theme::section_label(&s.preview),
-            row![frame, toolbar]
-                .spacing(ui_theme::SPACING)
-                .align_y(Alignment::Start),
-        ]
-        .spacing(ui_theme::SPACING),
+        column![ui_theme::section_label(&s.preview), frame, toolbar.wrap(),]
+            .spacing(ui_theme::SPACING),
     )
     .width(Fill)
     .into()
 }
 
-/// The preview card stays put. Only the form scrolls under it.
+fn scroll_column(body: Element<'_, Msg>) -> Element<'_, Msg> {
+    scrollable(container(body).padding(iced::Padding::ZERO.right(SCROLL_GUTTER)))
+        .direction(scrollable::Direction::Vertical(
+            scrollable::Scrollbar::new()
+                .width(6)
+                .margin(2)
+                .scroller_width(6),
+        ))
+        .height(Fill)
+        .width(Fill)
+        .into()
+}
+
+/// Two scrolling columns. The left one holds the preview, filling its
+/// width, above the text and reference sections.
 fn editor(app: &App) -> Element<'_, Msg> {
-    let form = scrollable(
-        container(theme_form::show(app)).padding(iced::Padding::ZERO.right(SCROLL_GUTTER)),
-    )
-    .direction(scrollable::Direction::Vertical(
-        scrollable::Scrollbar::new()
-            .width(6)
-            .margin(2)
-            .scroller_width(6),
-    ))
-    .height(Fill)
-    .width(Fill);
-    column![preview(app), form]
+    let right = theme_form::columns(app).1;
+    let left = responsive(move |avail| {
+        // The card padding on both sides and the scrollbar gutter.
+        let w = avail.width - 2.0 * ui_theme::SPACING - SCROLL_GUTTER;
+        let form = theme_form::columns(app).0;
+        scroll_column(
+            column![preview(app, w), form]
+                .spacing(ui_theme::SPACING)
+                .into(),
+        )
+    });
+    row![left, scroll_column(right)]
         .spacing(ui_theme::SPACING)
         .height(Fill)
         .width(Fill)

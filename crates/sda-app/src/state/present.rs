@@ -438,7 +438,7 @@ pub fn theme_slide(app: &App, theme: &Theme) -> Option<Arc<ResolvedSlide>> {
     if let Some(r) = cache.get(&key) {
         return Some(r.clone());
     }
-    let (content, title, _) = crate::state::themes::sample(app);
+    let (content, title, _) = crate::state::themes::hymn_sample(app);
     let r = Arc::new(crate::state::themes::thumb_slide(theme, &content, &title)?);
     cache.insert(key, r.clone());
     Some(r)

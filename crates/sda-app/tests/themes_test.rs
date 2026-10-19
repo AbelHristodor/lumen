@@ -1,9 +1,11 @@
 use iced::widget::Id;
 use iced::{Settings, Size};
 use iced_test::Simulator;
+use sda_app::msg::themes::Sample;
 use sda_app::msg::themes::{BgKind, ColorField, DraftEdit, ThemesMsg};
 use sda_app::state::themes::{COLOR_INHERIT_ID, sorted_themes};
 use sda_app::{App, Msg, Tab};
+use sda_core::theme::VAlign;
 use sda_core::theme::{Background, Prop, Rgba, Theme, TransitionKind};
 use std::time::{Duration, Instant};
 
@@ -343,7 +345,7 @@ fn inherit_rows_show_the_file_value_and_previews_follow_the_hymn() {
     send(&mut app, ThemesMsg::Draft(DraftEdit::Footer(false)));
     let (_, title, key) = sda_app::state::themes::sample(&app);
     assert_eq!(title, app.core.strings.theme_preview_sample);
-    assert!(key.is_none());
+    assert!(key.1.is_none());
     assert_eq!(
         app.themes.preview.present.source,
         sda_core::present::Source::None
@@ -401,4 +403,59 @@ fn favorite_saves_only_the_flag_and_keeps_the_draft_edits() {
     assert!(saved.favorite);
     assert!(saved.footer, "the unsaved edit was not written");
     assert_eq!(sorted_themes(&app.core)[0].name, name);
+}
+
+#[test]
+fn reference_edits_target_the_reference_style() {
+    let mut app = themes_app();
+    send(
+        &mut app,
+        ThemesMsg::Draft(DraftEdit::Reference(Box::new(DraftEdit::Color(Rgba::new(
+            9, 8, 7, 255,
+        ))))),
+    );
+    assert_eq!(
+        app.themes.draft.reference.color,
+        Prop::Set(Rgba::new(9, 8, 7, 255))
+    );
+    assert_eq!(
+        app.themes.draft.text.color,
+        Prop::Inherit,
+        "verse text untouched"
+    );
+    send(
+        &mut app,
+        ThemesMsg::Draft(DraftEdit::Reference(Box::new(DraftEdit::VAlign(
+            VAlign::Top,
+        )))),
+    );
+    assert_eq!(app.themes.draft.reference.v_align, VAlign::Top);
+}
+
+#[test]
+fn verse_edits_flip_the_preview_sample_to_bible() {
+    let mut app = themes_app();
+    assert_eq!(app.themes.sample, Sample::Hymn);
+    send(&mut app, ThemesMsg::Draft(DraftEdit::MinSize(30.0)));
+    assert_eq!(app.themes.sample, Sample::Bible);
+    assert!(matches!(
+        app.themes.preview.present.slides.first(),
+        Some(sda_core::resolve::SlideContent::Verses { .. })
+    ));
+    send(&mut app, ThemesMsg::Sample(Sample::Hymn));
+    assert_eq!(app.themes.sample, Sample::Hymn);
+    assert!(matches!(
+        app.themes.preview.present.slides.first(),
+        Some(sda_core::resolve::SlideContent::Styled(_))
+    ));
+}
+
+#[test]
+fn reference_section_shows_in_the_form() {
+    let app = themes_app();
+    let mut ui = tall(&app);
+    // Section headings render uppercased by `section_label`.
+    assert!(ui.find("REFERENCE").is_ok());
+    assert!(ui.find("Smallest text size").is_ok());
+    assert!(ui.find("Per slide").is_err());
 }

@@ -1,4 +1,5 @@
-//! The theme form: Text, Background, Transition, Verses, Footer sections.
+//! The theme form: Text, Reference, Background, Transition, Verses, Footer
+//! sections.
 //! Every text property has an Inherit checkbox that hides its control.
 
 use crate::app::App;
@@ -16,8 +17,8 @@ use iced::widget::{
 use iced::{Alignment, Border, Element, Fill};
 use sda_core::i18n::Strings;
 use sda_core::theme::{
-    Background, BundledFont, Direction, Easing, Font, HAlign, Prop, Rgba, TextSize, Theme,
-    TransitionKind, VAlign,
+    Background, BundledFont, Direction, Easing, Font, HAlign, Prop, Rgba, TextSize, TextStyle,
+    Theme, TransitionKind, VAlign,
 };
 use std::fmt;
 
@@ -103,7 +104,7 @@ fn check<'a>(lbl: &'a str, on: bool, f: impl Fn(bool) -> DraftEdit + 'a) -> Elem
 }
 
 /// A bare checkbox for rows whose label already names the property.
-fn toggle_box<'a>(on: bool, f: fn(bool) -> DraftEdit) -> Element<'a, Msg> {
+fn toggle_box<'a>(on: bool, f: impl Fn(bool) -> DraftEdit + 'a) -> Element<'a, Msg> {
     checkbox(on).size(16).on_toggle(move |b| edit(f(b))).into()
 }
 
@@ -114,7 +115,7 @@ fn inherit_row<'a>(
     lbl: &'a str,
     s: &'a Strings,
     inherit: bool,
-    on_inherit: fn(bool) -> DraftEdit,
+    on_inherit: impl Fn(bool) -> DraftEdit + 'a,
     control: Element<'a, Msg>,
     id: Option<&'static str>,
     file_value: Option<String>,
@@ -154,7 +155,7 @@ fn slide<'a>(
     step: f32,
     value: f32,
     shown: String,
-    f: fn(f32) -> DraftEdit,
+    f: impl Fn(f32) -> DraftEdit + 'a,
 ) -> Element<'a, Msg> {
     row![
         slider(range, value, move |v| edit(f(v)))
@@ -270,10 +271,21 @@ fn easing_label(s: &Strings, e: Easing) -> &str {
 
 const EASINGS: [Easing; 3] = [Easing::Linear, Easing::EaseInOut, Easing::EaseOut];
 
-fn text_section<'a>(app: &'a App, d: &'a Theme) -> Element<'a, Msg> {
+/// The controls for one `TextStyle`. `wrap` turns a plain text edit into
+/// the edit for this style, `colors` names the text, shadow and outline
+/// color fields, and `color_id` tags the color Inherit checkbox.
+#[allow(clippy::too_many_arguments)]
+fn text_style_section<'a>(
+    app: &'a App,
+    title: &'a str,
+    t: &'a TextStyle,
+    file: Inherited,
+    colors: (ColorField, ColorField, ColorField),
+    wrap: fn(DraftEdit) -> DraftEdit,
+    name_row: Option<Element<'a, Msg>>,
+    color_id: Option<&'static str>,
+) -> Element<'a, Msg> {
     let s = &app.core.strings;
-    let t = &d.text;
-    let file = inherited(app);
 
     let fonts: Vec<FontChoice> = BundledFont::all()
         .into_iter()
@@ -289,7 +301,7 @@ fn text_section<'a>(app: &'a App, d: &'a Theme) -> Element<'a, Msg> {
         Prop::Set(f) => Some(FontChoice(f.clone())),
         Prop::Inherit => None,
     };
-    let font = pick_list(fonts, font_sel, |f| edit(DraftEdit::Font(f.0)))
+    let font = pick_list(fonts, font_sel, move |f| edit(wrap(DraftEdit::Font(f.0))))
         .placeholder(s.theme_font_label.as_str())
         .style(ui_theme::picker)
         .text_size(13)
@@ -298,25 +310,27 @@ fn text_section<'a>(app: &'a App, d: &'a Theme) -> Element<'a, Msg> {
 
     let size: Element<'a, Msg> = match t.size {
         Prop::Set(TextSize::Pt(pt)) => row![
-            check(&s.theme_auto_size, false, DraftEdit::SizeAuto),
-            slide(
-                12.0..=200.0,
-                1.0,
-                pt,
-                format!("{pt:.0} pt"),
-                DraftEdit::SizePt
-            ),
+            check(&s.theme_auto_size, false, move |v| wrap(
+                DraftEdit::SizeAuto(v)
+            )),
+            slide(12.0..=200.0, 1.0, pt, format!("{pt:.0} pt"), move |v| wrap(
+                DraftEdit::SizePt(v)
+            )),
         ]
         .spacing(ui_theme::SPACING)
         .align_y(Alignment::Center)
         .into(),
-        _ => check(&s.theme_auto_size, true, DraftEdit::SizeAuto),
+        _ => check(&s.theme_auto_size, true, move |v| {
+            wrap(DraftEdit::SizeAuto(v))
+        }),
     };
 
-    let bold = toggle_box(matches!(t.bold, Prop::Set(true)), DraftEdit::Bold);
+    let bold = toggle_box(matches!(t.bold, Prop::Set(true)), move |v| {
+        wrap(DraftEdit::Bold(v))
+    });
     let color = color_field(
         app,
-        ColorField::Text,
+        colors.0,
         match t.color {
             Prop::Set(c) => c,
             Prop::Inherit => Rgba::WHITE,
@@ -332,7 +346,7 @@ fn text_section<'a>(app: &'a App, d: &'a Theme) -> Element<'a, Msg> {
             Prop::Set(a) => a,
             Prop::Inherit => HAlign::Center,
         },
-        |a| edit(DraftEdit::HAlign(a)),
+        move |a| edit(wrap(DraftEdit::HAlign(a))),
     );
     let v_align = segmented(
         [
@@ -341,7 +355,7 @@ fn text_section<'a>(app: &'a App, d: &'a Theme) -> Element<'a, Msg> {
             (s.align_bottom.as_str(), VAlign::Bottom),
         ],
         t.v_align,
-        |a| edit(DraftEdit::VAlign(a)),
+        move |a| edit(wrap(DraftEdit::VAlign(a))),
     );
     let spacing_v = match t.line_spacing {
         Prop::Set(v) => v,
@@ -352,136 +366,197 @@ fn text_section<'a>(app: &'a App, d: &'a Theme) -> Element<'a, Msg> {
         Prop::Inherit => 0.06,
     };
 
-    let mut shadow = row![toggle_box(t.shadow.is_some(), DraftEdit::ShadowOn)]
-        .spacing(ui_theme::SPACING)
-        .align_y(Alignment::Center);
+    let mut shadow = row![toggle_box(t.shadow.is_some(), move |v| wrap(
+        DraftEdit::ShadowOn(v)
+    ))]
+    .spacing(ui_theme::SPACING)
+    .align_y(Alignment::Center);
     if let Some(sh) = t.shadow {
         shadow = shadow
-            .push(color_field(app, ColorField::Shadow, sh.color))
+            .push(color_field(app, colors.1, sh.color))
             .push(slide(
                 0.0..=20.0,
                 1.0,
                 sh.offset.0,
                 format!("{:.0} px", sh.offset.0),
-                DraftEdit::ShadowOffset,
+                move |v| wrap(DraftEdit::ShadowOffset(v)),
             ));
     }
-    let mut outline = row![toggle_box(t.outline.is_some(), DraftEdit::OutlineOn)]
-        .spacing(ui_theme::SPACING)
-        .align_y(Alignment::Center);
+    let mut outline = row![toggle_box(t.outline.is_some(), move |v| wrap(
+        DraftEdit::OutlineOn(v)
+    ))]
+    .spacing(ui_theme::SPACING)
+    .align_y(Alignment::Center);
     if let Some(o) = t.outline {
         outline = outline
-            .push(color_field(app, ColorField::Outline, o.color))
+            .push(color_field(app, colors.2, o.color))
             .push(slide(
                 0.0..=10.0,
                 0.5,
                 o.width,
                 format!("{:.1} px", o.width),
-                DraftEdit::OutlineWidth,
+                move |v| wrap(DraftEdit::OutlineWidth(v)),
             ));
     }
 
-    section(
+    let mut rows: Vec<Element<'a, Msg>> = name_row.into_iter().collect();
+    rows.extend([
+        inherit_row(
+            &s.theme_font_label,
+            s,
+            t.font == Prop::Inherit,
+            move |v| wrap(DraftEdit::FontInherit(v)),
+            font,
+            None,
+            file.font,
+        ),
+        inherit_row(
+            &s.theme_size_label,
+            s,
+            t.size == Prop::Inherit,
+            move |v| wrap(DraftEdit::SizeInherit(v)),
+            size,
+            None,
+            file.size,
+        ),
+        inherit_row(
+            &s.theme_bold_label,
+            s,
+            t.bold == Prop::Inherit,
+            move |v| wrap(DraftEdit::BoldInherit(v)),
+            bold,
+            None,
+            file.bold,
+        ),
+        inherit_row(
+            &s.theme_text_color_label,
+            s,
+            t.color == Prop::Inherit,
+            move |v| wrap(DraftEdit::ColorInherit(v)),
+            color,
+            color_id,
+            file.color,
+        ),
+        inherit_row(
+            &s.theme_align_label,
+            s,
+            t.h_align == Prop::Inherit,
+            move |v| wrap(DraftEdit::HAlignInherit(v)),
+            h_align,
+            None,
+            file.h_align,
+        ),
+        field(&s.theme_valign_label, v_align),
+        inherit_row(
+            &s.theme_line_spacing_label,
+            s,
+            t.line_spacing == Prop::Inherit,
+            move |v| wrap(DraftEdit::SpacingInherit(v)),
+            slide(
+                0.8..=2.5,
+                0.05,
+                spacing_v,
+                format!("{spacing_v:.2}"),
+                move |v| wrap(DraftEdit::Spacing(v)),
+            ),
+            None,
+            file.spacing,
+        ),
+        inherit_row(
+            &s.theme_margin_label,
+            s,
+            t.margin == Prop::Inherit,
+            move |v| wrap(DraftEdit::MarginInherit(v)),
+            slide(
+                0.0..=0.3,
+                0.01,
+                margin_v,
+                format!("{:.0} %", margin_v * 100.0),
+                move |v| wrap(DraftEdit::Margin(v)),
+            ),
+            None,
+            None,
+        ),
+        field(
+            &s.theme_opacity,
+            slide(
+                0.0..=1.0,
+                0.05,
+                t.opacity,
+                format!("{:.0} %", t.opacity * 100.0),
+                move |v| wrap(DraftEdit::Opacity(v)),
+            ),
+        ),
+        field(&s.theme_shadow, shadow),
+        field(&s.theme_outline, outline),
+    ]);
+    section(title, rows)
+}
+
+fn text_section<'a>(app: &'a App, d: &'a Theme) -> Element<'a, Msg> {
+    let s = &app.core.strings;
+    let name = field(
+        &s.theme_name_label,
+        text_input(s.theme_name_label.as_str(), &d.name)
+            .on_input(|n| edit(DraftEdit::Name(n)))
+            .style(ui_theme::input)
+            .size(13)
+            .padding(6)
+            .width(260),
+    );
+    text_style_section(
+        app,
         &s.theme_text,
-        vec![
-            field(
-                &s.theme_name_label,
-                text_input(s.theme_name_label.as_str(), &d.name)
-                    .on_input(|n| edit(DraftEdit::Name(n)))
-                    .style(ui_theme::input)
-                    .size(13)
-                    .padding(6)
-                    .width(260),
-            ),
-            inherit_row(
-                &s.theme_font_label,
-                s,
-                t.font == Prop::Inherit,
-                DraftEdit::FontInherit,
-                font,
-                None,
-                file.font,
-            ),
-            inherit_row(
-                &s.theme_size_label,
-                s,
-                t.size == Prop::Inherit,
-                DraftEdit::SizeInherit,
-                size,
-                None,
-                file.size,
-            ),
-            inherit_row(
-                &s.theme_bold_label,
-                s,
-                t.bold == Prop::Inherit,
-                DraftEdit::BoldInherit,
-                bold,
-                None,
-                file.bold,
-            ),
-            inherit_row(
-                &s.theme_text_color_label,
-                s,
-                t.color == Prop::Inherit,
-                DraftEdit::ColorInherit,
-                color,
-                Some(COLOR_INHERIT_ID),
-                file.color,
-            ),
-            inherit_row(
-                &s.theme_align_label,
-                s,
-                t.h_align == Prop::Inherit,
-                DraftEdit::HAlignInherit,
-                h_align,
-                None,
-                file.h_align,
-            ),
-            field(&s.theme_valign_label, v_align),
-            inherit_row(
-                &s.theme_line_spacing_label,
-                s,
-                t.line_spacing == Prop::Inherit,
-                DraftEdit::SpacingInherit,
-                slide(
-                    0.8..=2.5,
-                    0.05,
-                    spacing_v,
-                    format!("{spacing_v:.2}"),
-                    DraftEdit::Spacing,
-                ),
-                None,
-                file.spacing,
-            ),
-            inherit_row(
-                &s.theme_margin_label,
-                s,
-                t.margin == Prop::Inherit,
-                DraftEdit::MarginInherit,
-                slide(
-                    0.0..=0.3,
-                    0.01,
-                    margin_v,
-                    format!("{:.0} %", margin_v * 100.0),
-                    DraftEdit::Margin,
-                ),
-                None,
-                None,
-            ),
-            field(
-                &s.theme_opacity,
-                slide(
-                    0.0..=1.0,
-                    0.05,
-                    t.opacity,
-                    format!("{:.0} %", t.opacity * 100.0),
-                    DraftEdit::Opacity,
-                ),
-            ),
-            field(&s.theme_shadow, shadow),
-            field(&s.theme_outline, outline),
-        ],
+        &d.text,
+        inherited(app),
+        (ColorField::Text, ColorField::Shadow, ColorField::Outline),
+        |e| e,
+        Some(name),
+        Some(COLOR_INHERIT_ID),
+    )
+}
+
+/// The reference line's own style. A checked Inherit box shows the value
+/// derived from the verse text.
+fn reference_section<'a>(app: &'a App, d: &'a Theme) -> Element<'a, Msg> {
+    let s = &app.core.strings;
+    let r = sda_core::resolve::reference_style(d);
+    let file = Inherited {
+        font: Some(
+            r.font
+                .resolve(None, Font::Bundled(BundledFont::Inter))
+                .family()
+                .to_string(),
+        ),
+        size: Some(match r.size.resolve(None, TextSize::Auto) {
+            TextSize::Pt(p) => format!("{p:.0}pt"),
+            TextSize::Auto => s.theme_auto_size.clone(),
+        }),
+        bold: Some(
+            if r.bold.resolve(None, false) {
+                "✓"
+            } else {
+                "✗"
+            }
+            .to_string(),
+        ),
+        color: Some(r.color.resolve(None, Rgba::WHITE).to_hex()),
+        h_align: None,
+        spacing: Some(format!("{:.2}", r.line_spacing.resolve(None, 1.1))),
+    };
+    text_style_section(
+        app,
+        &s.theme_reference,
+        &d.reference,
+        file,
+        (
+            ColorField::RefText,
+            ColorField::RefShadow,
+            ColorField::RefOutline,
+        ),
+        |e| DraftEdit::Reference(Box::new(e)),
+        None,
+        None,
     )
 }
 
@@ -703,15 +778,19 @@ fn footer_section<'a>(app: &'a App, d: &'a Theme) -> Element<'a, Msg> {
     )
 }
 
-pub fn show(app: &App) -> Element<'_, Msg> {
+/// The left and right form columns. The preview sits above the left one.
+pub fn columns(app: &App) -> (Element<'_, Msg>, Element<'_, Msg>) {
     let d = &app.themes.draft;
-    column![
-        text_section(app, d),
+    let left = column![text_section(app, d), reference_section(app, d)]
+        .spacing(ui_theme::SPACING)
+        .into();
+    let right = column![
         background_section(app, d),
         transition_section(app, d),
         verses_section(app, d),
         footer_section(app, d),
     ]
     .spacing(ui_theme::SPACING)
-    .into()
+    .into();
+    (left, right)
 }

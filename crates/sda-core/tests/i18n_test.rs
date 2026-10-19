@@ -52,7 +52,7 @@ fn italian_and_romanian_are_translated_not_copied() {
 
 #[test]
 fn field_count_matches_struct() {
-    assert_eq!(Strings::for_language(Language::En).as_fields().len(), 179);
+    assert_eq!(Strings::for_language(Language::En).as_fields().len(), 185);
 }
 
 #[test]

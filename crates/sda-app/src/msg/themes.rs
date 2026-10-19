@@ -13,6 +13,13 @@ pub enum BgKind {
     Video,
 }
 
+/// What the preview plays.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Sample {
+    Hymn,
+    Bible,
+}
+
 /// One color control in the form. The hex input for each one is tracked so
 /// a half typed value does not snap back to the last valid color.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -20,6 +27,9 @@ pub enum ColorField {
     Text,
     Shadow,
     Outline,
+    RefText,
+    RefShadow,
+    RefOutline,
     BgSolid,
     BgStop(usize),
     BgParticleColor,
@@ -32,6 +42,9 @@ impl ColorField {
             ColorField::Text => DraftEdit::Color(c),
             ColorField::Shadow => DraftEdit::ShadowColor(c),
             ColorField::Outline => DraftEdit::OutlineColor(c),
+            ColorField::RefText => DraftEdit::Reference(Box::new(DraftEdit::Color(c))),
+            ColorField::RefShadow => DraftEdit::Reference(Box::new(DraftEdit::ShadowColor(c))),
+            ColorField::RefOutline => DraftEdit::Reference(Box::new(DraftEdit::OutlineColor(c))),
             ColorField::BgSolid => DraftEdit::BgSolid(c),
             ColorField::BgStop(i) => DraftEdit::BgStop(i, c),
             ColorField::BgParticleColor => DraftEdit::BgParticleColor(c),
@@ -82,6 +95,8 @@ pub enum DraftEdit {
     ShowReference(bool),
     ShowNumbers(bool),
     Footer(bool),
+    /// A text edit applied to the reference style instead of the verse text.
+    Reference(Box<DraftEdit>),
 }
 
 #[derive(Debug, Clone)]
@@ -104,4 +119,6 @@ pub enum ThemesMsg {
     FilePicked(Option<PathBuf>),
     /// One step of the preview loop.
     Tick,
+    /// Pick what the preview plays.
+    Sample(Sample),
 }
