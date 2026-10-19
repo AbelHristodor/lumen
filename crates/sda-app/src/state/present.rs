@@ -9,6 +9,7 @@ use iced::Task;
 use iced::widget::{self, operation, scrollable::RelativeOffset};
 use sda_core::asis::{self, Converter};
 use sda_core::history::{self, HistoryEntry};
+use sda_core::i18n::Strings;
 use sda_core::model::Hymn;
 use sda_core::present::{Presentation, Source};
 use sda_core::resolve::{ResolvedSlide, SlideContent, resolve};
@@ -25,8 +26,6 @@ pub const SEARCH_ID: &str = "search";
 pub const ASIS_SIZE: (u32, u32) = (1920, 1080);
 /// How many slide thumbnails the strip shows before the `+N` label.
 pub const MAX_THUMBS: usize = 12;
-/// How many history entries the Recent section shows.
-pub const RECENT_COUNT: usize = 10;
 /// Resolved slides kept for the preview before the cache is dropped.
 const RESOLVED_CAP: usize = 256;
 
@@ -152,6 +151,10 @@ pub fn update(app: &mut App, msg: PresentMsg) -> Task<Msg> {
                     app.present.as_is_error = Some(e);
                 }
             }
+            Task::none()
+        }
+        PresentMsg::OpenHistory(p) => {
+            select_history(app, &p);
             Task::none()
         }
     };
@@ -444,11 +447,66 @@ pub fn theme_slide(app: &App, theme: &Theme) -> Option<Arc<ResolvedSlide>> {
     Some(r)
 }
 
-/// Position in `hits` of the hymn at `path`, for the Recent rows.
+/// Position in `hits` of the hymn at `path`, for the History rows.
 pub fn hit_position(app: &App, path: &Path) -> Option<usize> {
     let searcher = app.core.searcher.as_ref()?;
     app.present
         .hits
         .iter()
         .position(|&i| searcher.entry(i).is_some_and(|h| h.path == path))
+}
+
+/// Select the hymn at `path`. When the current hits do not hold it, search
+/// its number so it does, then select the hit.
+pub fn select_history(app: &mut App, path: &Path) {
+    if let Some(pos) = hit_position(app, path) {
+        select(app, pos);
+        return;
+    }
+    let number = app
+        .core
+        .history
+        .iter()
+        .find(|e| e.path == path)
+        .and_then(|e| e.number.clone())
+        .unwrap_or_default();
+    app.present.query = number;
+    run_search(app);
+    if let Some(pos) = hit_position(app, path) {
+        select(app, pos);
+    }
+}
+
+/// `then` as a short relative label against `now`, both Unix seconds.
+pub fn relative_time(s: &Strings, then: i64, now: i64) -> String {
+    let secs = (now - then).max(0);
+    match secs {
+        0..=59 => s.time_just_now.clone(),
+        60..=3599 => s
+            .time_minutes_ago_fmt
+            .replace("{}", &(secs / 60).to_string()),
+        3600..=86_399 => s
+            .time_hours_ago_fmt
+            .replace("{}", &(secs / 3600).to_string()),
+        86_400..=172_799 => s.time_yesterday.clone(),
+        _ => {
+            let days = then.div_euclid(86_400);
+            let (y, m, d) = civil_from_days(days);
+            format!("{y:04}-{m:02}-{d:02}")
+        }
+    }
+}
+
+/// Howard Hinnant's days to civil date, proleptic Gregorian.
+fn civil_from_days(z: i64) -> (i64, u32, u32) {
+    let z = z + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z.rem_euclid(146_097);
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = (doy - (153 * mp + 2) / 5 + 1) as u32;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 } as u32;
+    (if m <= 2 { y + 1 } else { y }, m, d)
 }

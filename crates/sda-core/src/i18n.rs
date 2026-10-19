@@ -143,10 +143,8 @@ pub struct Strings {
     pub tab_videos: String,
     pub tab_themes: String,
     pub tab_settings: String,
-    pub recent: String,
     pub original: String,
     pub original_hint: String,
-    pub notes: String,
     pub bible_mode_reference: String,
     pub bible_mode_text: String,
     pub bible_input_hint: String,
@@ -238,7 +236,6 @@ pub struct Strings {
     pub easing_linear: String,
     pub easing_in_out: String,
     pub easing_out: String,
-    pub no_notes: String,
     pub no_results: String,
     pub nothing_selected: String,
     pub single_display_hint: String,
@@ -250,6 +247,12 @@ pub struct Strings {
     pub bible_search_empty: String,
     pub settings_display_hint: String,
     pub settings_presenting_hint: String,
+    pub history: String,
+    pub time_just_now: String,
+    pub time_minutes_ago_fmt: String, // one `{}` = minutes
+    pub time_hours_ago_fmt: String,   // one `{}` = hours
+    pub time_yesterday: String,
+    pub history_empty: String,
 }
 
 impl Strings {
@@ -342,10 +345,8 @@ impl Strings {
             &self.tab_videos,
             &self.tab_themes,
             &self.tab_settings,
-            &self.recent,
             &self.original,
             &self.original_hint,
-            &self.notes,
             &self.bible_mode_reference,
             &self.bible_mode_text,
             &self.bible_input_hint,
@@ -437,7 +438,6 @@ impl Strings {
             &self.easing_linear,
             &self.easing_in_out,
             &self.easing_out,
-            &self.no_notes,
             &self.no_results,
             &self.nothing_selected,
             &self.single_display_hint,
@@ -449,6 +449,12 @@ impl Strings {
             &self.bible_search_empty,
             &self.settings_display_hint,
             &self.settings_presenting_hint,
+            &self.history,
+            &self.time_just_now,
+            &self.time_minutes_ago_fmt,
+            &self.time_hours_ago_fmt,
+            &self.time_yesterday,
+            &self.history_empty,
         ]
     }
 
@@ -532,10 +538,8 @@ impl Strings {
             tab_videos: "Videos".into(),
             tab_themes: "Themes".into(),
             tab_settings: "Settings".into(),
-            recent: "Recent".into(),
             original: "Original".into(),
             original_hint: "Show the slide as it is in the file".into(),
-            notes: "Notes".into(),
             bible_mode_reference: "Ref".into(),
             bible_mode_text: "Text".into(),
             bible_input_hint: "Type a reference like John 3:16 or mat 10 1".into(),
@@ -627,7 +631,6 @@ impl Strings {
             easing_linear: "Linear".into(),
             easing_in_out: "Ease in and out".into(),
             easing_out: "Ease out".into(),
-            no_notes: "No notes for this slide.".into(),
             no_results: "No results.".into(),
             nothing_selected: "Nothing selected.".into(),
             single_display_hint: "Only one display is connected. Plug in a projector to present on a second screen.".into(),
@@ -639,6 +642,12 @@ impl Strings {
             bible_search_empty: "Type a word above to search the whole Bible.".into(),
             settings_display_hint: "Pick the screen the projector opens on.".into(),
             settings_presenting_hint: "How hymns and verses are shown on the projector.".into(),
+            history: "History".into(),
+            time_just_now: "Just now".into(),
+            time_minutes_ago_fmt: "{} min ago".into(),
+            time_hours_ago_fmt: "{} h ago".into(),
+            time_yesterday: "Yesterday".into(),
+            history_empty: "No hymns opened yet".into(),
         }
     }
 
@@ -722,10 +731,8 @@ impl Strings {
             tab_videos: "Video".into(),
             tab_themes: "Temi".into(),
             tab_settings: "Impostazioni".into(),
-            recent: "Recenti".into(),
             original: "Originale".into(),
             original_hint: "Mostra la diapositiva come è nel file".into(),
-            notes: "Note".into(),
             bible_mode_reference: "Rif".into(),
             bible_mode_text: "Testo".into(),
             bible_input_hint: "Scrivi un riferimento come Giovanni 3:16 o mat 10 1".into(),
@@ -817,7 +824,6 @@ impl Strings {
             easing_linear: "Lineare".into(),
             easing_in_out: "Entrata e uscita".into(),
             easing_out: "Uscita".into(),
-            no_notes: "Nessuna nota per questa diapositiva.".into(),
             no_results: "Nessun risultato.".into(),
             nothing_selected: "Nessuna selezione.".into(),
             single_display_hint: "È collegato un solo schermo. Collega un proiettore per presentare su un secondo schermo.".into(),
@@ -829,6 +835,12 @@ impl Strings {
             bible_search_empty: "Scrivi una parola qui sopra per cercare in tutta la Bibbia.".into(),
             settings_display_hint: "Scegli lo schermo su cui si apre il proiettore.".into(),
             settings_presenting_hint: "Come inni e versetti vengono mostrati sul proiettore.".into(),
+            history: "Cronologia".into(),
+            time_just_now: "Adesso".into(),
+            time_minutes_ago_fmt: "{} min fa".into(),
+            time_hours_ago_fmt: "{} h fa".into(),
+            time_yesterday: "Ieri".into(),
+            history_empty: "Nessun inno aperto".into(),
         }
     }
 
@@ -912,10 +924,8 @@ impl Strings {
             tab_videos: "Videoclipuri".into(),
             tab_themes: "Teme".into(),
             tab_settings: "Setări".into(),
-            recent: "Recente".into(),
             original: "Original".into(),
             original_hint: "Arată diapozitivul așa cum este în fișier".into(),
-            notes: "Note".into(),
             bible_mode_reference: "Ref".into(),
             bible_mode_text: "Text".into(),
             bible_input_hint: "Scrie o referință precum Ioan 3:16 sau mat 10 1".into(),
@@ -1007,7 +1017,6 @@ impl Strings {
             easing_linear: "Liniară".into(),
             easing_in_out: "Intrare și ieșire".into(),
             easing_out: "Ieșire".into(),
-            no_notes: "Nicio notă pentru acest diapozitiv.".into(),
             no_results: "Niciun rezultat.".into(),
             nothing_selected: "Nimic selectat.".into(),
             single_display_hint: "Este conectat un singur ecran. Conectează un proiector pentru a prezenta pe un al doilea ecran.".into(),
@@ -1019,6 +1028,12 @@ impl Strings {
             bible_search_empty: "Scrie un cuvânt mai sus pentru a căuta în toată Biblia.".into(),
             settings_display_hint: "Alege ecranul pe care se deschide proiectorul.".into(),
             settings_presenting_hint: "Cum apar imnurile și versetele pe proiector.".into(),
+            history: "Istoric".into(),
+            time_just_now: "Chiar acum".into(),
+            time_minutes_ago_fmt: "{} min în urmă".into(),
+            time_hours_ago_fmt: "{} h în urmă".into(),
+            time_yesterday: "Ieri".into(),
+            history_empty: "Niciun imn deschis".into(),
         }
     }
 }

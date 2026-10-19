@@ -14,4 +14,6 @@ pub enum PresentMsg {
     /// An as is render or bitmap load finished off the UI thread. `Ok`
     /// carries the hymn path and its decoded slides in order.
     AsIsRendered(Result<(PathBuf, Vec<Bitmap>), String>),
+    /// A History card row was clicked.
+    OpenHistory(PathBuf),
 }

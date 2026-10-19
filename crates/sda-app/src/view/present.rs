@@ -1,21 +1,20 @@
-//! Present tab view. Left: search and results with a Recent section. Center:
-//! preview, slide thumbnails, Go Live and the Original toggle. Right: theme
-//! quick picker and notes.
+//! Present tab view. Left: search and results. Center: preview, slide
+//! thumbnails, Go Live and the Original toggle. Right: theme quick picker
+//! and history.
 
 use crate::app::App;
-use crate::msg::{Msg, ThemesMsg};
-use crate::state::present::{self as st, MAX_THUMBS, RECENT_COUNT};
+use crate::msg::{Msg, PresentMsg, ThemesMsg};
+use crate::state::present::{self as st, MAX_THUMBS, relative_time};
 use crate::ui_theme::{self, SPACING};
 use crate::view::shell::shorten;
 use crate::view::themes::theme_tile;
 use crate::widgets::card::card;
 use crate::widgets::scene_view::{key, scene_view};
 use iced::widget::{
-    Id, button, column, container, responsive, row, rule, scrollable, space, stack, text,
-    text_input, toggler, tooltip,
+    Id, button, column, container, responsive, row, scrollable, space, stack, text, text_input,
+    toggler, tooltip,
 };
 use iced::{Alignment, Element, Fill, Shrink, Size};
-use sda_core::history;
 use sda_core::model::Hymn;
 
 pub use crate::state::present::SEARCH_ID;
@@ -64,21 +63,6 @@ fn search_panel(app: &App) -> Element<'_, Msg> {
     let many_libraries = app.core.cfg.libraries.iter().filter(|l| l.enabled).count() > 1;
 
     let mut list = column![].spacing(2);
-    if p.query.trim().is_empty() && !app.core.history.is_empty() {
-        list = list.push(heading(&s.recent));
-        for e in history::recent(&app.core.history, RECENT_COUNT) {
-            if let Some(pos) = st::hit_position(app, &e.path)
-                && let Some(hymn) = hymn_at(app, pos)
-            {
-                list = list.push(hymn_row(hymn, p.selected == Some(pos), many_libraries, pos));
-            }
-        }
-        list = list.push(
-            container(rule::horizontal(1).style(ui_theme::hairline))
-                .padding([SPACING as u16 / 2, 0])
-                .width(Fill),
-        );
-    }
     if p.hits.is_empty() {
         list = list.push(
             container(text(&s.no_results).size(13).color(ui_theme::MUTED))
@@ -110,12 +94,6 @@ fn search_panel(app: &App) -> Element<'_, Msg> {
 fn hymn_at(app: &App, pos: usize) -> Option<&Hymn> {
     let idx = *app.present.hits.get(pos)?;
     app.core.searcher.as_ref()?.entry(idx)
-}
-
-fn heading(label: &str) -> Element<'_, Msg> {
-    container(ui_theme::section_label(label))
-        .padding([6, 10])
-        .into()
 }
 
 fn hymn_row(hymn: &Hymn, selected: bool, show_library: bool, pos: usize) -> Element<'_, Msg> {
@@ -364,18 +342,64 @@ fn side_panel(app: &App) -> Element<'_, Msg> {
     )
     .width(Fill);
 
-    let notes = st::selected_hymn(app)
-        .and_then(|(_, h)| h.slides.get(app.present.preview_slide))
-        .and_then(|sl| sl.notes.as_deref())
-        .filter(|n| !n.trim().is_empty());
-    let body: Element<'_, Msg> = match notes {
-        Some(notes) => scrollable(text(notes).size(13)).height(Fill).into(),
-        None => text(&s.no_notes).size(13).color(ui_theme::MUTED).into(),
-    };
-    let notes_card = card(column![ui_theme::section_label(&s.notes), body].spacing(SPACING))
-        .width(Fill)
-        .height(Fill);
-    column![theme_card, notes_card]
+    let unix_now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+    let mut rows = column![].spacing(2);
+    if app.core.history.is_empty() {
+        rows = rows.push(text(&s.history_empty).size(13).color(ui_theme::MUTED));
+    }
+    for e in &app.core.history {
+        let indexed = app
+            .core
+            .searcher
+            .as_ref()
+            .is_some_and(|sr| sr.has_path(&e.path));
+        let color = if indexed {
+            ui_theme::TEXT
+        } else {
+            ui_theme::MUTED
+        };
+        let line = row![
+            text(e.number.clone().unwrap_or_default())
+                .size(13)
+                .font(ui_theme::BOLD)
+                .color(color)
+                .width(44),
+            text(shorten(&e.title, 22))
+                .size(13)
+                .color(color)
+                .width(Fill)
+                .wrapping(text::Wrapping::None),
+            text(relative_time(s, e.opened_at, unix_now))
+                .size(11)
+                .color(ui_theme::MUTED),
+        ]
+        .spacing(4)
+        .height(Fill)
+        .align_y(Alignment::Center);
+        rows = rows.push(
+            button(line)
+                .height(ROW_H)
+                .padding([0, 8])
+                .width(Fill)
+                .style(ui_theme::list_row(false))
+                .on_press_maybe(
+                    indexed.then(|| Msg::Present(PresentMsg::OpenHistory(e.path.clone()))),
+                ),
+        );
+    }
+    let history_card = card(
+        column![
+            ui_theme::section_label(&s.history),
+            scrollable(rows).height(Fill)
+        ]
+        .spacing(SPACING),
+    )
+    .width(Fill)
+    .height(Fill);
+    column![theme_card, history_card]
         .spacing(SPACING)
         .height(Fill)
         .into()

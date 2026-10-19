@@ -48,16 +48,6 @@ fn enter_goes_live_and_strip_shows_title() {
 }
 
 #[test]
-fn recent_shows_on_empty_query() {
-    let mut app = app();
-    let _ = app.update(Msg::Search("150".into()));
-    let _ = app.update(Msg::GoLive);
-    let _ = app.update(Msg::Search(String::new()));
-    let mut ui = Simulator::new(app.view_operator());
-    assert!(ui.find(&*app.core.strings.recent.to_uppercase()).is_ok());
-}
-
-#[test]
 fn clicking_a_row_selects_it() {
     let mut app = app();
     let _ = app.update(Msg::Search(String::new()));
@@ -291,4 +281,40 @@ fn stale_reindex_result_is_dropped() {
 
     let _ = app.update(Msg::Synced(first, Err("late failure".into())));
     assert!(!app.status.library_error, "a stale sync error is ignored");
+}
+
+#[test]
+fn relative_time_buckets() {
+    use sda_app::state::present::relative_time;
+    use sda_core::i18n::{Language, Strings};
+    let s = Strings::for_language(Language::En);
+    let now = 1_000_000;
+    assert_eq!(relative_time(&s, now - 10, now), "Just now");
+    assert_eq!(relative_time(&s, now - 5 * 60, now), "5 min ago");
+    assert_eq!(relative_time(&s, now - 3 * 3600, now), "3 h ago");
+    assert_eq!(relative_time(&s, now - 30 * 3600, now), "Yesterday");
+    assert!(
+        relative_time(&s, now - 10 * 86400, now).contains('-'),
+        "older is a date"
+    );
+}
+
+#[test]
+fn history_card_lists_and_opens_hymns() {
+    let mut app = app();
+    let _ = app.update(Msg::Search("1".into()));
+    let _ = app.update(Msg::GoLive);
+    assert!(!app.core.history.is_empty());
+    let path = app.core.history[0].path.clone();
+    let _ = app.update(Msg::Search("@@@@@@".into()));
+    assert!(app.present.hits.is_empty());
+    let mut ui = Simulator::new(app.view_operator());
+    // Section labels render uppercased and the selector matches exactly.
+    assert!(ui.find("HISTORY").is_ok());
+    assert!(ui.find("NOTES").is_err());
+    assert!(ui.find("RECENT").is_err());
+    drop(ui);
+    let _ = app.update(Msg::Present(PresentMsg::OpenHistory(path.clone())));
+    let (_, hymn) = sda_app::state::present::selected_hymn(&app).expect("selected");
+    assert_eq!(hymn.path, path);
 }

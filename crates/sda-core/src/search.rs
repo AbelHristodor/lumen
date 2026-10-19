@@ -114,6 +114,11 @@ impl Searcher {
         self.items.get(index).map(|it| &it.entry)
     }
 
+    /// True when a hymn at `path` is indexed.
+    pub fn has_path(&self, path: &std::path::Path) -> bool {
+        self.items.iter().any(|it| it.entry.path == path)
+    }
+
     /// Display label for the entry at `index`, precomputed at construction.
     pub fn label(&self, index: usize) -> Option<&str> {
         self.items.get(index).map(|it| it.label.as_str())
