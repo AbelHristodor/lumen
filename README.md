@@ -74,7 +74,7 @@ folders of slides too.
 
 Prebuilt apps are on the
 [Releases](https://github.com/AbelHristodor/lumen/releases) page for
-macOS on Apple Silicon, Windows x86_64, and Linux x86_64.
+macOS on Apple Silicon and Intel, Windows x86_64, and Linux x86_64 and arm64.
 
 **macOS and Linux.** Paste into a terminal:
 
@@ -239,7 +239,7 @@ Apache 2.0 license.
 
 ### Releases
 
-Run the **Release** workflow from the Actions tab with a tag like `v3.0.0`. It
+Run the **Release** workflow from the Actions tab with a tag like `v2.0.0`. It
 tests on all three platforms, then publishes one archive per platform plus
 `hymns.zip` built from `assets/920`. Running apps pick up the new `hymns.zip`
 on their next launch.

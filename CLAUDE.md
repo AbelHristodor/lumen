@@ -4,7 +4,7 @@ This file guides Claude Code when working in this repository.
 
 ## What this is
 
-Lumen 3.0.0 is a desktop app for projecting hymns and Bible verses. It is
+Lumen 2.0.0 is a desktop app for projecting hymns and Bible verses. It is
 written in Rust with Iced 0.14 and a wgpu renderer. There is one operator
 window with five tabs: Present, Bible, Videos, Themes, Settings. A Live strip
 stays visible across tabs and shows what the projector shows. The projector is
@@ -39,10 +39,12 @@ edition 2024 and let chains.
 ### Releases and distribution
 
 - Releases are built by `.github/workflows/release.yml` by manual trigger only.
-  It takes a `version` input like `v3.0.0`. A `test` job runs
+  It takes a `version` input like `v2.0.0`. A `test` job runs
   `cargo test --workspace` and clippy on `macos-14`, `windows-latest`, and
-  `ubuntu-latest`. The `build` job needs `test` and builds `-p sda-app` on the
-  same three runners. It publishes a GitHub Release with one archive per
+  `ubuntu-latest`, and fails when the tag is not the Cargo version. The `build`
+  job needs `test` and builds `-p sda-app` for macOS arm and x64, Windows x64,
+  and Linux x64 and arm64. Release builds use fat LTO and opt-level "s" for
+  size. It publishes a GitHub Release with one archive per
   target: `lumen-<target>.tar.gz` for macOS and Linux and
   `lumen-<target>.zip` for Windows.
 - Linux CI installs `libxkbcommon-dev libwayland-dev libxcb-render0-dev

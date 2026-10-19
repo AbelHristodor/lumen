@@ -19,9 +19,9 @@ case "$os" in
   Darwin)
     case "$arch" in
       arm64|aarch64) target="aarch64-apple-darwin" ;;
+      x86_64) target="x86_64-apple-darwin" ;;
       *)
         echo "Error: unsupported macOS architecture '$arch'." >&2
-        echo "Only Apple Silicon (arm64) binaries are published; build from source for Intel." >&2
         exit 1
         ;;
     esac
@@ -29,9 +29,9 @@ case "$os" in
   Linux)
     case "$arch" in
       x86_64|amd64) target="x86_64-unknown-linux-gnu" ;;
+      arm64|aarch64) target="aarch64-unknown-linux-gnu" ;;
       *)
         echo "Error: unsupported Linux architecture '$arch'." >&2
-        echo "Only x86_64 binaries are published; build from source for others." >&2
         exit 1
         ;;
     esac
