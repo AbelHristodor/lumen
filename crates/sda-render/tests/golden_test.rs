@@ -487,3 +487,35 @@ fn text_pt_keeps_full_size_on_projector() {
     let ratio = hb / ha;
     assert!(ratio > 4.0, "ratio {ratio}, {ha} vs {hb}");
 }
+
+#[test]
+fn verses_reference_band() {
+    use sda_core::resolve::{SlideContent, resolve};
+    use sda_core::theme::{BundledFont, Font, HAlign, Prop, Rgba, TextSize, Theme, VAlign};
+    use std::sync::Arc;
+    let mut t = Theme::default();
+    t.text.size = Prop::Set(TextSize::Pt(40.0));
+    t.reference.v_align = VAlign::Top;
+    t.reference.h_align = Prop::Set(HAlign::Right);
+    t.reference.color = Prop::Set(Rgba::new(255, 80, 80, 255));
+    t.reference.font = Prop::Set(Font::Bundled(BundledFont::Lora));
+    let content = SlideContent::Verses {
+        reference: "John 3:16".into(),
+        verses: vec![(16, "For God so loved the world".into())],
+    };
+    let slide = Arc::new(resolve(&t, &content, None).unwrap());
+    assert_eq!(slide.boxes.len(), 2);
+    let mut s = base();
+    s.current = Some(Layer::Text(slide));
+    let Some(img) = headless::render_to_image(&s) else {
+        return;
+    };
+    let red = (260..320)
+        .flat_map(|x| (4..20).map(move |y| (x, y)))
+        .any(|(x, y)| {
+            let p = img.get_pixel(x, y);
+            p[0] > 150 && p[1] < 120
+        });
+    assert!(red, "red reference in the top band");
+    check("verses_reference_band", &s);
+}
