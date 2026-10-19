@@ -283,3 +283,24 @@ fn verse_box_pt_is_the_verse_frame_on_a_720_slide() {
     assert!((w - 0.88 * 720.0).abs() < 1e-3);
     assert!((h - (0.88 - REF_BAND) * 405.0).abs() < 1e-3);
 }
+
+#[test]
+fn reference_margin_moves_the_band_sideways_only() {
+    let mut t = Theme::default();
+    t.text.margin = Prop::Set(0.06);
+    t.reference.margin = Prop::Set(0.10);
+    for side in [VAlign::Top, VAlign::Bottom] {
+        t.reference.v_align = side;
+        let r = resolve(&t, &verses_content(), None).unwrap();
+        let v = r.boxes[0].frame;
+        let rf = r.boxes[1].frame;
+        assert!(
+            (rf.x - 0.10).abs() < 1e-5 && (rf.w - 0.80).abs() < 1e-5,
+            "{side:?} horizontal inset"
+        );
+        assert!(
+            v.y + v.h <= rf.y + 1e-5 || rf.y + rf.h <= v.y + 1e-5,
+            "{side:?} frames overlap: verses {v:?} reference {rf:?}"
+        );
+    }
+}

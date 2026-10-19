@@ -239,19 +239,32 @@ fn resolve_verses(theme: &Theme, reference: &str, verses: &[(u32, String)]) -> V
             plain_line(text, plain_run(text, s))
         })
         .collect();
+    let full = margin_frame(text);
+    if !theme.verses.show_reference {
+        return vec![ResolvedBox {
+            frame: full,
+            v_align: text.v_align,
+            lines,
+        }];
+    }
+    let style = reference_style(theme);
+    // One cut feeds both boxes so the band and the verses never overlap.
+    // `reference.margin` sets the band's horizontal inset only.
+    let (strip, rest) = full.cut(style.v_align, REF_BAND);
+    let inset = margin_frame(&style);
     let mut boxes = vec![ResolvedBox {
-        frame: verse_frame(theme),
+        frame: rest,
         v_align: text.v_align,
         lines,
     }];
-    if theme.verses.show_reference {
-        let style = reference_style(theme);
-        let frame = margin_frame(&style).cut(style.v_align, REF_BAND).0;
-        boxes.push(ResolvedBox {
-            frame,
-            v_align: style.v_align,
-            lines: vec![plain_line(&style, plain_run(&style, reference.to_string()))],
-        });
-    }
+    boxes.push(ResolvedBox {
+        frame: Frame {
+            x: inset.x,
+            w: inset.w,
+            ..strip
+        },
+        v_align: style.v_align,
+        lines: vec![plain_line(&style, plain_run(&style, reference.to_string()))],
+    });
     boxes
 }
