@@ -141,6 +141,8 @@ impl App {
             size,
             position,
             min_size: Some(Size::new(960.0, 640.0)),
+            icon: window::icon::from_file_data(include_bytes!("../../../assets/icon.png"), None)
+                .ok(),
             ..window::Settings::default()
         });
         // Optimistic until the probe answers, so a working machine never

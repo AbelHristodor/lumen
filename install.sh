@@ -62,6 +62,13 @@ install -m 0755 "$tmp/sda-manager-${target}/sda-manager" "$BIN_DIR/sda-manager"
 
 echo "Installed sda-manager to $BIN_DIR/sda-manager"
 
+if [ "$os" = "Darwin" ] && [ -d "$tmp/sda-manager-${target}/SDA Manager.app" ]; then
+  mkdir -p "$HOME/Applications"
+  rm -rf "$HOME/Applications/SDA Manager.app"
+  cp -R "$tmp/sda-manager-${target}/SDA Manager.app" "$HOME/Applications/"
+  echo "Installed SDA Manager.app to $HOME/Applications"
+fi
+
 case ":$PATH:" in
   *":$BIN_DIR:"*) ;;
   *)

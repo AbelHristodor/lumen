@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="assets/icon.png" alt="SDA Manager logo" width="128">
+
 # SDA Manager
 
 **Find a hymn or a verse and put it on the screen in seconds.**
@@ -82,6 +84,7 @@ curl -fsSL https://raw.githubusercontent.com/AbelHristodor/sda_manager/main/inst
 
 The macOS app is unsigned. The first time, right click it and choose **Open**.
 It installs `sda-manager` to `~/.local/bin`. Set `BIN_DIR` to change that.
+On macOS it also puts **SDA Manager.app** in `~/Applications`.
 
 **Windows.** Paste into PowerShell:
 
