@@ -171,6 +171,8 @@ and `window::close_events`. It adds `window::frames` as `Msg::Tick` only while
   only comes from the OS and `Msg::ProjectorClosed` clears the state.
 - One dark palette lives in `ui_theme.rs`. A second palette is one file.
 - `i18n::Strings` has every UI string. Tabs take their label from it.
+- The Themes editor shows a Hymn or Bible sample. Verse and reference edits
+  switch it to Bible.
 
 ### Keyboard
 
@@ -189,6 +191,10 @@ nothing fires while a text field has focus.
 | 1..9 | live jump to slide N |
 | Esc | stop the projector |
 
+In the Bible tab a click toggles a verse, Shift click selects from the last
+clicked verse, and dragging selects a range. `shortcuts::filter` forwards
+`ModifiersChanged` as `Msg::Modifiers` so views know about Shift.
+
 ### Conventions
 
 - Hymn numbers come from the filename stem, not slide text. The number is an
@@ -204,7 +210,7 @@ nothing fires while a text field has focus.
   mtime. The rest parse in parallel.
 - Themes in `theme.rs` are JSON files in the themes dir. A theme has a name,
   `TextStyle`, `Background`, `background_opacity`, `Transition`, `footer`,
-  `VerseLayout`, and `favorite`. Backgrounds are `Solid`, `Gradient`,
+  `VerseLayout`, a second `TextStyle` for the Bible reference, and `favorite`. Backgrounds are `Solid`, `Gradient`,
   `Particles`, `Image`, or `Video`. Transitions are `None`, `Fade`, `Slide`,
   `Scale`, or `Blur` with an easing. Fonts are Inter, Noto Serif, Lora, and
   Roboto Slab. Roboto Slab is Apache 2.0 and the others are OFL. A theme can
@@ -237,7 +243,9 @@ nothing fires while a text field has focus.
 - `bible/names.rs` has book names and aliases for en, it, and ro.
   `parse_reference` accepts `:` or `,` between chapter and verse and `-` for
   ranges, after folding. `search` folds both sides and scans all verses.
-  `verse_slides` splits a selection into slides of `per_slide` verses.
+  `pack_verses` groups a selection into as few slides as fit under
+  `fits_heuristic`, a character count estimate of the verse box at the theme's
+  `min_size`. Each slide carries its own reference range.
 
 ### As-is pipeline
 

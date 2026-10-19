@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.1.0
+
+- Bible: click a verse to select it, Shift click or drag for a range. The checkbox and "Select to here" are gone.
+- Bible: one search bar. `mat 10 1` opens Matthew 10:1, `matthew 10 1-5` selects 1 to 5. A Ref | Text toggle switches to text search.
+- Bible: a preview pane shows the slides before they go to the projector.
+- Verses pack into as few slides as fit. Every slide shows its own verse range. "Per slide" became "Smallest text size".
+- Themes: the reference on verse slides has its own font, size, color, alignment, and position.
+- Themes: two column editor, the preview fills the column, a Hymn | Bible sample toggle.
+- Present: the Notes card became a History card.
+
 ## v2.0.1
 
 Lumen now ships as real installers instead of archives.
