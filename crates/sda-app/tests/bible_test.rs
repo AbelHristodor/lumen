@@ -1,5 +1,4 @@
 use iced::keyboard::Modifiers;
-use iced::keyboard::{Key, key::Named};
 use iced::{Settings, Size};
 use iced_test::{Simulator, selector};
 use sda_app::msg::BibleMsg;
@@ -29,19 +28,19 @@ fn app() -> App {
 }
 
 #[test]
-fn reference_field_jumps_to_chapter() {
+fn input_jumps_on_short_reference() {
     let mut app = app();
     let mut ui = Simulator::new(app.view_operator());
-    ui.click(selector::id(sda_app::view::bible::REFERENCE_ID))
-        .expect("reference input");
-    ui.typewrite("John 3:16-18");
-    ui.tap_key(Key::Named(Named::Enter));
+    ui.click(selector::id(sda_app::view::bible::INPUT_ID))
+        .expect("input");
+    ui.typewrite("joh 3 16-18");
     for m in ui.into_messages() {
         let _ = app.update(m);
     }
     assert_eq!(app.bible.book, 42);
     assert_eq!(app.bible.chapter, 3);
     assert_eq!(app.bible.selected, BTreeSet::from([16, 17, 18]));
+    assert_eq!(app.bible.preview_slide, 0);
 }
 
 #[test]
@@ -162,9 +161,10 @@ fn verse_row_click_selects_without_a_checkbox() {
 }
 
 #[test]
-fn search_result_jumps_and_selects() {
+fn text_mode_searches_and_a_result_jumps() {
     let mut app = app();
-    let _ = app.update(Msg::Bible(BibleMsg::Search("so loved".into())));
+    let _ = app.update(Msg::Bible(BibleMsg::TextMode(true)));
+    let _ = app.update(Msg::Bible(BibleMsg::Input("so loved".into())));
     assert_eq!(app.bible.results.len(), 1);
     let mut ui = Simulator::new(app.view_operator());
     ui.click("John 3:16").expect("search result button");
@@ -174,6 +174,43 @@ fn search_result_jumps_and_selects() {
     assert_eq!(app.bible.book, 42);
     assert_eq!(app.bible.chapter, 3);
     assert_eq!(app.bible.selected, BTreeSet::from([16]));
+    let _ = app.update(Msg::Bible(BibleMsg::TextMode(false)));
+    assert!(
+        app.bible.results.is_empty(),
+        "leaving text mode clears results"
+    );
+}
+
+#[test]
+fn submit_in_text_mode_jumps_to_the_first_result() {
+    let mut app = app();
+    let _ = app.update(Msg::Bible(BibleMsg::TextMode(true)));
+    let _ = app.update(Msg::Bible(BibleMsg::Input("so loved".into())));
+    let _ = app.update(Msg::Bible(BibleMsg::Submit));
+    assert_eq!(app.bible.selected, BTreeSet::from([16]));
+}
+
+#[test]
+fn preview_slides_follow_the_selection() {
+    let mut app = app();
+    app.bible.book = 42;
+    app.bible.chapter = 3;
+    assert!(
+        !sda_app::state::bible::preview_slides(&app).is_empty(),
+        "whole chapter when nothing is selected"
+    );
+    press(&mut app, 16);
+    let slides = sda_app::state::bible::preview_slides(&app);
+    assert_eq!(slides.len(), 1);
+    match &slides[0] {
+        sda_core::resolve::SlideContent::Verses { reference, verses } => {
+            assert_eq!(reference, "John 3:16");
+            assert_eq!(verses.len(), 1);
+        }
+        _ => panic!("verses slide"),
+    }
+    let _ = app.update(Msg::Bible(BibleMsg::PreviewSlide(5)));
+    assert_eq!(app.bible.preview_slide, 0, "clamped to the slide count");
 }
 
 #[test]

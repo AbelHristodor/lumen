@@ -5,6 +5,8 @@ use crate::msg::{BibleMsg, Msg};
 use crate::state::bible::BibleState;
 use crate::ui_theme;
 use crate::widgets::card::card;
+use crate::widgets::scene_view::{key, scene_view};
+use crate::widgets::segmented::segmented_on_card;
 use iced::widget::{
     Column, Row, button, center, column, container, mouse_area, opaque, pick_list, row, scrollable,
     space, stack, text, text_input,
@@ -12,12 +14,11 @@ use iced::widget::{
 use iced::{Alignment, Element, Fill};
 use sda_core::bible::{VersionInfo, book_name, format_reference};
 use sda_core::i18n::Strings;
+use sda_core::resolve::SlideContent;
 use std::fmt;
 
-/// Id of the reference field. Tests type into it.
-pub const REFERENCE_ID: &str = "bible-ref";
-/// Id of the verse search field.
-pub const SEARCH_ID: &str = "bible-search";
+/// Id of the one search bar. Tests type into it.
+pub const INPUT_ID: &str = "bible-input";
 
 const CHAPTER_COLUMNS: usize = 6;
 
@@ -41,7 +42,7 @@ fn b(m: BibleMsg) -> Msg {
 pub fn show(app: &App) -> Element<'_, Msg> {
     let st = &app.bible;
     let body: Element<'_, Msg> = if st.bible.is_some() {
-        row![books_pane(app), verses_pane(app), search_pane(app)]
+        row![books_pane(app), verses_pane(app), preview_pane(app)]
             .spacing(ui_theme::SPACING)
             .height(Fill)
             .into()
@@ -88,19 +89,32 @@ fn top_row(app: &App) -> Element<'_, Msg> {
         .style(ui_theme::picker)
         .text_size(13)
         .padding([7, 10]);
-    let reference = text_input(&s.bible_reference_hint, &st.reference_input)
-        .id(REFERENCE_ID)
-        .on_input(|t| b(BibleMsg::Reference(t)))
-        .on_submit(b(BibleMsg::Reference(st.reference_input.clone())))
+    let hint = if st.text_mode {
+        &s.bible_search_hint
+    } else {
+        &s.bible_input_hint
+    };
+    let input = text_input(hint, &st.input)
+        .id(INPUT_ID)
+        .on_input(|t| b(BibleMsg::Input(t)))
+        .on_submit(b(BibleMsg::Submit))
         .style(ui_theme::input)
         .padding([6, 10])
         .size(14)
         .width(Fill);
+    let mode = segmented_on_card(
+        [
+            (s.bible_mode_reference.as_str(), false),
+            (s.bible_mode_text.as_str(), true),
+        ],
+        st.text_mode,
+        |on| b(BibleMsg::TextMode(on)),
+    );
     let manage = button(text(&s.bible_manage).size(13))
         .padding([6, 12])
         .style(ui_theme::ghost_button)
         .on_press(b(BibleMsg::ManageOpen));
-    row![picker, reference, manage]
+    row![picker, input, mode, manage]
         .spacing(ui_theme::SPACING)
         .align_y(Alignment::Center)
         .into()
@@ -220,22 +234,11 @@ fn verses_pane(app: &App) -> Element<'_, Msg> {
         .as_deref()
         .map(|v| st.abbreviation(v))
         .unwrap_or_default();
-    let present = button(text(&s.bible_present_selected).size(13))
-        .padding([6, 14])
-        .style(ui_theme::accent_button)
-        .on_press_maybe((!st.selected.is_empty()).then_some(b(BibleMsg::Present)));
-    let clear = button(text(&s.clear_selection).size(13))
-        .padding([6, 12])
-        .style(ui_theme::ghost_button)
-        .on_press_maybe((!st.selected.is_empty()).then_some(b(BibleMsg::ClearSelection)));
     let header = row![
         text(title).size(16).font(ui_theme::BOLD),
         container(text(abbr).size(12))
             .padding([2, 8])
             .style(ui_theme::chip),
-        space::horizontal(),
-        clear,
-        present,
     ]
     .spacing(ui_theme::SPACING)
     .align_y(Alignment::Center);
@@ -279,52 +282,110 @@ fn verses_pane(app: &App) -> Element<'_, Msg> {
         .into()
 }
 
-fn search_pane(app: &App) -> Element<'_, Msg> {
+const PREVIEW_WIDTH: f32 = 320.0;
+const PREVIEW_H: f32 = (PREVIEW_WIDTH - 2.0 * ui_theme::SPACING) * 9.0 / 16.0;
+
+fn preview_pane(app: &App) -> Element<'_, Msg> {
     let s = &app.core.strings;
     let st = &app.bible;
     let lang = app.core.language;
-    let field = text_input(&s.bible_search_hint, &st.query)
-        .id(SEARCH_ID)
-        .on_input(|t| b(BibleMsg::Search(t)))
-        .style(ui_theme::input)
-        .padding([6, 10])
-        .size(13)
-        .width(Fill);
-    let results = Column::with_children(st.results.iter().map(|(r, verse)| {
-        let label = format_reference(r, lang);
-        button(
-            column![
-                text(label.clone()).size(12).font(ui_theme::BOLD),
-                text(verse.as_str()).size(12).color(ui_theme::MUTED),
-            ]
-            .spacing(2),
-        )
-        .padding([6, 8])
-        .width(Fill)
-        .style(ui_theme::ghost_button)
-        .on_press(b(BibleMsg::Reference(label)))
-        .into()
-    }))
-    .spacing(4);
-    let body: Element<'_, Msg> = if st.results.is_empty() {
-        center(
-            text(&s.bible_search_empty)
-                .size(13)
-                .color(ui_theme::MUTED)
-                .center(),
-        )
-        .padding(ui_theme::SPACING)
-        .into()
-    } else {
-        scrollable(gutter(results))
-            .direction(thin_scrollbar())
-            .height(Fill)
-            .into()
+    let slides = crate::state::bible::preview_slides(app);
+    let count = slides.len();
+    let i = st.preview_slide.min(count.saturating_sub(1));
+    let w = PREVIEW_WIDTH - 2.0 * ui_theme::SPACING;
+    let frame: Element<'_, Msg> = match slides.get(i) {
+        None => center(text(&s.bible_preview_empty).size(13).color(ui_theme::MUTED)).into(),
+        Some(content) if app.gpu_ok => {
+            match crate::state::bible::preview_scene(
+                app,
+                content,
+                (w as u32 * 2, PREVIEW_H as u32 * 2),
+            ) {
+                Some(scene) => scene_view(key("bible_preview"), scene),
+                None => space::horizontal().into(),
+            }
+        }
+        Some(SlideContent::Verses { verses, .. }) => {
+            let body: String = verses
+                .iter()
+                .map(|(n, v)| format!("{n} {v}"))
+                .collect::<Vec<_>>()
+                .join("\n");
+            container(text(body).size(12).center())
+                .padding(ui_theme::SPACING)
+                .into()
+        }
+        Some(_) => space::horizontal().into(),
     };
-    card(column![field, body].spacing(ui_theme::SPACING))
-        .width(280)
-        .height(Fill)
-        .into()
+    let frame = container(frame)
+        .width(w)
+        .height(PREVIEW_H)
+        .align_x(Alignment::Center)
+        .align_y(Alignment::Center)
+        .style(ui_theme::thumb_frame);
+    let nav = |label: &'static str, target: Option<usize>| {
+        button(text(label).size(13))
+            .padding([4, 10])
+            .style(ui_theme::ghost_button)
+            .on_press_maybe(target.map(|t| b(BibleMsg::PreviewSlide(t))))
+    };
+    let counter = row![
+        nav("‹", (i > 0).then(|| i - 1)),
+        container(text(format!("{} / {}", i + 1, count.max(1))).size(12))
+            .padding([3, 8])
+            .style(ui_theme::chip),
+        nav("›", (i + 1 < count).then_some(i + 1)),
+    ]
+    .spacing(4)
+    .align_y(Alignment::Center);
+    let clear = button(text(&s.clear_selection).size(13))
+        .padding([6, 12])
+        .style(ui_theme::ghost_button)
+        .on_press_maybe((!st.selected.is_empty()).then_some(b(BibleMsg::ClearSelection)));
+    let present = button(text(&s.bible_present_selected).size(13))
+        .padding([6, 14])
+        .style(ui_theme::accent_button)
+        .on_press_maybe((count > 0).then_some(b(BibleMsg::Present)));
+    let actions = row![counter, space::horizontal(), clear, present]
+        .spacing(ui_theme::SPACING / 2.0)
+        .align_y(Alignment::Center);
+    let mut col = column![heading(&s.preview), frame, actions].spacing(ui_theme::SPACING);
+    if st.text_mode {
+        let results = Column::with_children(st.results.iter().map(|(r, verse)| {
+            button(
+                column![
+                    text(format_reference(r, lang))
+                        .size(12)
+                        .font(ui_theme::BOLD),
+                    text(verse.as_str()).size(12).color(ui_theme::MUTED),
+                ]
+                .spacing(2),
+            )
+            .padding([6, 8])
+            .width(Fill)
+            .style(ui_theme::ghost_button)
+            .on_press(b(BibleMsg::Jump(*r)))
+            .into()
+        }))
+        .spacing(4);
+        let list: Element<'_, Msg> = if st.results.is_empty() {
+            center(
+                text(&s.bible_search_empty)
+                    .size(13)
+                    .color(ui_theme::MUTED)
+                    .center(),
+            )
+            .padding(ui_theme::SPACING)
+            .into()
+        } else {
+            scrollable(gutter(results))
+                .direction(thin_scrollbar())
+                .height(Fill)
+                .into()
+        };
+        col = col.push(list);
+    }
+    card(col).width(PREVIEW_WIDTH).height(Fill).into()
 }
 
 fn manage_modal(app: &App) -> Element<'_, Msg> {

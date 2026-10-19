@@ -9,14 +9,14 @@ use sda_core::bible::{
     parse_reference, verse_slides,
 };
 use sda_core::present::{Presentation, Source};
-use sda_core::resolve::verse_box_pt;
+use sda_core::resolve::{SlideContent, verse_box_pt};
 use sda_core::sync::sync_file;
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 pub struct BibleState {
-    pub reference_input: String,
+    pub input: String,
     /// Code of the loaded version, for example `en_kjv`.
     pub version: Option<String>,
     pub bible: Option<Arc<Bible>>,
@@ -30,7 +30,10 @@ pub struct BibleState {
     /// The selection right after the press that began the drag. Each
     /// `Enter` rebuilds the selection from it plus the drag range.
     pub drag_base: BTreeSet<u32>,
-    pub query: String,
+    /// Text mode: the bar searches verse text instead of parsing a reference.
+    pub text_mode: bool,
+    /// Which packed slide the preview pane shows.
+    pub preview_slide: usize,
     pub results: Vec<(Reference, String)>,
     pub manage_open: bool,
     pub index: Vec<VersionInfo>,
@@ -44,7 +47,7 @@ pub struct BibleState {
 impl Default for BibleState {
     fn default() -> Self {
         BibleState {
-            reference_input: String::new(),
+            input: String::new(),
             version: None,
             bible: None,
             book: 0,
@@ -53,7 +56,8 @@ impl Default for BibleState {
             anchor: None,
             dragging: false,
             drag_base: BTreeSet::new(),
-            query: String::new(),
+            text_mode: false,
+            preview_slide: 0,
             results: Vec::new(),
             manage_open: false,
             index: Vec::new(),
@@ -124,6 +128,12 @@ impl BibleState {
             None => BTreeSet::new(),
         };
         self.anchor = None;
+        self.selection_changed();
+    }
+
+    /// The preview starts over on the first slide.
+    fn selection_changed(&mut self) {
+        self.preview_slide = 0;
     }
 
     /// Replace the drag range. Verses selected before the drag began stay.
@@ -131,6 +141,7 @@ impl BibleState {
         let Some(a) = self.anchor else { return };
         self.selected = self.drag_base.clone();
         self.selected.extend(a.min(n)..=a.max(n));
+        self.selection_changed();
     }
 }
 
@@ -271,8 +282,8 @@ pub fn opened(app: &mut App) -> Task<Msg> {
 
 fn run_search(app: &mut App) {
     app.bible.results = match &app.bible.bible {
-        Some(b) if !app.bible.query.trim().is_empty() => {
-            bible::search(b, &app.bible.query, SEARCH_LIMIT)
+        Some(b) if app.bible.text_mode && !app.bible.input.trim().is_empty() => {
+            bible::search(b, &app.bible.input, SEARCH_LIMIT)
         }
         _ => Vec::new(),
     };
@@ -282,38 +293,94 @@ fn present(app: &mut App) {
     let Some(b) = app.bible.bible.clone() else {
         return;
     };
-    let lang = app.core.language;
-    let r = app.bible.reference();
-    let verses: Vec<(u32, String)> = bible::verses(&b, &r)
-        .into_iter()
-        .filter(|(n, _)| app.bible.selected.is_empty() || app.bible.selected.contains(n))
-        .collect();
-    if verses.is_empty() {
+    let slides = preview_slides(app);
+    if slides.is_empty() {
         return;
     }
-    let reference = format_reference(&r, lang);
+    let reference = format_reference(&app.bible.reference(), app.core.language);
     let version = app.bible.version.clone().unwrap_or_else(|| b.code.clone());
-    let theme = &app.live.theme;
-    let groups = pack_verses(&verses, fits_heuristic(theme, verse_box_pt(theme)));
     app.live.go(Presentation {
         title: reference.clone(),
         subtitle: Some(app.bible.abbreviation(&version)),
-        slides: verse_slides(&r, &groups, lang),
+        slides,
         source: Source::Bible { version, reference },
         ..Presentation::default()
     });
+}
+
+/// The packed slides the preview pane shows: the selection, or the whole
+/// chapter when nothing is selected. Resolved under the live theme.
+pub fn preview_slides(app: &App) -> Vec<SlideContent> {
+    let Some(b) = &app.bible.bible else {
+        return Vec::new();
+    };
+    let r = app.bible.reference();
+    let verses: Vec<(u32, String)> = bible::verses(b, &r)
+        .into_iter()
+        .filter(|(n, _)| app.bible.selected.is_empty() || app.bible.selected.contains(n))
+        .collect();
+    let theme = &app.live.theme;
+    let groups = pack_verses(&verses, fits_heuristic(theme, verse_box_pt(theme)));
+    verse_slides(&r, &groups, app.core.language)
+}
+
+/// A static scene of one verses slide under the live theme, same shape the
+/// Present preview uses.
+pub fn preview_scene(
+    app: &App,
+    content: &SlideContent,
+    size: (u32, u32),
+) -> Option<Arc<sda_render::Scene>> {
+    let theme = &app.live.theme;
+    let footer = theme.footer.then(|| {
+        app.bible
+            .version
+            .as_deref()
+            .map(|v| app.bible.abbreviation(v))
+            .unwrap_or_default()
+    });
+    let resolved = Arc::new(sda_core::resolve::resolve(
+        theme,
+        content,
+        footer.as_deref(),
+    )?);
+    Some(crate::state::present::still(
+        theme,
+        &app.live.bitmaps,
+        sda_render::Layer::Text(resolved),
+        size,
+    ))
 }
 
 pub fn update(app: &mut App, msg: BibleMsg) -> Task<Msg> {
     let dir = app.core.paths.bibles_dir.clone();
     match msg {
         BibleMsg::Opened => return opened(app),
-        BibleMsg::Reference(text) => {
-            if let Some(r) = parse_reference(&text, app.core.language) {
+        BibleMsg::Input(text) => {
+            app.bible.input = text;
+            if app.bible.text_mode {
+                run_search(app);
+            } else if let Some(r) = parse_reference(&app.bible.input, app.core.language) {
                 app.bible.jump(r);
             }
-            app.bible.reference_input = text;
         }
+        BibleMsg::Submit => {
+            if app.bible.text_mode
+                && let Some(r) = app.bible.results.first().map(|(r, _)| *r)
+            {
+                app.bible.jump(r);
+            }
+        }
+        BibleMsg::TextMode(on) => {
+            app.bible.text_mode = on;
+            app.bible.input.clear();
+            run_search(app);
+        }
+        BibleMsg::PreviewSlide(i) => {
+            let n = preview_slides(app).len();
+            app.bible.preview_slide = i.min(n.saturating_sub(1));
+        }
+        BibleMsg::Jump(r) => app.bible.jump(r),
         BibleMsg::Version(code) => {
             if app.bible.busy.is_some() {
                 return Task::none();
@@ -327,11 +394,13 @@ pub fn update(app: &mut App, msg: BibleMsg) -> Task<Msg> {
             app.bible.chapter = 1;
             app.bible.selected.clear();
             app.bible.anchor = None;
+            app.bible.selection_changed();
         }
         BibleMsg::Chapter(c) => {
             app.bible.chapter = c.max(1);
             app.bible.selected.clear();
             app.bible.anchor = None;
+            app.bible.selection_changed();
         }
         BibleMsg::Press(n) => {
             if app.modifiers.shift()
@@ -346,6 +415,7 @@ pub fn update(app: &mut App, msg: BibleMsg) -> Task<Msg> {
                 app.bible.drag_base = app.bible.selected.clone();
                 app.bible.dragging = true;
             }
+            app.bible.selection_changed();
         }
         BibleMsg::Enter(n) => {
             if app.bible.dragging {
@@ -356,10 +426,7 @@ pub fn update(app: &mut App, msg: BibleMsg) -> Task<Msg> {
         BibleMsg::ClearSelection => {
             app.bible.selected.clear();
             app.bible.anchor = None;
-        }
-        BibleMsg::Search(q) => {
-            app.bible.query = q;
-            run_search(app);
+            app.bible.selection_changed();
         }
         BibleMsg::Present => present(app),
         BibleMsg::ManageOpen => {

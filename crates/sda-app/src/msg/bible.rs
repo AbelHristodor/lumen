@@ -1,13 +1,21 @@
 //! Bible tab messages. Owned by the Bible tab task.
 
-use sda_core::bible::{Bible, VersionInfo};
+use sda_core::bible::{Bible, Reference, VersionInfo};
 use std::sync::Arc;
 
 #[derive(Debug, Clone)]
 pub enum BibleMsg {
     /// The tab body came into view. Loads the saved version once.
     Opened,
-    Reference(String),
+    /// Typed into the one bar. A reference in Ref mode, a query in Text mode.
+    Input(String),
+    /// Enter in the bar. In Text mode jumps to the first result.
+    Submit,
+    TextMode(bool),
+    /// Which packed slide the preview pane shows.
+    PreviewSlide(usize),
+    /// A search result was picked.
+    Jump(Reference),
     Version(String),
     Book(usize),
     Chapter(u32),
@@ -19,7 +27,6 @@ pub enum BibleMsg {
     /// Mouse up anywhere on the list. Ends a drag.
     Release,
     ClearSelection,
-    Search(String),
     Present,
     ManageOpen,
     ManageClose,

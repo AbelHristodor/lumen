@@ -367,7 +367,7 @@ fn background(theme: &Theme, bitmaps: &HashMap<PathBuf, Arc<image::RgbaImage>>) 
     }
 }
 
-fn still(
+pub(crate) fn still(
     theme: &Theme,
     bitmaps: &HashMap<PathBuf, Arc<image::RgbaImage>>,
     layer: Layer,
