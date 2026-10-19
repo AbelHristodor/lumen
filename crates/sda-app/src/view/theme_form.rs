@@ -59,6 +59,14 @@ struct Inherited {
     spacing: Option<String>,
 }
 
+fn align_label(s: &Strings, a: HAlign) -> String {
+    match a {
+        HAlign::Left => s.align_left.clone(),
+        HAlign::Center => s.align_center.clone(),
+        HAlign::Right => s.align_right.clone(),
+    }
+}
+
 fn inherited(app: &App) -> Inherited {
     let s = &app.core.strings;
     let Some(paragraph) = selected_hymn(app)
@@ -69,11 +77,7 @@ fn inherited(app: &App) -> Inherited {
         return Inherited::default();
     };
     let run = paragraph.runs.first();
-    let align = |a: HAlign| match a {
-        HAlign::Left => s.align_left.clone(),
-        HAlign::Center => s.align_center.clone(),
-        HAlign::Right => s.align_right.clone(),
-    };
+    let align = |a| align_label(s, a);
     Inherited {
         font: run.and_then(|r| r.font.clone()),
         size: run.and_then(|r| r.size_pt).map(|pt| format!("{pt:.0}pt")),
@@ -541,7 +545,7 @@ fn reference_section<'a>(app: &'a App, d: &'a Theme) -> Element<'a, Msg> {
             .to_string(),
         ),
         color: Some(r.color.resolve(None, Rgba::WHITE).to_hex()),
-        h_align: None,
+        h_align: Some(align_label(s, r.h_align.resolve(None, HAlign::Center))),
         spacing: Some(format!("{:.2}", r.line_spacing.resolve(None, 1.1))),
     };
     text_style_section(
@@ -778,19 +782,23 @@ fn footer_section<'a>(app: &'a App, d: &'a Theme) -> Element<'a, Msg> {
     )
 }
 
-/// The left and right form columns. The preview sits above the left one.
-pub fn columns(app: &App) -> (Element<'_, Msg>, Element<'_, Msg>) {
+/// The left form column: Text and Reference. The preview sits above it.
+pub fn left_column(app: &App) -> Element<'_, Msg> {
     let d = &app.themes.draft;
-    let left = column![text_section(app, d), reference_section(app, d)]
+    column![text_section(app, d), reference_section(app, d)]
         .spacing(ui_theme::SPACING)
-        .into();
-    let right = column![
+        .into()
+}
+
+/// The right form column: Background, Transition, Verses, Footer.
+pub fn right_column(app: &App) -> Element<'_, Msg> {
+    let d = &app.themes.draft;
+    column![
         background_section(app, d),
         transition_section(app, d),
         verses_section(app, d),
         footer_section(app, d),
     ]
     .spacing(ui_theme::SPACING)
-    .into();
-    (left, right)
+    .into()
 }

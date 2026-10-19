@@ -372,11 +372,11 @@ fn scroll_column(body: Element<'_, Msg>) -> Element<'_, Msg> {
 /// Two scrolling columns. The left one holds the preview, filling its
 /// width, above the text and reference sections.
 fn editor(app: &App) -> Element<'_, Msg> {
-    let right = theme_form::columns(app).1;
+    let right = theme_form::right_column(app);
     let left = responsive(move |avail| {
         // The card padding on both sides and the scrollbar gutter.
         let w = avail.width - 2.0 * ui_theme::SPACING - SCROLL_GUTTER;
-        let form = theme_form::columns(app).0;
+        let form = theme_form::left_column(app);
         scroll_column(
             column![preview(app, w), form]
                 .spacing(ui_theme::SPACING)

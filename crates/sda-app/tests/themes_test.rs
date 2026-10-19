@@ -459,3 +459,39 @@ fn reference_section_shows_in_the_form() {
     assert!(ui.find("Smallest text size").is_ok());
     assert!(ui.find("Per slide").is_err());
 }
+
+#[test]
+fn reference_stash_does_not_leak_between_themes() {
+    let mut app = themes_app();
+    send(&mut app, ThemesMsg::New);
+    let theme_a = app.themes.draft.name.clone();
+    send(
+        &mut app,
+        ThemesMsg::Draft(DraftEdit::Reference(Box::new(DraftEdit::Color(Rgba::new(
+            9, 8, 7, 255,
+        ))))),
+    );
+    send(
+        &mut app,
+        ThemesMsg::Draft(DraftEdit::Reference(Box::new(DraftEdit::ColorInherit(
+            true,
+        )))),
+    );
+    assert_eq!(app.themes.draft.reference.color, Prop::Inherit);
+    send(&mut app, ThemesMsg::Select(0));
+    assert_ne!(
+        app.themes.draft.name, theme_a,
+        "a different draft is loaded"
+    );
+    send(
+        &mut app,
+        ThemesMsg::Draft(DraftEdit::Reference(Box::new(DraftEdit::ColorInherit(
+            false,
+        )))),
+    );
+    assert_eq!(
+        app.themes.draft.reference.color,
+        Prop::Set(Rgba::WHITE),
+        "fallback, not theme A's color"
+    );
+}

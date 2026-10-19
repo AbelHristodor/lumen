@@ -603,6 +603,7 @@ fn reload_and_select(app: &mut App, name: &str) {
     app.themes.draft_index = i;
     app.themes.hex_edit = None;
     app.themes.stash = InheritStash::default();
+    app.themes.ref_stash = InheritStash::default();
 }
 
 /// Write `theme` to disk and select it.
@@ -739,6 +740,7 @@ pub fn update(app: &mut App, msg: ThemesMsg) -> Task<Msg> {
                 app.themes.draft_index = i;
                 app.themes.hex_edit = None;
                 app.themes.stash = InheritStash::default();
+                app.themes.ref_stash = InheritStash::default();
                 app.themes.error = None;
             }
             Task::none()
