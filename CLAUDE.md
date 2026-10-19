@@ -247,8 +247,9 @@ clicked verse, and dragging selects a range. `shortcuts::filter` forwards
   chapter and verse and `-` for ranges, after folding. `search` folds both
   sides and scans all verses.
   `pack_verses` groups a selection into as few slides as fit under
-  `fits_heuristic`, a character count estimate of the verse box at the theme's
-  `min_size`. Each slide carries its own reference range.
+  `fits_heuristic`, a character count estimate of the verse box at the larger
+  of the theme's `min_size` and a fixed text size. Each slide carries its own
+  reference range.
 
 ### As-is pipeline
 
