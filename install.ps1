@@ -34,8 +34,8 @@ Remove-Item -Recurse -Force $tmp
 
 Write-Host "Installed lumen.exe to $installDir"
 
-# Before the rename the app lived in Programs\sda-manager.
-$oldDir = Join-Path $env:LOCALAPPDATA "Programs\sda-manager"
+# v1.x installed to Programs\hymnal-gui.
+$oldDir = Join-Path $env:LOCALAPPDATA "Programs\hymnal-gui"
 Remove-Item -Recurse -Force $oldDir -ErrorAction SilentlyContinue
 
 # Create a Desktop shortcut pointing at the installed exe. GetFolderPath resolves

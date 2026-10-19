@@ -55,10 +55,11 @@ edition 2024 and let chains.
 - The `hymns` job zips `assets/920` into `hymns.zip`. The app downloads it on
   first run and whenever its ETag changes. Hymn edits reach users on the next
   release. A push alone does nothing.
-- The binary was `sda-manager` and the repo `sda_manager` before the rename to
-  Lumen. Release archives also carry `sda-manager-<target>/sda-manager` so old
-  installs can still self update. Config paths, themes dir, and hymns sync are
-  unchanged from 2.x.
+- v1.x shipped the binary `hymnal-gui` from the repo `sda_manager`. GitHub
+  redirects the old repo. Release archives also carry
+  `hymnal-gui-<target>/hymnal-gui` so v1.x installs can still self update.
+  The installers remove the v1.x binary, folder, and PATH entry. Config
+  paths, themes dir, and hymns sync are unchanged from 1.x.
 
 ## Architecture
 

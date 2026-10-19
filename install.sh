@@ -62,8 +62,8 @@ install -m 0755 "$tmp/lumen-${target}/lumen" "$BIN_DIR/lumen"
 
 echo "Installed lumen to $BIN_DIR/lumen"
 
-# Before the rename the binary was sda-manager.
-rm -f "$BIN_DIR/sda-manager"
+# v1.x installed the binary as hymnal-gui.
+rm -f "$BIN_DIR/hymnal-gui"
 
 if [ "$os" = "Darwin" ] && [ -d "$tmp/lumen-${target}/Lumen.app" ]; then
   mkdir -p "$HOME/Applications"
