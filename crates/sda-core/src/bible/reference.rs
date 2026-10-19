@@ -119,12 +119,18 @@ fn match_book_in(book: &str, lang: Language) -> Option<usize> {
     }
 }
 
-/// Parse `3`, `3:16`, `3,16`, `3:16-18`, or `3:16–18`.
+/// Parse `3`, `3:16`, `3,16`, `3 16`, `3:16-18`, `3 16-18`, or `3:16–18`.
+/// More than one space separated group after the chapter is an error.
 fn parse_chapter_verses(rest: &str) -> Option<(u32, Option<(u32, u32)>)> {
     let compact: String = rest.chars().filter(|c| !c.is_whitespace()).collect();
-    let (chapter_s, verse_s) = match compact.split_once([':', ',']) {
+    let words: Vec<&str> = rest.split_whitespace().collect();
+    let (chapter_s, verse_s): (&str, Option<&str>) = match compact.split_once([':', ',']) {
         Some((c, v)) => (c, Some(v)),
-        None => (compact.as_str(), None),
+        None => match words.as_slice() {
+            [c] => (c, None),
+            [c, v] => (c, Some(v)),
+            _ => return None,
+        },
     };
     let chapter: u32 = chapter_s.parse().ok().filter(|c| *c > 0)?;
     let verses = match verse_s {

@@ -114,3 +114,28 @@ fn index_parses_bare_abbreviations() {
     assert_eq!(v[1].code, "ro_vdc");
     assert_eq!(v[1].abbreviation, "vdc");
 }
+
+#[test]
+fn parses_space_separated_chapter_and_verses() {
+    let r = |s: &str| parse_reference(s, Language::En);
+    let mat = |chapter, verses| {
+        Some(Reference {
+            book: 39,
+            chapter,
+            verses,
+        })
+    };
+    assert_eq!(r("mat 10"), mat(10, None));
+    assert_eq!(r("mat 10 1"), mat(10, Some((1, 1))));
+    assert_eq!(r("matthew 10 1-5"), mat(10, Some((1, 5))));
+    assert_eq!(r("mat 10:1"), mat(10, Some((1, 1))));
+    assert_eq!(r("mat 10 1 5"), None);
+    assert_eq!(
+        r("1 sam 2 1"),
+        Some(Reference {
+            book: 8,
+            chapter: 2,
+            verses: Some((1, 1))
+        })
+    );
+}
