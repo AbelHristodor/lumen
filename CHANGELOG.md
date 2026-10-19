@@ -1,6 +1,6 @@
 # Changelog
 
-## 2.1.0
+## v2.1.0
 
 - Bible: click a verse to select it, Shift click or drag for a range. The checkbox and "Select to here" are gone.
 - Bible: one search bar. `mat 10 1` opens Matthew 10:1, `matthew 10 1-5` selects 1 to 5. A Ref | Text toggle switches to text search.
