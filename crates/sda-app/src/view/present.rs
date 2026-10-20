@@ -4,11 +4,14 @@
 
 use crate::app::App;
 use crate::msg::{Msg, PresentMsg, ThemesMsg};
+use crate::shortcuts::Action;
 use crate::state::present::{self as st, MAX_THUMBS, relative_time};
 use crate::ui_theme::{self, SPACING};
 use crate::view::shell::shorten;
 use crate::view::themes::theme_tile;
 use crate::widgets::card::card;
+use crate::widgets::hint::labeled;
+use crate::widgets::icon::{self, Icon};
 use crate::widgets::scene_view::{key, scene_view};
 use iced::widget::{
     Id, button, column, container, responsive, row, scrollable, space, stack, text, text_input,
@@ -57,6 +60,7 @@ fn search_panel(app: &App) -> Element<'_, Msg> {
             .id(Id::new(SEARCH_ID))
             .on_input(Msg::Search)
             .on_submit(Msg::GoLive)
+            .icon(icon::input_icon(Icon::Search, 14.0))
             .style(ui_theme::input)
             .padding(10)
             .size(14),
@@ -252,10 +256,15 @@ fn actions(app: &App) -> Element<'_, Msg> {
     let s = &app.core.strings;
     let p = &app.present;
     let selected = st::selected_hymn(app).map(|(_, h)| h);
-    let go_live = button(text(&s.go_live).size(14))
-        .padding([9, 18])
-        .style(ui_theme::accent_button)
-        .on_press_maybe(selected.map(|_| Msg::GoLiveAt(p.preview_slide)));
+    let go_live = button(labeled(
+        Some(Icon::Play),
+        &s.go_live,
+        14.0,
+        Some(Action::Present),
+    ))
+    .padding([9, 18])
+    .style(ui_theme::accent_button)
+    .on_press_maybe(selected.map(|_| Msg::GoLiveAt(p.preview_slide)));
     let mut actions = row![go_live].spacing(SPACING).align_y(Alignment::Center);
     if p.as_is_busy {
         actions = actions.push(

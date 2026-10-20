@@ -2,13 +2,41 @@
 
 ## v2.1.0
 
-- Bible: click a verse to select it, Shift click or drag for a range. The checkbox and "Select to here" are gone.
-- Bible: one search bar. `mat 10 1` opens Matthew 10:1, `matthew 10 1-5` selects 1 to 5. A Ref | Text toggle switches to text search.
-- Bible: a preview pane shows the slides before they go to the projector.
+### Bible
+
+- Click a verse to select it, Shift click or drag for a range. The checkbox and "Select to here" are gone.
+- One search bar. `mat 10 1` opens Matthew 10:1, `matthew 10 1-5` selects 1 to 5. A Ref | Text toggle switches to text search. Enter presents from the bar.
+- A preview pane shows the slides before they go to the projector, with a History card under it like the one on Present. Each presented selection is one row, click to restore.
+- Wider preview pane, a reading width cap on the verse list, short button labels, a cog for the Bibles dialog, and a filter inside it.
+- Book names and references follow the Bible's language, not the UI language.
+
+### Verses on the projector
+
 - Verses pack into as few slides as fit. Every slide shows its own verse range. "Per slide" became "Smallest text size".
-- Themes: the reference on verse slides has its own font, size, color, alignment, and position.
-- Themes: two column editor, the preview fills the column, a Hymn | Bible sample toggle.
-- Present: the Notes card became a History card.
+- Verses flow into one wrapped paragraph with a 10% side margin. Verse numbers are small superscripts.
+- Auto size stops at 40 pt, so one short verse no longer fills the screen. A fixed theme size is not capped.
+- The reference is half the height of its band, regular weight and a little faded, so it no longer competes with the verses.
+
+### Hymns
+
+- Padding spaces and tabs at line ends are dropped, blank edge lines too, and a lone centered text box is centered on the slide. Many files place the box off center.
+
+### Themes
+
+- Fourteen bundled themes: Clean, Paper, Slate, Midnight, Ember, Gold, Ocean, Forest, Dawn, Stone, Aurora, Candlelight, Sanctuary, and Glass. They are written once into the themes folder and can be edited or deleted. Photos are CC0, see `assets/backgrounds/CREDITS.md`.
+- The reference on verse slides has its own font, size, color, alignment, and position.
+- Two column editor, the preview fills the column, a Hymn | Bible sample toggle. The background type is a pick list, so it fits the form at any window width.
+- Themes list in name order, Default first.
+
+### Keyboard and icons
+
+- One shortcut table drives the keys, the key pills on buttons, and a sheet behind ⌘/ or the ? button.
+- Enter presents on Present and Bible. Esc clears the search or selection and closes dialogs. Stop moved from Esc to ⌘. so a stray Esc never blanks the hall. ⌘K or ⌘F focus the search of the current tab, → or Space is next, [ and ] step the Bible preview.
+- Icons from a Lucide subset on the live strip, Go Live, Present, the search bars, and the Bibles cog.
+
+### Present
+
+- The Notes card became a History card.
 
 ## v2.0.1
 

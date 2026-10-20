@@ -20,6 +20,10 @@ const AUTO_MIN_PT: f32 = 12.0;
 /// Floor for the scaled minimum, in pixels.
 const AUTO_MIN_PX: f32 = 4.0;
 const AUTO_MAX_PT: f32 = 400.0;
+/// Superscript runs at this fraction of the line's size, raised by
+/// `SUPERSCRIPT_RAISE` of the line height.
+const SUPERSCRIPT_SCALE: f32 = 0.6;
+const SUPERSCRIPT_RAISE: f32 = 0.3;
 const FOOTER_SCALE: f32 = 0.03;
 const FOOTER_MARGIN: f32 = 0.02;
 const FOOTER_OPACITY: f32 = 0.7;
@@ -96,8 +100,9 @@ impl TextRaster {
         // One span per run. Runs keep their index in `metadata` so painting
         // can look up color, opacity, shadow, and outline per glyph. `k`
         // scales every fixed size in the box by the same factor so mixed
-        // sizes keep their ratios.
-        let spans_at = |k: f32| -> Vec<(&str, Attrs)> {
+        // sizes keep their ratios. `auto_pt` is the trial size of an auto
+        // box, where only superscript runs carry their own metrics.
+        let spans_at = |auto_pt: Option<f32>, k: f32| -> Vec<(&str, Attrs)> {
             let mut spans = Vec::new();
             let mut idx = 0;
             for (li, line) in b.lines.iter().enumerate() {
@@ -118,12 +123,18 @@ impl TextRaster {
                             Style::Normal
                         })
                         .metadata(idx);
-                    if !auto {
-                        let pt = match run.size {
-                            TextSize::Pt(p) => p * px_per_pt,
-                            TextSize::Auto => fixed_pt,
-                        } * k;
-                        a = a.metrics(Metrics::new(pt, pt * line.spacing));
+                    let base = match (auto_pt, run.size) {
+                        (Some(p), _) => p,
+                        (None, TextSize::Pt(p)) => p * px_per_pt * k,
+                        (None, TextSize::Auto) => fixed_pt * k,
+                    };
+                    let pt = if run.superscript {
+                        base * SUPERSCRIPT_SCALE
+                    } else {
+                        base
+                    };
+                    if !auto || run.superscript {
+                        a = a.metrics(Metrics::new(pt, base * line.spacing));
                     }
                     spans.push((run.text.as_str(), a));
                     idx += 1;
@@ -135,22 +146,32 @@ impl TextRaster {
         let fs = &mut self.font_system;
         let mut buffer = Buffer::new(fs, Metrics::new(fixed_pt, fixed_pt * spacing));
         buffer.set_size(fs, Some(rect.w), None);
-        // Auto boxes keep the author's line breaks and let width bound the
-        // size. Fixed sizes wrap so a long line stays on screen.
-        buffer.set_wrap(fs, if auto { Wrap::None } else { Wrap::Word });
+        // Hymn boxes keep the author's line breaks and let width bound the
+        // auto size. Verse boxes and fixed sizes wrap so a long line stays
+        // on screen.
+        let wrap = if auto && !b.wrap {
+            Wrap::None
+        } else {
+            Wrap::Word
+        };
+        buffer.set_wrap(fs, wrap);
         if auto {
-            buffer.set_rich_text(fs, spans_at(1.0), &Attrs::new(), Shaping::Advanced, None);
-            let pt = sda_core::fit::fit_size(
-                |pt| {
-                    buffer.set_metrics(fs, Metrics::new(pt, pt * spacing));
-                    buffer.shape_until_scroll(fs, false);
-                    measure(&buffer)
-                },
-                (rect.w, rect.h),
-                (AUTO_MIN_PT * px_per_pt).max(AUTO_MIN_PX),
-                AUTO_MAX_PT,
-            );
-            buffer.set_metrics(fs, Metrics::new(pt, pt * spacing));
+            let mut lay = |pt: f32| {
+                buffer.set_rich_text(
+                    fs,
+                    spans_at(Some(pt), 1.0),
+                    &Attrs::new(),
+                    Shaping::Advanced,
+                    None,
+                );
+                buffer.set_metrics(fs, Metrics::new(pt, pt * spacing));
+                buffer.shape_until_scroll(fs, false);
+                measure(&buffer)
+            };
+            let min = (AUTO_MIN_PT * px_per_pt).max(AUTO_MIN_PX);
+            let max = b.max_pt.map_or(AUTO_MAX_PT, |p| p * px_per_pt).max(min);
+            let pt = sda_core::fit::fit_size(&mut lay, (rect.w, rect.h), min, max);
+            lay(pt);
         } else {
             // Fixed sizes shrink as one block when the wrapped text is
             // taller than the box or a word is wider. Never grow above the
@@ -158,7 +179,13 @@ impl TextRaster {
             // stops at half a unit.
             let mut lay = |pct: f32| {
                 let k = pct / 100.0;
-                buffer.set_rich_text(fs, spans_at(k), &Attrs::new(), Shaping::Advanced, None);
+                buffer.set_rich_text(
+                    fs,
+                    spans_at(None, k),
+                    &Attrs::new(),
+                    Shaping::Advanced,
+                    None,
+                );
                 let pt = fixed_pt * k;
                 buffer.set_metrics(fs, Metrics::new(pt, pt * spacing));
                 buffer.shape_until_scroll(fs, false);
@@ -204,6 +231,7 @@ impl TextRaster {
             opacity: FOOTER_OPACITY,
             shadow: None,
             outline: None,
+            superscript: false,
         };
         let line = ResolvedLine {
             align: HAlign::Right,
@@ -255,7 +283,12 @@ impl TextRaster {
                 if stamps.is_empty() {
                     continue;
                 }
-                let phys = g.physical((x0, rect.y + lrun.line_y), 1.0);
+                let raise = if run.superscript {
+                    lrun.line_height * SUPERSCRIPT_RAISE
+                } else {
+                    0.0
+                };
+                let phys = g.physical((x0, rect.y + lrun.line_y - raise), 1.0);
                 let Some(image) = self.swash.get_image(&mut self.font_system, phys.cache_key)
                 else {
                     continue;

@@ -72,6 +72,8 @@ fn styled(text: &str, align: HAlign, size: TextSize, shadow: Option<Shadow>) -> 
                 h: 0.88,
             },
             v_align: VAlign::Middle,
+            wrap: false,
+            max_pt: None,
             lines: text
                 .lines()
                 .map(|l| ResolvedLine {
@@ -87,6 +89,7 @@ fn styled(text: &str, align: HAlign, size: TextSize, shadow: Option<Shadow>) -> 
                         opacity: 1.0,
                         shadow,
                         outline: None,
+                        superscript: false,
                     }],
                 })
                 .collect(),
@@ -304,6 +307,67 @@ fn verses() {
     let mut s = base();
     s.current = Some(Layer::Text(Arc::new(slide)));
     check("verses", &s);
+}
+
+/// A long verse wraps into several lines instead of shrinking to one.
+/// Text must reach well below the first line of the verse frame.
+#[test]
+fn long_verse_wraps() {
+    let slide = sda_core::resolve::resolve(
+        &sda_core::theme::Theme::default(),
+        &sda_core::resolve::SlideContent::Verses {
+            reference: "Genesis 1:2".into(),
+            verses: vec![(
+                2,
+                "And the earth was without form, and void; and darkness was upon the face \
+                 of the deep. And the Spirit of God moved upon the face of the waters."
+                    .into(),
+            )],
+        },
+        None,
+    )
+    .unwrap();
+    let mut s = base();
+    s.current = Some(Layer::Text(Arc::new(slide)));
+    let Some(img) = headless::render_to_image(&s) else {
+        return;
+    };
+    let lit = |y: u32| (0..320).any(|x| img.get_pixel(x, y)[0] > 100);
+    let rows: Vec<u32> = (0..180).filter(|&y| lit(y)).collect();
+    let span = rows.last().unwrap() - rows.first().unwrap();
+    assert!(
+        span > 60,
+        "wrapped text spans {span} rows, expected several lines"
+    );
+    // Nothing inside the 10 percent side margin.
+    assert!(!(0..32).any(|x| (0..180).any(|y| img.get_pixel(x, y)[0] > 100)));
+    check("long_verse_wraps", &s);
+}
+
+/// One short verse stays at the verse cap instead of filling the frame.
+#[test]
+fn short_verse_is_capped() {
+    let slide = sda_core::resolve::resolve(
+        &sda_core::theme::Theme::default(),
+        &sda_core::resolve::SlideContent::Verses {
+            reference: "Genesis 1:1".into(),
+            verses: vec![(1, "In the beginning".into())],
+        },
+        None,
+    )
+    .unwrap();
+    let mut s = base();
+    s.current = Some(Layer::Text(Arc::new(slide)));
+    let Some(img) = headless::render_to_image(&s) else {
+        return;
+    };
+    // Verse frame rows only, above the reference band.
+    let lit = |y: u32| (0..320).any(|x| img.get_pixel(x, y)[0] > 100);
+    let rows: Vec<u32> = (0..140).filter(|&y| lit(y)).collect();
+    let span = rows.last().unwrap() - rows.first().unwrap();
+    // 40 pt on a 720 pt slide is 18 px here, so one line is under 25 rows.
+    assert!(span < 25, "verse spans {span} rows, cap not applied");
+    check("short_verse_capped", &s);
 }
 
 #[test]

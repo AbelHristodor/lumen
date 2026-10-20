@@ -84,24 +84,43 @@ fn stop_closes_the_projector() {
 }
 
 #[test]
-fn escape_maps_to_stop() {
-    let esc = iced::Event::Keyboard(keyboard::Event::KeyPressed {
-        key: keyboard::Key::Named(keyboard::key::Named::Escape),
-        modified_key: keyboard::Key::Named(keyboard::key::Named::Escape),
-        physical_key: keyboard::key::Physical::Unidentified(
-            keyboard::key::NativeCode::Unidentified,
-        ),
-        location: keyboard::Location::Standard,
-        modifiers: keyboard::Modifiers::default(),
-        text: None,
-        repeat: false,
-    });
+fn escape_clears_and_cmd_period_stops() {
+    let key = |k: keyboard::Key, m: keyboard::Modifiers| {
+        iced::Event::Keyboard(keyboard::Event::KeyPressed {
+            key: k.clone(),
+            modified_key: k,
+            physical_key: keyboard::key::Physical::Unidentified(
+                keyboard::key::NativeCode::Unidentified,
+            ),
+            location: keyboard::Location::Standard,
+            modifiers: m,
+            text: None,
+            repeat: false,
+        })
+    };
+    let esc = key(
+        keyboard::Key::Named(keyboard::key::Named::Escape),
+        keyboard::Modifiers::default(),
+    );
     assert!(matches!(
         sda_app::shortcuts::filter(
             esc,
             event::Status::Ignored,
             window::Id::unique(),
             Tab::Present
+        ),
+        Some(Msg::Clear)
+    ));
+    let stop = key(
+        keyboard::Key::Character(".".into()),
+        keyboard::Modifiers::COMMAND,
+    );
+    assert!(matches!(
+        sda_app::shortcuts::filter(
+            stop,
+            event::Status::Ignored,
+            window::Id::unique(),
+            Tab::Bible
         ),
         Some(Msg::LiveStop)
     ));

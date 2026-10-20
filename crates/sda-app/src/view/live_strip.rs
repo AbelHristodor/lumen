@@ -4,7 +4,10 @@
 use crate::app::App;
 use crate::displays;
 use crate::msg::Msg;
+use crate::shortcuts::Action;
 use crate::ui_theme;
+use crate::widgets::hint::{labeled, labeled_end};
+use crate::widgets::icon::Icon;
 use crate::widgets::scene_view::{key, scene_view};
 use iced::widget::{button, column, container, pick_list, row, space, text, tooltip};
 use iced::{Alignment, Element, Fill};
@@ -55,22 +58,37 @@ pub fn show(app: &App) -> Element<'_, Msg> {
             .into()
     };
 
-    let ghost = |label: &str, msg: Option<Msg>| {
-        button(
-            text(label.to_string())
-                .size(13)
-                .wrapping(text::Wrapping::None),
-        )
-        .padding([6, 12])
-        .style(ui_theme::ghost_button)
-        .on_press_maybe(msg)
-    };
+    fn ghost<'a>(body: Element<'a, Msg>, msg: Option<Msg>) -> button::Button<'a, Msg> {
+        button(body)
+            .padding([6, 12])
+            .style(ui_theme::ghost_button)
+            .on_press_maybe(msg)
+    }
     let when = |m: Msg| loaded.then_some(m);
+    // Prev has its arrow on the left, Next on the right, so the pair
+    // reads as a mirror.
     let controls = row![
-        ghost(&s.prev_slide, when(Msg::LivePrev)),
-        ghost(&s.next_slide, when(Msg::LiveNext)),
-        ghost(&s.blank, when(Msg::LiveBlank)),
-        ghost(&s.stop, when(Msg::LiveStop)),
+        ghost(
+            labeled(
+                Some(Icon::ChevronLeft),
+                &s.prev_slide,
+                13.0,
+                Some(Action::Prev)
+            ),
+            when(Msg::LivePrev)
+        ),
+        ghost(
+            labeled_end(Icon::ChevronRight, &s.next_slide, 13.0, Some(Action::Next)),
+            when(Msg::LiveNext)
+        ),
+        ghost(
+            labeled(Some(Icon::EyeOff), &s.blank, 13.0, Some(Action::Blank)),
+            when(Msg::LiveBlank)
+        ),
+        ghost(
+            labeled(Some(Icon::Square), &s.stop, 13.0, Some(Action::Stop)),
+            when(Msg::LiveStop)
+        ),
     ]
     .spacing(ui_theme::SPACING / 2.0);
 
@@ -91,11 +109,17 @@ pub fn show(app: &App) -> Element<'_, Msg> {
     let enough =
         app.displays.len() >= 2 || (displays::single_display_allowed() && !app.displays.is_empty());
     let can_project = app.gpu_ok && (enough || app.projector.is_some());
-    let toggle = button(
-        text(toggle_label.as_str())
-            .size(13)
-            .wrapping(text::Wrapping::None),
-    )
+    let toggle_icon = if app.projector.is_some() {
+        Icon::MonitorOff
+    } else {
+        Icon::Monitor
+    };
+    let toggle = button(labeled(
+        Some(toggle_icon),
+        toggle_label,
+        13.0,
+        Some(Action::Projector),
+    ))
     .padding([6, 14])
     .style(ui_theme::accent_button)
     .on_press_maybe(can_project.then_some(Msg::ProjectorToggle));

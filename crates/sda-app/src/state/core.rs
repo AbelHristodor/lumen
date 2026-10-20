@@ -3,14 +3,14 @@
 
 use sda_core::asis::Converter;
 use sda_core::downloader::DownloadRecord;
-use sda_core::history::HistoryEntry;
+use sda_core::history::{HistoryEntry, VerseHistoryEntry};
 use sda_core::i18n::{Language, Strings};
 use sda_core::library::{self, Config};
 use sda_core::overrides::Overrides;
 use sda_core::refresh;
 use sda_core::search::Searcher;
 use sda_core::store::{json_load, json_save};
-use sda_core::theme::{Theme, store};
+use sda_core::theme::{self, Theme, store};
 use std::path::{Path, PathBuf};
 
 /// Where the app keeps its files.
@@ -18,6 +18,7 @@ use std::path::{Path, PathBuf};
 pub struct Paths {
     pub themes_dir: PathBuf,
     pub history: PathBuf,
+    pub verse_history: PathBuf,
     pub overrides: PathBuf,
     pub downloads: PathBuf,
     pub window: PathBuf,
@@ -34,6 +35,7 @@ impl Paths {
         Paths {
             themes_dir: or(library::themes_dir(), "themes"),
             history: or(library::history_path(), "history.json"),
+            verse_history: or(library::verse_history_path(), "verse_history.json"),
             overrides: or(library::overrides_path(), "overrides.json"),
             downloads: or(library::downloads_path(), "downloads.json"),
             window: or(library::window_path(), "window.json"),
@@ -47,6 +49,7 @@ impl Paths {
         Paths {
             themes_dir: root.join("themes"),
             history: root.join("history.json"),
+            verse_history: root.join("verse_history.json"),
             overrides: root.join("overrides.json"),
             downloads: root.join("downloads.json"),
             window: root.join("window.json"),
@@ -67,6 +70,7 @@ pub struct Core {
     pub themes: Vec<Theme>,
     pub active_theme: Theme,
     pub history: Vec<HistoryEntry>,
+    pub verse_history: Vec<VerseHistoryEntry>,
     pub overrides: Overrides,
     pub downloads: Vec<DownloadRecord>,
     pub converter: Option<Converter>,
@@ -104,6 +108,7 @@ impl Core {
             strings: Strings::for_language(language),
             language,
             history: json_load(&paths.history),
+            verse_history: json_load(&paths.verse_history),
             overrides: json_load(&paths.overrides),
             downloads: json_load(&paths.downloads),
             cfg,
@@ -115,6 +120,7 @@ impl Core {
             converter: None,
             index_gen: 0,
         };
+        theme::bundled::seed(&core.paths.themes_dir);
         core.reload_themes();
         core.active_theme = match core.cfg.active_theme.as_deref() {
             Some(name) => store::load_theme(&core.paths.themes_dir, name).unwrap_or_else(|e| {
@@ -137,6 +143,12 @@ impl Core {
     pub fn save_history(&self) {
         if let Err(e) = json_save(&self.paths.history, &self.history) {
             log::warn!("saving history failed: {e}");
+        }
+    }
+
+    pub fn save_verse_history(&self) {
+        if let Err(e) = json_save(&self.paths.verse_history, &self.verse_history) {
+            log::warn!("saving verse history failed: {e}");
         }
     }
 

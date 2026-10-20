@@ -242,12 +242,14 @@ pub fn pack_verses(
 /// Character width as a fraction of the font size. Latin text averages
 /// about half the em.
 const CHAR_EM: f32 = 0.5;
-/// Characters a verse number and its space take in front of the text.
-const NUMBER_CHARS: usize = 2;
+/// Characters a verse number and its joining space take in front of the
+/// text, plus the space between verses.
+const NUMBER_CHARS: usize = 3;
 
 /// Estimates whether a group of verses fits a box of `box_pt` points at the
 /// theme's smallest verse size, or its fixed size when larger since fixed
-/// size verses never shrink. `box_pt` comes from `resolve::verse_box_pt`.
+/// size verses never shrink. Verses flow into one wrapped paragraph, see
+/// `resolve::resolve_verses`. `box_pt` comes from `resolve::verse_box_pt`.
 // ponytail: character count heuristic. Upgrade is a cosmic-text measure
 // from sda-render passed as the closure at the call site.
 pub fn fits_heuristic(theme: &Theme, box_pt: (f32, f32)) -> impl Fn(&[(u32, String)]) -> bool {
@@ -261,13 +263,11 @@ pub fn fits_heuristic(theme: &Theme, box_pt: (f32, f32)) -> impl Fn(&[(u32, Stri
     let chars_per_line = ((box_pt.0 / (CHAR_EM * size)).floor() as usize).max(1);
     let line_h = size * spacing;
     move |group: &[(u32, String)]| {
-        let lines: usize = group
+        let chars: usize = group
             .iter()
-            .map(|(_, v)| {
-                let chars = v.chars().count() + if numbers { NUMBER_CHARS } else { 0 };
-                chars.div_ceil(chars_per_line).max(1)
-            })
+            .map(|(_, v)| v.chars().count() + if numbers { NUMBER_CHARS } else { 1 })
             .sum();
+        let lines = chars.div_ceil(chars_per_line).max(1);
         lines as f32 * line_h <= box_pt.1
     }
 }

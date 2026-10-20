@@ -156,7 +156,9 @@ fn v3_theme_without_reference_and_with_per_slide_loads() {
     assert_eq!(
         t.reference,
         TextStyle {
+            bold: Prop::Set(false),
             v_align: VAlign::Bottom,
+            opacity: 0.75,
             ..TextStyle::default()
         }
     );

@@ -2,10 +2,16 @@
 
 use crate::app::App;
 use crate::msg::{Msg, Tab};
+use crate::shortcuts::{self, Action};
 use crate::ui_theme;
 use crate::view::{self, live_strip};
+use crate::widgets::hint;
+use crate::widgets::icon::{Icon, icon};
 use crate::widgets::segmented::segmented;
-use iced::widget::{button, column, container, image, row, rule, text, tooltip};
+use iced::widget::{
+    Column, button, center, column, container, image, mouse_area, opaque, row, rule, stack, text,
+    tooltip,
+};
 use iced::{Alignment, Element, Fill};
 use std::sync::OnceLock;
 
@@ -29,14 +35,66 @@ pub fn show(app: &App) -> Element<'_, Msg> {
     if !app.gpu_ok {
         body = body.push(banner(&app.core.strings.gpu_unavailable));
     }
-    body.push(
-        container(content).height(Fill).width(Fill).padding(
-            iced::Padding::ZERO
-                .top(ui_theme::SPACING)
-                .bottom(ui_theme::SPACING),
-        ),
+    let page: Element<'_, Msg> = body
+        .push(
+            container(content).height(Fill).width(Fill).padding(
+                iced::Padding::ZERO
+                    .top(ui_theme::SPACING)
+                    .bottom(ui_theme::SPACING),
+            ),
+        )
+        .push(live_strip::show(app))
+        .into();
+    if app.show_shortcuts {
+        stack![page, opaque(shortcut_sheet(app))].into()
+    } else {
+        page
+    }
+}
+
+/// Every shortcut from the table, one row per action.
+fn shortcut_sheet(app: &App) -> Element<'_, Msg> {
+    let s = &app.core.strings;
+    let close = button(hint::labeled(None, &s.close, 13.0, Some(Action::Clear)))
+        .padding([4, 10])
+        .style(ui_theme::ghost_button)
+        .on_press(Msg::ToggleShortcuts);
+    let header = row![
+        icon(Icon::Keyboard, 18.0),
+        text(&s.shortcuts_title).size(16).font(ui_theme::BOLD),
+        iced::widget::space::horizontal(),
+        close,
+    ]
+    .spacing(ui_theme::SPACING / 2.0)
+    .align_y(Alignment::Center);
+    let rows = Column::with_children(shortcuts::actions().into_iter().map(|a| {
+        row![
+            container(text(shortcuts::hints(a)).size(13).font(ui_theme::BOLD))
+                .width(130)
+                .align_x(iced::Right),
+            text(shortcuts::label(a, s)).size(13).color(ui_theme::TEXT),
+        ]
+        .spacing(ui_theme::SPACING)
+        .align_y(Alignment::Center)
+        .into()
+    }))
+    .spacing(8);
+    let dim = |_: &iced::Theme| container::Style {
+        background: Some(iced::Color::from_rgba(0.0, 0.0, 0.0, 0.6).into()),
+        ..container::Style::default()
+    };
+    mouse_area(
+        center(opaque(
+            container(column![header, rows].spacing(ui_theme::SPACING))
+                .padding(ui_theme::SPACING)
+                .width(440)
+                .style(ui_theme::card),
+        ))
+        .width(Fill)
+        .height(Fill)
+        .style(dim),
     )
-    .push(live_strip::show(app))
+    .on_press(Msg::ToggleShortcuts)
     .into()
 }
 
@@ -135,6 +193,27 @@ fn status_chips(app: &App) -> Element<'_, Msg> {
         };
         chips = chips.push(item);
     }
+    // A question mark, the usual door to a shortcut list. The tooltip
+    // opens to the left so it never leaves the window at the right edge.
+    let sheet = tooltip(
+        button(container(icon(Icon::CircleHelp, 16.0)).center_y(Fill))
+            .height(CHIP_HEIGHT)
+            .padding([0, 10])
+            .style(ui_theme::ghost_button)
+            .on_press(Msg::ToggleShortcuts),
+        container(
+            row![
+                text(&s.shortcuts_title).size(12),
+                hint::key(shortcuts::hint(Action::Sheet)),
+            ]
+            .spacing(6)
+            .align_y(Alignment::Center),
+        )
+        .padding(6)
+        .style(ui_theme::card),
+        tooltip::Position::Left,
+    );
+    chips = chips.push(sheet);
     chips.align_y(Alignment::Center).into()
 }
 

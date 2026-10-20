@@ -7,6 +7,8 @@ use serde::{Deserialize, Serialize};
 use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
 
+pub mod bundled;
+
 /// RGBA color as four bytes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Rgba {
@@ -498,10 +500,13 @@ struct ThemeV3 {
     favorite: bool,
 }
 
-/// The reference sits under the verses unless a theme moves it.
+/// The reference sits under the verses unless a theme moves it, regular
+/// weight and a little faded so the verses stay the focus.
 fn reference_default() -> TextStyle {
     TextStyle {
+        bold: Prop::Set(false),
         v_align: VAlign::Bottom,
+        opacity: 0.75,
         ..TextStyle::default()
     }
 }
@@ -655,6 +660,8 @@ pub mod store {
                 }
             }
         }
+        // Directory order differs per OS. Default first, then by name.
+        out[1..].sort_by(|a, b| a.name.cmp(&b.name));
         out
     }
 

@@ -137,8 +137,9 @@ fn shortcut_filter_ignores_captured_and_maps_keys() {
 }
 
 #[test]
-fn enter_goes_live_only_on_the_present_tab() {
+fn enter_presents_on_present_and_bible_only() {
     use keyboard::{Key, key::Named};
+    use sda_app::msg::BibleMsg;
     let enter = || plain(Key::Named(Named::Enter));
     assert!(matches!(
         sda_app::shortcuts::filter(
@@ -149,7 +150,16 @@ fn enter_goes_live_only_on_the_present_tab() {
         ),
         Some(Msg::GoLive)
     ));
-    for tab in [Tab::Bible, Tab::Videos, Tab::Themes, Tab::Settings] {
+    assert!(matches!(
+        sda_app::shortcuts::filter(
+            enter(),
+            event::Status::Ignored,
+            window::Id::unique(),
+            Tab::Bible
+        ),
+        Some(Msg::Bible(BibleMsg::Present))
+    ));
+    for tab in [Tab::Videos, Tab::Themes, Tab::Settings] {
         assert!(
             sda_app::shortcuts::filter(enter(), event::Status::Ignored, window::Id::unique(), tab)
                 .is_none(),
@@ -560,4 +570,86 @@ fn sync_error_marks_the_chip_and_hides_the_update_chip() {
         app.status.library_error,
         "unchanged sync keeps the last state"
     );
+}
+
+#[test]
+fn shortcut_table_backs_hints_sheet_and_scopes() {
+    use keyboard::{Key, key::Named};
+    use sda_app::msg::BibleMsg;
+    use sda_app::shortcuts::{self, Action};
+    // Every action has a key label and a translated description.
+    let s = sda_core::i18n::Strings::for_language(sda_core::i18n::Language::En);
+    for a in shortcuts::actions() {
+        assert!(!shortcuts::hint(a).is_empty(), "{a:?} hint");
+        assert!(!shortcuts::label(a, &s).is_empty(), "{a:?} label");
+    }
+    assert_eq!(shortcuts::hint(Action::Present), "⏎");
+    assert_eq!(shortcuts::hint(Action::Clear), "Esc");
+    // Escape reaches the filter even when a text field captured it.
+    assert!(matches!(
+        shortcuts::filter(
+            plain(Key::Named(Named::Escape)),
+            event::Status::Captured,
+            window::Id::unique(),
+            Tab::Bible
+        ),
+        Some(Msg::Clear)
+    ));
+    // Bracket keys step the Bible preview and do nothing elsewhere.
+    assert!(matches!(
+        shortcuts::filter(
+            plain(Key::Character("]".into())),
+            event::Status::Ignored,
+            window::Id::unique(),
+            Tab::Bible
+        ),
+        Some(Msg::Bible(BibleMsg::PreviewStep(1)))
+    ));
+    assert!(
+        shortcuts::filter(
+            plain(Key::Character("]".into())),
+            event::Status::Ignored,
+            window::Id::unique(),
+            Tab::Present
+        )
+        .is_none()
+    );
+    // Up and down move the hymn selection on Present only.
+    assert!(
+        shortcuts::filter(
+            plain(Key::Named(Named::ArrowDown)),
+            event::Status::Ignored,
+            window::Id::unique(),
+            Tab::Bible
+        )
+        .is_none()
+    );
+    let cmd = keyboard::Modifiers::COMMAND;
+    assert!(matches!(
+        shortcuts::filter(
+            press(Key::Character("/".into()), cmd),
+            event::Status::Ignored,
+            window::Id::unique(),
+            Tab::Themes
+        ),
+        Some(Msg::ToggleShortcuts)
+    ));
+}
+
+#[test]
+fn shortcut_sheet_opens_lists_and_closes_on_escape() {
+    let mut app = app();
+    let _ = app.update(Msg::ToggleShortcuts);
+    assert!(app.show_shortcuts);
+    {
+        let mut ui = Simulator::new(app.view_operator());
+        assert!(ui.find(&*app.core.strings.shortcuts_title).is_ok());
+        assert!(ui.find(&*app.core.strings.sc_blank).is_ok());
+    }
+    let _ = app.update(Msg::Clear);
+    assert!(!app.show_shortcuts);
+    // A second Clear on Present empties the search.
+    let _ = app.update(Msg::Search("abc".into()));
+    let _ = app.update(Msg::Clear);
+    assert!(app.present.query.is_empty());
 }

@@ -564,19 +564,39 @@ fn reference_section<'a>(app: &'a App, d: &'a Theme) -> Element<'a, Msg> {
     )
 }
 
+fn bg_kind_label(s: &Strings, kind: BgKind) -> &str {
+    match kind {
+        BgKind::Solid => &s.theme_bg_solid,
+        BgKind::Gradient => &s.theme_bg_gradient,
+        BgKind::Particles => &s.theme_bg_particles,
+        BgKind::Image => &s.theme_bg_image,
+        BgKind::Video => &s.theme_bg_video,
+    }
+}
+
 fn background_section<'a>(app: &'a App, d: &'a Theme) -> Element<'a, Msg> {
     let s = &app.core.strings;
-    let kind = segmented(
-        [
-            (s.theme_bg_solid.as_str(), BgKind::Solid),
-            (s.theme_bg_gradient.as_str(), BgKind::Gradient),
-            (s.theme_bg_particles.as_str(), BgKind::Particles),
-            (s.theme_bg_image.as_str(), BgKind::Image),
-            (s.theme_bg_video.as_str(), BgKind::Video),
-        ],
-        bg_kind(&d.background),
-        |k| edit(DraftEdit::BgKind(k)),
-    );
+    // A pick list like the transition kind below it. Five labels in a
+    // segmented row overflow the form column.
+    let kinds: Vec<Choice<BgKind>> = [
+        BgKind::Solid,
+        BgKind::Gradient,
+        BgKind::Particles,
+        BgKind::Image,
+        BgKind::Video,
+    ]
+    .into_iter()
+    .map(|k| choice(k, bg_kind_label(s, k)))
+    .collect();
+    let current = bg_kind(&d.background);
+    let kind = pick_list(
+        kinds,
+        Some(choice(current, bg_kind_label(s, current))),
+        |k| edit(DraftEdit::BgKind(k.value)),
+    )
+    .style(ui_theme::picker)
+    .text_size(13)
+    .padding([4, 8]);
     let mut rows: Vec<Element<'a, Msg>> = vec![field(&s.theme_kind, kind)];
     let choose = |msg: Msg| {
         iced::widget::button(text(s.choose.as_str()).size(13))

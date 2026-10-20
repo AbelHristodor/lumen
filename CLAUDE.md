@@ -176,22 +176,31 @@ and `window::close_events`. It adds `window::frames` as `Msg::Tick` only while
 
 ### Keyboard
 
-`shortcuts::filter` runs on every event the widgets did not capture, so
-nothing fires while a text field has focus. Modifier changes and left button
-releases are forwarded before the captured check, as `Msg::Modifiers` and
-`BibleMsg::Release`.
+`shortcuts::TABLE` is the one list of shortcuts. `filter` matches key
+presses against it, `hint` gives a button its key pill through
+`widgets::hint::labeled`, and the sheet in `shell.rs` renders it. Add a
+shortcut by adding a row plus an `sc_*` string. `filter` runs on every event
+the widgets did not capture, so nothing fires while a text field has focus.
+Escape, modifier changes, and left button releases are forwarded before the
+captured check, Escape so it clears while the Bible bar has focus.
 
 | Key | Action |
 |---|---|
-| Cmd/Ctrl+K | focus search |
-| Cmd/Ctrl+O | toggle projector |
 | Cmd/Ctrl+1..5 | switch tab |
-| Up / Down | move selection |
-| Enter | go live with the previewed slide |
+| Cmd/Ctrl+K, Cmd/Ctrl+F | focus the search of the current tab |
+| Cmd/Ctrl+O | toggle projector |
+| Enter | present the preview, Present and Bible |
+| Esc | clear search or selection, close a dialog or the sheet |
+| Cmd/Ctrl+. | stop live |
 | Left / Right, Space | live prev / next |
 | B | blank toggle |
 | 1..9 | live jump to slide N |
-| Esc | stop the projector |
+| Up / Down | move the hymn selection, Present only |
+| [ / ] | step the Bible preview |
+| Cmd/Ctrl+/ | shortcut sheet |
+
+Icons come from `widgets::icon`, a Lucide font subset in `fonts/`. Add a
+glyph by subsetting it in and listing its codepoint in `Icon`.
 
 In the Bible tab a click toggles a verse, Shift click selects from the last
 clicked verse, and dragging selects a range. `shortcuts::filter` forwards
@@ -216,9 +225,15 @@ clicked verse, and dragging selects a range. `shortcuts::filter` forwards
   `Particles`, `Image`, or `Video`. Transitions are `None`, `Fade`, `Slide`,
   `Scale`, or `Blur` with an easing. Fonts are Inter, Noto Serif, Lora, and
   Roboto Slab. Roboto Slab is Apache 2.0 and the others are OFL. A theme can
-  also name a system font.
+  also name a system font. `theme::bundled` holds the fourteen shipped themes and
+  `seed` writes them plus the photos under `themes/backgrounds/` once, guarded
+  by a `themes/.bundled` marker with a version. Existing files are never
+  overwritten, so edits and deletions stick. Bump `VERSION` to seed again.
+  The photos are CC0 and credited in `assets/backgrounds/CREDITS.md`.
+  `list_themes` returns Default first, then by name.
 - `history.rs` keeps the last 50 opened hymns, newest first, one entry per
-  path. `store.rs` loads small JSON files without failing and saves through a
+  path, and the last 50 presented verse selections in `verse_history.json`,
+  one entry per selection. `store.rs` loads small JSON files without failing and saves through a
   temp file and a rename.
 - `overrides.rs` keeps per hymn choices outside the hymn files. Today that is
   the as-is flag per path.
@@ -249,7 +264,10 @@ clicked verse, and dragging selects a range. `shortcuts::filter` forwards
   `pack_verses` groups a selection into as few slides as fit under
   `fits_heuristic`, a character count estimate of the verse box at the larger
   of the theme's `min_size` and a fixed text size. Each slide carries its own
-  reference range.
+  reference range. `resolve_verses` flows a slide's verses into one
+  `ResolvedLine` whose box has `wrap` set, numbers as `superscript` runs.
+  Hymn boxes keep `wrap` off so the author's line breaks hold. The verse box
+  carries `max_pt`, `VERSE_MAX_PT` at 40, the ceiling for an auto size.
 
 ### As-is pipeline
 

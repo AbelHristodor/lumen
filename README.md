@@ -143,7 +143,7 @@ out and open the release page.
    your UI language, or browse by book and chapter, or search the text.
 3. **Select verses.** Tick a verse to add it. Use **Select to here** on a later
    verse to add the whole range.
-4. **Present.** Click **Present selected verses**. The verses go live with the active theme,
+4. **Present.** Click **Present**. The verses go live with the active theme,
    with the reference above or below them as the theme chooses.
 
 ### Keyboard

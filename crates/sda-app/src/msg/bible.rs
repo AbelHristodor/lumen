@@ -14,6 +14,10 @@ pub enum BibleMsg {
     TextMode(bool),
     /// Which packed slide the preview pane shows.
     PreviewSlide(usize),
+    /// Move the preview one slide back or forward, clamped.
+    PreviewStep(i32),
+    /// Typed into the filter of the Bibles dialog.
+    ManageFilter(String),
     /// A search result was picked.
     Jump(Reference),
     Version(String),
@@ -28,6 +32,8 @@ pub enum BibleMsg {
     Release,
     ClearSelection,
     Present,
+    /// A verse history row was picked, by index into `core.verse_history`.
+    OpenHistory(usize),
     ManageOpen,
     ManageClose,
     Download(String),

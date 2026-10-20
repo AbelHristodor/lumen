@@ -96,6 +96,8 @@ pub struct App {
     pub now: Instant,
     /// Modifier keys held right now. Shift click in the Bible tab reads it.
     pub modifiers: iced::keyboard::Modifiers,
+    /// The shortcut sheet is open over the current tab.
+    pub show_shortcuts: bool,
 }
 
 impl App {
@@ -126,6 +128,7 @@ impl App {
             identify_seq: 0,
             now: Instant::now(),
             modifiers: iced::keyboard::Modifiers::empty(),
+            show_shortcuts: false,
         }
     }
 
@@ -304,9 +307,31 @@ impl App {
                 return present::pending_load(self);
             }
             Msg::FocusSearch => {
-                self.tab = Tab::Present;
-                return operation::focus(iced::widget::Id::new(view::present::SEARCH_ID));
+                // The Bible tab has its own bar. Every other tab goes to the
+                // hymn search.
+                let id = if self.tab == Tab::Bible {
+                    view::bible::INPUT_ID
+                } else {
+                    self.tab = Tab::Present;
+                    view::present::SEARCH_ID
+                };
+                return operation::focus(iced::widget::Id::new(id));
             }
+            Msg::Clear => {
+                if self.show_shortcuts {
+                    self.show_shortcuts = false;
+                } else {
+                    match self.tab {
+                        Tab::Present => {
+                            self.present.query.clear();
+                            present::run_search(self);
+                        }
+                        Tab::Bible => return bible::clear(self),
+                        _ => {}
+                    }
+                }
+            }
+            Msg::ToggleShortcuts => self.show_shortcuts = !self.show_shortcuts,
             Msg::LiveNext => self.live.next(),
             Msg::LivePrev => self.live.prev(),
             Msg::LiveBlank => self.live.blank(),

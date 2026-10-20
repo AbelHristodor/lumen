@@ -122,6 +122,11 @@ pub enum Msg {
     LiveBlank,
     LiveJump(usize),
     LiveStop,
+    /// Esc. Clears the search or selection of the current tab, or closes
+    /// its dialog.
+    Clear,
+    /// Show or hide the shortcut sheet.
+    ToggleShortcuts,
     ProjectorToggle,
     ProjectorDisplay(usize),
     ProjectorClosed(window::Id),

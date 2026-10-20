@@ -18,7 +18,6 @@ use sda_render::{BackgroundState, Layer, Scene};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
-use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Id of the search box, so Cmd+K can focus it.
 pub const SEARCH_ID: &str = "search";
@@ -322,10 +321,7 @@ pub fn go_live(app: &mut App, slide: usize) {
     );
     p.jump(slide + 1);
     app.live.go(p);
-    let opened_at = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs() as i64)
-        .unwrap_or(0);
+    let opened_at = history::unix_now();
     history::record(
         &mut app.core.history,
         HistoryEntry {

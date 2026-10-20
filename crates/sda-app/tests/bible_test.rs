@@ -346,3 +346,112 @@ fn preview_slide_resets_from_slide_two() {
     press(&mut app, 16);
     assert_eq!(app.bible.preview_slide, 0);
 }
+
+#[test]
+fn book_names_follow_the_bible_language_not_the_ui() {
+    use sda_app::state::bible::BibleState;
+    use sda_core::i18n::Language;
+    let mut st = BibleState::default();
+    assert_eq!(st.language(), Language::En);
+    st.version = Some("ro_vdc".into());
+    assert_eq!(st.language(), Language::Ro);
+    st.version = Some("it_riveduta".into());
+    assert_eq!(st.language(), Language::It);
+    st.version = Some("de_sch1951".into());
+    assert_eq!(st.language(), Language::En);
+}
+
+#[test]
+fn presenting_records_one_history_row_that_restores_the_selection() {
+    let mut app = app();
+    app.bible.book = 42;
+    app.bible.chapter = 3;
+    app.bible.selected = BTreeSet::from([16, 17, 18]);
+    let _ = app.update(Msg::Bible(BibleMsg::Present));
+    assert_eq!(app.core.verse_history.len(), 1, "three verses are one row");
+    assert_eq!(app.core.verse_history[0].verses, vec![16, 17, 18]);
+    // Presenting the same selection again moves it up, no duplicate.
+    let _ = app.update(Msg::Bible(BibleMsg::Present));
+    assert_eq!(app.core.verse_history.len(), 1);
+
+    // `opened` rescanned the disk, the fixture is not installed there.
+    app.bible.installed = vec!["bible_mini".into()];
+    // Move away so the only "John 3:16-18" on screen is the history row.
+    app.bible.selected.clear();
+    app.bible.chapter = 1;
+    let mut ui = Simulator::with_size(
+        Settings::default(),
+        Size::new(1400.0, 900.0),
+        app.view_operator(),
+    );
+    ui.click("John 3:16-18").expect("history row");
+    let msgs: Vec<Msg> = ui.into_messages().collect();
+    assert!(
+        msgs.iter()
+            .any(|m| matches!(m, Msg::Bible(BibleMsg::OpenHistory(0))))
+    );
+    let _ = app.update(Msg::Bible(BibleMsg::OpenHistory(0)));
+    assert_eq!(app.bible.chapter, 3);
+    assert_eq!(app.bible.selected, BTreeSet::from([16, 17, 18]));
+}
+
+#[test]
+fn enter_in_the_bar_presents_once_the_preview_is_filled() {
+    let mut app = app();
+    // Reference mode: typing already jumped, Enter presents.
+    let _ = app.update(Msg::Bible(BibleMsg::Input("joh 3 16".into())));
+    assert_eq!(app.bible.selected, BTreeSet::from([16]));
+    let _ = app.update(Msg::Bible(BibleMsg::Submit));
+    assert_eq!(app.live.present.title, "John 3:16");
+    // Text mode: the first Enter jumps to the top hit, the second presents.
+    let _ = app.update(Msg::LiveStop);
+    let _ = app.update(Msg::Clear);
+    let _ = app.update(Msg::Bible(BibleMsg::TextMode(true)));
+    let _ = app.update(Msg::Bible(BibleMsg::Input("loved the world".into())));
+    assert!(!app.bible.results.is_empty());
+    let _ = app.update(Msg::Bible(BibleMsg::Submit));
+    assert_eq!(app.bible.selected, BTreeSet::from([16]));
+    assert!(!app.live.present.is_loaded());
+    let _ = app.update(Msg::Bible(BibleMsg::Submit));
+    assert_eq!(app.live.present.title, "John 3:16");
+}
+
+#[test]
+fn escape_clears_the_selection_then_closes_the_dialog() {
+    let mut app = app();
+    let _ = app.update(Msg::Bible(BibleMsg::Input("joh 3 16".into())));
+    let _ = app.update(Msg::Clear);
+    assert!(app.bible.selected.is_empty());
+    assert!(app.bible.input.is_empty());
+    let _ = app.update(Msg::Bible(BibleMsg::ManageOpen));
+    let _ = app.update(Msg::Bible(BibleMsg::ManageFilter("kj".into())));
+    let _ = app.update(Msg::Clear);
+    assert!(!app.bible.manage_open);
+    assert!(app.bible.manage_filter.is_empty());
+}
+
+#[test]
+fn bibles_dialog_filter_narrows_the_list() {
+    use sda_app::view::bible::filtered_versions;
+    use sda_core::bible::VersionInfo;
+    let mut app = app();
+    let v = |code: &str, lang: &str, name: &str| VersionInfo {
+        code: code.into(),
+        language: lang.into(),
+        name: name.into(),
+        abbreviation: code.rsplit('_').next().unwrap().into(),
+        public_domain: None,
+    };
+    app.bible.index = vec![
+        v("en_kjv", "English", "King James Version"),
+        v("ro_vdc", "Romanian", "Versiunea Dumitru Cornilescu"),
+        v("it_riveduta", "Italian", "Riveduta"),
+    ];
+    assert_eq!(filtered_versions(&app.bible).len(), 3);
+    app.bible.manage_filter = "roman".into();
+    assert_eq!(filtered_versions(&app.bible)[0].code, "ro_vdc");
+    app.bible.manage_filter = "KJV".into();
+    assert_eq!(filtered_versions(&app.bible)[0].code, "en_kjv");
+    app.bible.manage_filter = "cornilescu".into();
+    assert_eq!(filtered_versions(&app.bible).len(), 1);
+}

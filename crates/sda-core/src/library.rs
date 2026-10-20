@@ -147,6 +147,10 @@ pub fn history_path() -> Option<PathBuf> {
     dirs().map(|d| d.data_dir().join("history.json"))
 }
 
+pub fn verse_history_path() -> Option<PathBuf> {
+    dirs().map(|d| d.data_dir().join("verse_history.json"))
+}
+
 /// Record of finished video downloads.
 pub fn downloads_path() -> Option<PathBuf> {
     dirs().map(|d| d.data_dir().join("downloads.json"))

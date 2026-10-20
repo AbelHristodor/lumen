@@ -64,6 +64,16 @@ pub fn card(_theme: &Theme) -> container::Style {
 }
 
 /// A small rounded label for status text.
+/// A key cap pill inside a button or the shortcut sheet. Translucent so it
+/// reads on the accent and the ghost button alike.
+pub fn key_cap(_theme: &Theme) -> container::Style {
+    container::Style {
+        background: Some(with_alpha(Color::WHITE, 0.14).into()),
+        border: Border::default().rounded(4.0),
+        ..container::Style::default()
+    }
+}
+
 pub fn chip(_theme: &Theme) -> container::Style {
     container::Style {
         background: Some(SURFACE_HI.into()),

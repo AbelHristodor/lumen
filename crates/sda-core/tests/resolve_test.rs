@@ -160,8 +160,14 @@ fn verses_content() -> SlideContent {
 fn verses_make_a_verse_box_and_a_reference_box() {
     let r = resolve(&Theme::default(), &verses_content(), None).unwrap();
     assert_eq!(r.boxes.len(), 2);
-    assert!(r.boxes[0].lines[0].runs[0].text.starts_with("16 "));
+    assert!(r.boxes[0].wrap);
+    let runs = &r.boxes[0].lines[0].runs;
+    assert_eq!(runs[0].text, "16");
+    assert!(runs[0].superscript);
+    assert_eq!(runs[1].text, "\u{a0}For God");
+    assert!(!runs[1].superscript);
     assert_eq!(r.boxes[1].lines[0].runs[0].text, "John 3:16");
+    assert!(!r.boxes[1].wrap);
     assert_eq!(r.boxes[1].v_align, VAlign::Bottom);
 }
 
@@ -173,7 +179,10 @@ fn reference_band_does_not_overlap_the_verses() {
         let r = resolve(&t, &verses_content(), None).unwrap();
         let v = r.boxes[0].frame;
         let rf = r.boxes[1].frame;
-        assert!((rf.h - REF_BAND).abs() < 1e-5, "{side:?} band height");
+        assert!(
+            (rf.h - REF_BAND * REF_TEXT).abs() < 1e-5,
+            "{side:?} reference line height"
+        );
         let v_bottom = v.y + v.h;
         let rf_bottom = rf.y + rf.h;
         assert!(
@@ -230,15 +239,47 @@ fn verses_without_reference_have_one_box() {
     };
     let r = resolve(&t, &c, None).unwrap();
     assert_eq!(r.boxes.len(), 1);
-    assert_eq!(r.boxes[0].lines.len(), 2);
-    assert_eq!(r.boxes[0].lines[1].runs[0].text, "17 b");
+    // One flowing paragraph: number, text, space plus number, text.
+    let texts: Vec<&str> = r.boxes[0].lines[0]
+        .runs
+        .iter()
+        .map(|r| r.text.as_str())
+        .collect();
+    assert_eq!(texts, ["16", "\u{a0}a", " 17", "\u{a0}b"]);
     let full = Frame {
-        x: 0.06,
+        x: VERSE_MARGIN_X,
         y: 0.06,
-        w: 0.88,
+        w: 1.0 - 2.0 * VERSE_MARGIN_X,
         h: 0.88,
     };
     assert_eq!(r.boxes[0].frame, full);
+}
+
+#[test]
+fn verses_without_numbers_join_with_spaces() {
+    let mut t = Theme::default();
+    t.verses.show_numbers = false;
+    let c = SlideContent::Verses {
+        reference: "John 3:16".into(),
+        verses: vec![(16, "a".into()), (17, "b".into())],
+    };
+    let r = resolve(&t, &c, None).unwrap();
+    let texts: Vec<&str> = r.boxes[0].lines[0]
+        .runs
+        .iter()
+        .map(|r| r.text.as_str())
+        .collect();
+    assert_eq!(texts, ["a", " b"]);
+}
+
+#[test]
+fn set_margin_wins_over_the_verse_inset() {
+    let mut t = Theme::default();
+    t.text.margin = Prop::Set(0.04);
+    t.verses.show_reference = false;
+    let r = resolve(&t, &verses_content(), None).unwrap();
+    assert!((r.boxes[0].frame.x - 0.04).abs() < 1e-6);
+    assert!((r.boxes[0].frame.w - 0.92).abs() < 1e-6);
 }
 
 #[test]
@@ -280,7 +321,7 @@ fn frame_cut_splits_a_band_off_one_side() {
 fn verse_box_pt_is_the_verse_frame_on_a_720_slide() {
     let t = Theme::default();
     let (w, h) = verse_box_pt(&t);
-    assert!((w - 0.88 * 720.0).abs() < 1e-3);
+    assert!((w - (1.0 - 2.0 * VERSE_MARGIN_X) * 720.0).abs() < 1e-3);
     assert!((h - (0.88 - REF_BAND) * 405.0).abs() < 1e-3);
 }
 
@@ -301,6 +342,96 @@ fn reference_margin_moves_the_band_sideways_only() {
         assert!(
             v.y + v.h <= rf.y + 1e-5 || rf.y + rf.h <= v.y + 1e-5,
             "{side:?} frames overlap: verses {v:?} reference {rf:?}"
+        );
+    }
+}
+
+fn padded_slide(align: Option<HAlign>, boxes: usize) -> SlideContent {
+    let text_box = || TextBox {
+        frame: Some(Frame {
+            x: 0.13,
+            y: 0.14,
+            w: 0.87,
+            h: 0.46,
+        }),
+        paragraphs: vec![
+            Paragraph {
+                align,
+                line_spacing: None,
+                runs: vec![],
+            },
+            Paragraph {
+                align,
+                line_spacing: None,
+                runs: vec![
+                    Run {
+                        text: "     ".into(),
+                        ..Default::default()
+                    },
+                    Run {
+                        text: "Plecaţi-vă, \t".into(),
+                        ..Default::default()
+                    },
+                ],
+            },
+            Paragraph {
+                align,
+                line_spacing: None,
+                runs: vec![Run {
+                    text: "Popoare;\t".into(),
+                    ..Default::default()
+                }],
+            },
+            Paragraph {
+                align,
+                line_spacing: None,
+                runs: vec![Run {
+                    text: " ".into(),
+                    ..Default::default()
+                }],
+            },
+        ],
+    };
+    SlideContent::Styled(Slide {
+        background: None,
+        notes: None,
+        boxes: (0..boxes).map(|_| text_box()).collect(),
+    })
+}
+
+#[test]
+fn hymn_padding_is_trimmed_and_edge_blank_lines_dropped() {
+    let r = resolve(&Theme::default(), &padded_slide(None, 1), None).unwrap();
+    let texts: Vec<Vec<&str>> = r.boxes[0]
+        .lines
+        .iter()
+        .map(|l| l.runs.iter().map(|r| r.text.as_str()).collect())
+        .collect();
+    assert_eq!(texts, [vec!["Plecaţi-vă,"], vec!["Popoare;"]]);
+}
+
+#[test]
+fn lone_centered_hymn_box_is_centered_on_the_slide() {
+    let r = resolve(&Theme::default(), &padded_slide(None, 1), None).unwrap();
+    let f = r.boxes[0].frame;
+    assert!(
+        (f.x - 0.065).abs() < 1e-5 && (f.w - 0.87).abs() < 1e-5,
+        "{f:?}"
+    );
+    assert!(
+        (f.y - 0.27).abs() < 1e-5 && (f.h - 0.46).abs() < 1e-5,
+        "{f:?}"
+    );
+}
+
+#[test]
+fn left_aligned_or_multi_box_frames_keep_their_place() {
+    for c in [padded_slide(Some(HAlign::Left), 1), padded_slide(None, 2)] {
+        let r = resolve(&Theme::default(), &c, None).unwrap();
+        let f = r.boxes[0].frame;
+        assert!(
+            (f.x - 0.13).abs() < 1e-5 && (f.y - 0.14).abs() < 1e-5,
+            "{f:?}"
         );
     }
 }

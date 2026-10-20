@@ -29,5 +29,6 @@ pub fn run() -> iced::Result {
     for (_, bytes) in sda_render::fonts() {
         daemon = daemon.font(*bytes);
     }
+    daemon = daemon.font(widgets::icon::BYTES);
     daemon.run()
 }

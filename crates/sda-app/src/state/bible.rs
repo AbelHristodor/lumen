@@ -8,6 +8,8 @@ use sda_core::bible::{
     self, Bible, Reference, VersionInfo, fits_heuristic, format_reference, pack_verses,
     parse_reference, verse_slides,
 };
+use sda_core::history::{self, VerseHistoryEntry};
+use sda_core::i18n::Language;
 use sda_core::present::{Presentation, Source};
 use sda_core::resolve::{ResolvedSlide, SlideContent, verse_box_pt};
 use sda_core::sync::sync_file;
@@ -37,6 +39,8 @@ pub struct BibleState {
     pub preview_slide: usize,
     pub results: Vec<(Reference, String)>,
     pub manage_open: bool,
+    /// Filter text of the Bibles dialog.
+    pub manage_filter: String,
     pub index: Vec<VersionInfo>,
     /// Codes of the version files on disk.
     pub installed: Vec<String>,
@@ -65,6 +69,7 @@ impl Default for BibleState {
             preview_slide: 0,
             results: Vec::new(),
             manage_open: false,
+            manage_filter: String::new(),
             index: Vec::new(),
             installed: Vec::new(),
             busy: None,
@@ -76,6 +81,11 @@ impl Default for BibleState {
 
 const SEARCH_LIMIT: usize = 50;
 
+/// Language of a version code by its prefix, `ro_vdc` is Romanian.
+pub fn version_language(code: &str) -> Language {
+    Language::from_locale(code.split('_').next().unwrap_or(code))
+}
+
 impl BibleState {
     /// Upper case abbreviation of a version code, from the index when known
     /// and from the code suffix otherwise, so `en_kjv` reads `KJV`.
@@ -86,6 +96,15 @@ impl BibleState {
             .map(|v| v.abbreviation.as_str())
             .unwrap_or_else(|| code.rsplit('_').next().unwrap_or(code))
             .to_uppercase()
+    }
+
+    /// Language of the loaded version from its code prefix, `ro_vdc` is
+    /// Romanian. Book names follow the Bible, not the UI. Unknown prefixes
+    /// read English, the only names on hand.
+    pub fn language(&self) -> Language {
+        self.version
+            .as_deref()
+            .map_or(Language::En, version_language)
     }
 
     /// The selection as one reference. A gap inside the selection still
@@ -286,6 +305,22 @@ pub fn opened(app: &mut App) -> Task<Msg> {
     }
 }
 
+/// Esc on the Bible tab. Closes the Bibles dialog when open, otherwise
+/// drops the selection and the typed text.
+pub fn clear(app: &mut App) -> Task<Msg> {
+    if app.bible.manage_open {
+        app.bible.manage_open = false;
+        app.bible.manage_filter.clear();
+        return Task::none();
+    }
+    app.bible.selected.clear();
+    app.bible.anchor = None;
+    app.bible.input.clear();
+    app.bible.selection_changed();
+    run_search(app);
+    Task::none()
+}
+
 fn run_search(app: &mut App) {
     app.bible.results = match &app.bible.bible {
         Some(b) if app.bible.text_mode && !app.bible.input.trim().is_empty() => {
@@ -303,8 +338,26 @@ fn present(app: &mut App) {
     if slides.is_empty() {
         return;
     }
-    let reference = format_reference(&app.bible.reference(), app.core.language);
+    let reference = format_reference(&app.bible.reference(), app.bible.language());
     let version = app.bible.version.clone().unwrap_or_else(|| b.code.clone());
+    let presented: Vec<u32> = slides
+        .iter()
+        .flat_map(|s| match s {
+            SlideContent::Verses { verses, .. } => verses.iter().map(|(n, _)| *n).collect(),
+            _ => Vec::new(),
+        })
+        .collect();
+    history::record_verses(
+        &mut app.core.verse_history,
+        VerseHistoryEntry {
+            version: version.clone(),
+            book: app.bible.book,
+            chapter: app.bible.chapter,
+            verses: presented,
+            presented_at: history::unix_now(),
+        },
+    );
+    app.core.save_verse_history();
     app.live.go(Presentation {
         title: reference.clone(),
         subtitle: Some(app.bible.abbreviation(&version)),
@@ -327,7 +380,7 @@ pub fn preview_slides(app: &App) -> Vec<SlideContent> {
         .collect();
     let theme = &app.live.theme;
     let groups = pack_verses(&verses, fits_heuristic(theme, verse_box_pt(theme)));
-    verse_slides(&r, &groups, app.core.language)
+    verse_slides(&r, &groups, app.bible.language())
 }
 
 /// A static scene of one verses slide under the live theme, same shape the
@@ -341,7 +394,7 @@ pub fn preview_scene(
     // Same footer the projector draws: the presented title, empty dropped.
     let footer = theme
         .footer
-        .then(|| format_reference(&app.bible.reference(), app.core.language))
+        .then(|| format_reference(&app.bible.reference(), app.bible.language()))
         .filter(|f| !f.is_empty());
     let mut h = DefaultHasher::new();
     theme.cache_key().hash(&mut h);
@@ -384,15 +437,23 @@ pub fn update(app: &mut App, msg: BibleMsg) -> Task<Msg> {
             app.bible.input = text;
             if app.bible.text_mode {
                 run_search(app);
-            } else if let Some(r) = parse_reference(&app.bible.input, app.core.language) {
+            } else if let Some(r) = parse_reference(&app.bible.input, app.bible.language()) {
                 app.bible.jump(r);
             }
         }
         BibleMsg::Submit => {
-            if app.bible.text_mode
-                && let Some(r) = app.bible.results.first().map(|(r, _)| *r)
-            {
-                app.bible.jump(r);
+            // Text mode: the first Enter jumps to the top hit, the next one
+            // presents it. Reference mode jumps while typing, so Enter
+            // presents right away.
+            let first = app.bible.results.first().map(|(r, _)| *r);
+            let on_hit = first.is_some_and(|r| {
+                r.book == app.bible.book
+                    && r.chapter == app.bible.chapter
+                    && r.verses.map(|(a, _)| a) == app.bible.selected.first().copied()
+            });
+            match first {
+                Some(r) if app.bible.text_mode && !on_hit => app.bible.jump(r),
+                _ => present(app),
             }
         }
         BibleMsg::TextMode(on) => {
@@ -407,7 +468,29 @@ pub fn update(app: &mut App, msg: BibleMsg) -> Task<Msg> {
             let n = preview_slides(app).len();
             app.bible.preview_slide = i.min(n.saturating_sub(1));
         }
+        BibleMsg::PreviewStep(d) => {
+            let n = preview_slides(app).len();
+            let i = app.bible.preview_slide as i64 + d as i64;
+            app.bible.preview_slide = i.clamp(0, n.saturating_sub(1) as i64) as usize;
+        }
+        BibleMsg::ManageFilter(q) => app.bible.manage_filter = q,
         BibleMsg::Jump(r) => app.bible.jump(r),
+        BibleMsg::OpenHistory(i) => {
+            let Some(e) = app.core.verse_history.get(i).cloned() else {
+                return Task::none();
+            };
+            app.bible.book = e.book;
+            app.bible.chapter = e.chapter.max(1);
+            app.bible.selected = e.verses.iter().copied().collect();
+            app.bible.anchor = None;
+            app.bible.preview_slide = 0;
+            if app.bible.version.as_deref() != Some(&e.version)
+                && app.bible.installed.contains(&e.version)
+                && app.bible.busy.is_none()
+            {
+                return switch_version(app, e.version);
+            }
+        }
         BibleMsg::Version(code) => {
             if app.bible.busy.is_some() {
                 return Task::none();
@@ -465,7 +548,10 @@ pub fn update(app: &mut App, msg: BibleMsg) -> Task<Msg> {
                 return bible_index(dir);
             }
         }
-        BibleMsg::ManageClose => app.bible.manage_open = false,
+        BibleMsg::ManageClose => {
+            app.bible.manage_open = false;
+            app.bible.manage_filter.clear();
+        }
         BibleMsg::Download(code) => {
             if app.bible.busy.is_none() {
                 app.bible.error = None;
