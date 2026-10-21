@@ -5,6 +5,13 @@ use sda_core::present::{Presentation, Source};
 use sda_core::resolve::SlideContent;
 use std::time::{Duration, Instant};
 
+/// Tests that set env vars hold this lock, because env vars are process wide.
+static ENV: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+fn env_lock() -> std::sync::MutexGuard<'static, ()> {
+    ENV.lock().unwrap_or_else(|e| e.into_inner())
+}
+
 fn app() -> App {
     App::for_test()
 }
@@ -652,4 +659,74 @@ fn shortcut_sheet_opens_lists_and_closes_on_escape() {
     let _ = app.update(Msg::Search("abc".into()));
     let _ = app.update(Msg::Clear);
     assert!(app.present.query.is_empty());
+}
+
+#[test]
+fn a_video_presentation_has_one_slide_and_no_theme_footer() {
+    let mut app = app();
+    let path = std::path::PathBuf::from("/clips/intro.mp4");
+    app.live.go(Presentation {
+        title: "intro.mp4".into(),
+        subtitle: None,
+        slides: vec![SlideContent::Video(path.clone())],
+        index: 0,
+        blank: false,
+        source: Source::Video(path),
+    });
+    assert!(app.live.present.is_loaded());
+    assert_eq!(app.live.present.slide_count(), 1);
+    // No player yet, so the scene draws nothing in the current slot and
+    // a black background whatever the theme says.
+    let scene = app.live.scene((160, 90), Instant::now());
+    assert!(scene.current.is_none());
+    assert!(matches!(
+        scene.background,
+        sda_render::BackgroundState::Solid(c) if c == sda_core::theme::Rgba::BLACK
+    ));
+}
+
+#[cfg(unix)]
+#[test]
+fn live_video_seeks_on_next_and_prev_and_pauses_on_blank() {
+    use sda_media::{Player, State};
+    use std::sync::Arc;
+    let _env = env_lock();
+    let fake = std::path::PathBuf::from(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../sda-media/tests/fixtures/fake_ffmpeg.sh"
+    ));
+    // SAFETY: every test that touches env vars holds the env lock.
+    unsafe { std::env::set_var("LUMEN_NO_AUDIO", "1") };
+    unsafe { std::env::set_var("FAKE_FRAMES", "60") };
+    let player =
+        Arc::new(Player::open(&fake, std::path::Path::new("clip.mp4"), (320, 180)).unwrap());
+    unsafe { std::env::remove_var("FAKE_FRAMES") };
+    let mut app = app();
+    app.live.go_video(player.clone(), "clip.mp4".into());
+    assert_eq!(player.state(), State::Playing, "going live starts playback");
+    assert!(
+        app.live.animating(),
+        "a playing video keeps the frame clock on"
+    );
+    let _ = app.update(Msg::LiveNext);
+    assert_eq!(
+        player.position(),
+        Duration::from_secs(2),
+        "10 s forward clamps to the end"
+    );
+    let _ = app.update(Msg::LivePrev);
+    // Still playing, so the clock has moved a little past the start.
+    assert!(
+        player.position() < Duration::from_secs(1),
+        "10 s back clamps to the start"
+    );
+    let _ = app.update(Msg::LiveBlank);
+    assert!(app.live.present.blank);
+    assert_eq!(player.state(), State::Paused, "blank pauses the sound too");
+    let _ = app.update(Msg::LiveBlank);
+    assert_eq!(player.state(), State::Playing);
+    let scene = app.live.scene((160, 90), Instant::now());
+    assert!(matches!(scene.current, Some(sda_render::Layer::Video(_))));
+    let _ = app.update(Msg::LiveStop);
+    assert!(app.live.player.is_none(), "stop drops the player");
 }

@@ -348,7 +348,10 @@ impl App {
                 }
                 projector::closed(self, id);
             }
-            Msg::Tick(now) => projector::tick(self, now),
+            Msg::Tick(now) => {
+                self.live.tick_video();
+                projector::tick(self, now);
+            }
             Msg::Identify => return projector::identify(self),
             Msg::IdentifyDone(seq) => {
                 if seq == self.identify_seq {

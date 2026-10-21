@@ -3,9 +3,10 @@
 
 use crate::msg::BackgroundAsset;
 use image::RgbaImage;
-use sda_core::present::Presentation;
+use sda_core::present::{Presentation, Source};
 use sda_core::resolve::{ResolvedSlide, SlideContent, resolve};
 use sda_core::theme::{Background, Rgba, Theme, TransitionKind};
+use sda_media::{Player, State as PlayState};
 use sda_render::{BackgroundState, FrameSource, Layer, Scene};
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -21,6 +22,9 @@ pub struct LiveState {
     pub outgoing: Option<SlideContent>,
     pub ffmpeg: Option<PathBuf>,
     pub video: Option<Arc<FrameSource>>,
+    /// The video that is live. Set by `go_video`, dropped by `stop` and by
+    /// any `go` of other content, which kills its ffmpeg children.
+    pub player: Option<Arc<Player>>,
     /// Decoded images for bitmap slides and image backgrounds.
     pub bitmaps: HashMap<PathBuf, Arc<RgbaImage>>,
     /// The background a worker is loading right now. Blocks a second worker
@@ -47,6 +51,7 @@ impl LiveState {
             outgoing: None,
             ffmpeg: None,
             video: None,
+            player: None,
             bitmaps: HashMap::new(),
             started_for: None,
             failed_for: None,
@@ -177,14 +182,50 @@ impl LiveState {
     }
 
     pub fn go(&mut self, presentation: Presentation) {
+        // Snapshot first so a video on its way out keeps its last frame.
         let prev = self.snapshot();
+        self.player = None;
         self.present = presentation;
         self.clear_cache();
         self.prune_bitmaps();
         self.step(prev);
     }
 
+    /// Put `player` live and start it. One video slide, no theme.
+    pub fn go_video(&mut self, player: Arc<Player>, title: String) {
+        let path = player.file().to_path_buf();
+        self.go(Presentation {
+            title,
+            subtitle: None,
+            slides: vec![SlideContent::Video(path.clone())],
+            index: 0,
+            blank: false,
+            source: Source::Video(path),
+        });
+        player.play();
+        self.player = Some(player);
+    }
+
+    /// True while the live video plays. The frame clock must run then.
+    pub fn video_playing(&self) -> bool {
+        self.player
+            .as_ref()
+            .is_some_and(|p| p.state() == PlayState::Playing)
+    }
+
+    /// Per frame: pull frames up to the clock. The projector goes black at
+    /// the end on its own because the player clears its frame source.
+    pub fn tick_video(&self) {
+        if let Some(p) = &self.player {
+            p.tick();
+        }
+    }
+
     pub fn next(&mut self) {
+        if let Some(p) = &self.player {
+            p.step(10);
+            return;
+        }
         let prev = self.snapshot();
         let before = self.present.index;
         self.present.next();
@@ -194,6 +235,10 @@ impl LiveState {
     }
 
     pub fn prev(&mut self) {
+        if let Some(p) = &self.player {
+            p.step(-10);
+            return;
+        }
         let prev = self.snapshot();
         let before = self.present.index;
         self.present.prev();
@@ -217,6 +262,13 @@ impl LiveState {
         }
         let prev = self.snapshot();
         self.present.toggle_blank();
+        if let Some(p) = &self.player {
+            if self.present.blank {
+                p.pause();
+            } else {
+                p.play();
+            }
+        }
         self.step(prev);
     }
 
@@ -225,6 +277,7 @@ impl LiveState {
             return;
         }
         let prev = self.snapshot();
+        self.player = None;
         self.present = Presentation::default();
         self.clear_cache();
         self.step(prev);
@@ -258,7 +311,7 @@ impl LiveState {
     /// A started transition counts until `settle` clears it on a tick, so
     /// the frame clock always delivers the final frame.
     pub fn animating(&self) -> bool {
-        self.started.is_some() || self.theme.background.is_animated()
+        self.started.is_some() || self.theme.background.is_animated() || self.video_playing()
     }
 
     fn footer(&self) -> Option<&str> {
@@ -269,6 +322,9 @@ impl LiveState {
     }
 
     fn layer(&self, index: usize, content: &SlideContent) -> Option<Layer> {
+        if let SlideContent::Video(_) = content {
+            return self.player.as_ref().map(|p| Layer::Video(p.frames()));
+        }
         if let SlideContent::Bitmap(path) = content {
             return self.bitmaps.get(path).map(|b| Layer::Bitmap(b.clone()));
         }
@@ -335,10 +391,22 @@ impl LiveState {
         let outgoing = self
             .progress(now)
             .and_then(|p| Some((self.outgoing_layer.clone()?, p)));
+        // A video ignores the theme background and fills black around it.
+        let is_video = matches!(self.present.current(), Some(SlideContent::Video(_)));
+        let background = if is_video {
+            BackgroundState::Solid(Rgba::BLACK)
+        } else {
+            self.background()
+        };
+        let background_opacity = if is_video {
+            1.0
+        } else {
+            self.theme.background_opacity
+        };
         Arc::new(Scene {
             size,
-            background: self.background(),
-            background_opacity: self.theme.background_opacity,
+            background,
+            background_opacity,
             current,
             outgoing,
             transition: self.theme.transition,
