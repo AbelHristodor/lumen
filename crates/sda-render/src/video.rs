@@ -62,7 +62,7 @@ impl fmt::Debug for FrameSource {
 }
 
 /// Keep a spawned child from flashing a console window on Windows.
-pub(crate) fn hide_console(cmd: &mut Command) {
+pub fn hide_console(cmd: &mut Command) {
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;

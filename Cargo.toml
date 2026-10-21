@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/sda-core", "crates/sda-render", "crates/sda-app"]
+members = ["crates/sda-core", "crates/sda-render", "crates/sda-media", "crates/sda-app"]
 
 [workspace.package]
 edition = "2021"

@@ -17,7 +17,7 @@ pub mod video;
 
 pub use fonts::fonts;
 pub use scene::{BackgroundState, Layer, Scene, Viewport};
-pub use video::{FrameSource, spawn_decoder};
+pub use video::{FrameSource, hide_console, spawn_decoder};
 
 use background::{GradientPipeline, ParticlesPipeline, SolidPipeline};
 use layer::{LayerParams, LayerPipeline, SLOTS};
