@@ -435,3 +435,9 @@ fn left_aligned_or_multi_box_frames_keep_their_place() {
         );
     }
 }
+
+#[test]
+fn a_video_slide_resolves_to_nothing_like_a_bitmap() {
+    let c = SlideContent::Video(std::path::PathBuf::from("/clips/intro.mp4"));
+    assert!(resolve(&Theme::default(), &c, None).is_none());
+}

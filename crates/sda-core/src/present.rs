@@ -13,6 +13,7 @@ pub enum Source {
         version: String,
         reference: String,
     },
+    Video(PathBuf),
     #[default]
     None,
 }

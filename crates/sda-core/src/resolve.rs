@@ -18,6 +18,8 @@ pub enum SlideContent {
         verses: Vec<(u32, String)>,
     },
     Bitmap(PathBuf),
+    /// A video file. Drawn by the player, no theme applies.
+    Video(PathBuf),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -90,7 +92,7 @@ pub fn resolve(
 ) -> Option<ResolvedSlide> {
     let footer = footer.map(str::to_string);
     match content {
-        SlideContent::Bitmap(_) => None,
+        SlideContent::Bitmap(_) | SlideContent::Video(_) => None,
         SlideContent::Styled(slide) => Some(ResolvedSlide {
             background: solid_background(theme, slide.background),
             boxes: {

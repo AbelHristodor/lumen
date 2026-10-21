@@ -6,6 +6,10 @@ use std::path::{Path, PathBuf};
 pub const DEFAULT_HYMNS_URL: &str =
     "https://github.com/AbelHristodor/lumen/releases/latest/download/hymns.zip";
 
+fn full_volume() -> f32 {
+    1.0
+}
+
 fn default_hymns_url() -> String {
     DEFAULT_HYMNS_URL.to_string()
 }
@@ -47,6 +51,12 @@ pub struct Config {
     /// Id of the chosen Bible translation. `None` => none picked yet.
     #[serde(default)]
     pub bible_version: Option<String>,
+    /// Folder the Videos tab lists. `None` => the download folder.
+    #[serde(default)]
+    pub video_dir: Option<String>,
+    /// Playback volume, 0.0 to 1.0.
+    #[serde(default = "full_volume")]
+    pub video_volume: f32,
 }
 
 impl Default for Config {
@@ -59,6 +69,8 @@ impl Default for Config {
             active_theme: None,
             output_display: None,
             bible_version: None,
+            video_dir: None,
+            video_volume: 1.0,
         }
     }
 }
@@ -280,6 +292,8 @@ mod tests {
             active_theme: None,
             output_display: None,
             bible_version: None,
+            video_dir: None,
+            video_volume: 1.0,
         };
         let text = cfg.to_toml().unwrap();
         let back = Config::from_toml(&text).unwrap();
@@ -315,6 +329,8 @@ mod tests {
             active_theme: None,
             output_display: None,
             bible_version: None,
+            video_dir: None,
+            video_volume: 1.0,
         };
         let back = Config::from_toml(&cfg.to_toml().unwrap()).unwrap();
         assert_eq!(back.download_dir, Some("/home/user/Videos".into()));
@@ -330,6 +346,8 @@ mod tests {
             active_theme: Some("Sunset".into()),
             output_display: Some(2),
             bible_version: None,
+            video_dir: None,
+            video_volume: 1.0,
         };
         let back = Config::from_toml(&cfg.to_toml().unwrap()).unwrap();
         assert_eq!(back.language, Some("ro".into()));
@@ -369,6 +387,8 @@ mod tests {
             active_theme: None,
             output_display: None,
             bible_version: None,
+            video_dir: None,
+            video_volume: 1.0,
         };
         set_library_enabled(&mut cfg, "/tmp/u", false);
         assert!(!cfg.libraries[0].enabled);
@@ -391,6 +411,8 @@ mod tests {
             active_theme: None,
             output_display: None,
             bible_version: None,
+            video_dir: None,
+            video_volume: 1.0,
         };
         set_library_enabled(&mut cfg, "/data/default", false);
         assert!(!cfg.libraries[0].enabled);
@@ -439,6 +461,8 @@ mod tests {
     fn bible_version_round_trips() {
         let cfg = Config {
             bible_version: Some("kjv".into()),
+            video_dir: None,
+            video_volume: 1.0,
             ..Config::default()
         };
         let back = Config::from_toml(&cfg.to_toml().unwrap()).unwrap();
@@ -468,6 +492,8 @@ mod tests {
             active_theme: None,
             output_display: None,
             bible_version: None,
+            video_dir: None,
+            video_volume: 1.0,
         };
         remove_user_library(&mut cfg, "/tmp/mine");
         assert_eq!(cfg.libraries.len(), 1);
