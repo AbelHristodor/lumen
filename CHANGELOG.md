@@ -1,5 +1,11 @@
 # Changelog
 
+## v2.2.2
+
+### Hymns
+
+- The status pill after a library sync reads Synced. The hymn count is gone.
+
 ## v2.2.1
 
 ### Videos

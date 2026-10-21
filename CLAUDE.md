@@ -4,7 +4,7 @@ This file guides Claude Code when working in this repository.
 
 ## What this is
 
-Lumen 2.2.1 is a desktop app for projecting hymns and Bible verses. It is
+Lumen 2.2.2 is a desktop app for projecting hymns and Bible verses. It is
 written in Rust with Iced 0.14 and a wgpu renderer. There is one operator
 window with five tabs: Present, Bible, Videos, Themes, Settings. A Live strip
 stays visible across tabs and shows what the projector shows. The projector is
