@@ -40,3 +40,50 @@ fn probe_fails_on_a_broken_file() {
     let e = r.unwrap_err().to_string();
     assert!(e.contains("Invalid data"), "{e}");
 }
+
+#[test]
+fn spawn_video_delivers_timed_frames_in_order() {
+    use sda_media::decode::{FPS, spawn_video};
+    let _env = env_lock();
+    unsafe { std::env::set_var("FAKE_FRAMES", "4") };
+    let (mut child, rx) = spawn_video(
+        &fake_ffmpeg(),
+        std::path::Path::new("clip.mp4"),
+        Duration::from_secs(1),
+        (160, 90),
+    )
+    .unwrap();
+    let frames: Vec<_> = rx.iter().collect();
+    unsafe { std::env::remove_var("FAKE_FRAMES") };
+    let _ = child.wait();
+    assert_eq!(frames.len(), 4);
+    assert_eq!(frames[0].at, Duration::from_secs(1));
+    assert_eq!(
+        frames[1].at,
+        Duration::from_secs(1) + Duration::from_secs(1) / FPS
+    );
+    assert_eq!(frames[0].frame.dimensions(), (160, 90));
+    assert_eq!(
+        frames[3].frame.get_pixel(0, 0)[0],
+        4,
+        "the stub counts frames in red"
+    );
+}
+
+#[test]
+fn spawn_audio_delivers_pcm_chunks() {
+    use sda_media::audio::{CHANNELS, RATE};
+    use sda_media::decode::spawn_audio;
+    let _env = env_lock();
+    unsafe { std::env::set_var("FAKE_SECONDS", "1") };
+    let (mut child, rx) = spawn_audio(
+        &fake_ffmpeg(),
+        std::path::Path::new("clip.mp4"),
+        Duration::ZERO,
+    )
+    .unwrap();
+    let total: usize = rx.iter().map(|c| c.len()).sum();
+    unsafe { std::env::remove_var("FAKE_SECONDS") };
+    let _ = child.wait();
+    assert_eq!(total, RATE as usize * CHANNELS as usize);
+}
