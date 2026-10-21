@@ -9,4 +9,5 @@ pub mod decode;
 pub mod player;
 pub mod probe;
 
+pub use player::{Player, State};
 pub use probe::Info;

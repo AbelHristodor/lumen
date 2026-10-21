@@ -51,7 +51,10 @@ fi
 
 if [ "$fmt" = "f32le" ]; then
   n=${FAKE_SECONDS:-2}
-  head -c $((48000 * 2 * 4 * n)) /dev/zero
+  # BSD head rejects a zero count, so zero seconds writes nothing.
+  if [ "$n" -gt 0 ]; then
+    head -c $((48000 * 2 * 4 * n)) /dev/zero
+  fi
   exit 0
 fi
 echo "fake_ffmpeg: unknown output $fmt" >&2

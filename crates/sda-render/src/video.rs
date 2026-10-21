@@ -34,6 +34,11 @@ impl FrameSource {
         *self.latest.lock().unwrap_or_else(|e| e.into_inner()) = Some(Arc::new(frame));
     }
 
+    /// Forget the current frame, so the next draw shows nothing.
+    pub fn push_none(&self) {
+        *self.latest.lock().unwrap_or_else(|e| e.into_inner()) = None;
+    }
+
     pub fn latest(&self) -> Option<Arc<RgbaImage>> {
         self.latest
             .lock()
