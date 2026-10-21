@@ -406,8 +406,8 @@ impl App {
                 self.status.sync_busy = false;
                 match r {
                     Ok(Some(h)) => {
-                        if let Some(n) = self.install_searcher(&h) {
-                            self.status.library = s.status_synced_fmt.replace("{}", &n.to_string());
+                        if self.install_searcher(&h).is_some() {
+                            self.status.library = s.status_synced.clone();
                             self.status.library_error = false;
                             self.status.library_detail = None;
                         }

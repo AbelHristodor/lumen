@@ -20,7 +20,6 @@ fn format_strings_keep_their_placeholders() {
     // Guard: placeholders must survive translation in all languages.
     for lang in Language::all() {
         let s = Strings::for_language(lang);
-        assert!(s.status_synced_fmt.contains("{}"), "{:?} synced fmt", lang);
         assert!(s.update_staged_fmt.contains("{}"), "{:?} staged fmt", lang);
         assert!(s.update_ready_fmt.contains("{}"), "{:?} ready fmt", lang);
         assert!(
