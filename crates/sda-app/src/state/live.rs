@@ -25,6 +25,8 @@ pub struct LiveState {
     /// The video that is live. Set by `go_video`, dropped by `stop` and by
     /// any `go` of other content, which kills its ffmpeg children.
     pub player: Option<Arc<Player>>,
+    /// Blank paused the live video. Only then does unblank resume it.
+    paused_by_blank: bool,
     /// Decoded images for bitmap slides and image backgrounds.
     pub bitmaps: HashMap<PathBuf, Arc<RgbaImage>>,
     /// The background a worker is loading right now. Blocks a second worker
@@ -52,6 +54,7 @@ impl LiveState {
             ffmpeg: None,
             video: None,
             player: None,
+            paused_by_blank: false,
             bitmaps: HashMap::new(),
             started_for: None,
             failed_for: None,
@@ -185,6 +188,7 @@ impl LiveState {
         // Snapshot first so a video on its way out keeps its last frame.
         let prev = self.snapshot();
         self.player = None;
+        self.paused_by_blank = false;
         self.present = presentation;
         self.clear_cache();
         self.prune_bitmaps();
@@ -224,6 +228,10 @@ impl LiveState {
     pub fn next(&mut self) {
         if let Some(p) = &self.player {
             p.step(10);
+            // An arrow on an ended or paused video plays from there.
+            if p.state() != PlayState::Playing {
+                p.play();
+            }
             return;
         }
         let prev = self.snapshot();
@@ -237,6 +245,9 @@ impl LiveState {
     pub fn prev(&mut self) {
         if let Some(p) = &self.player {
             p.step(-10);
+            if p.state() != PlayState::Playing {
+                p.play();
+            }
             return;
         }
         let prev = self.snapshot();
@@ -264,9 +275,13 @@ impl LiveState {
         self.present.toggle_blank();
         if let Some(p) = &self.player {
             if self.present.blank {
-                p.pause();
-            } else {
+                if p.state() == PlayState::Playing {
+                    p.pause();
+                    self.paused_by_blank = true;
+                }
+            } else if self.paused_by_blank {
                 p.play();
+                self.paused_by_blank = false;
             }
         }
         self.step(prev);
@@ -278,6 +293,7 @@ impl LiveState {
         }
         let prev = self.snapshot();
         self.player = None;
+        self.paused_by_blank = false;
         self.present = Presentation::default();
         self.clear_cache();
         self.step(prev);
@@ -311,7 +327,12 @@ impl LiveState {
     /// A started transition counts until `settle` clears it on a tick, so
     /// the frame clock always delivers the final frame.
     pub fn animating(&self) -> bool {
-        self.started.is_some() || self.theme.background.is_animated() || self.video_playing()
+        // A paused seek clears the frame. One more tick shows the new one.
+        let video = self.player.as_ref().is_some_and(|p| {
+            p.state() == PlayState::Playing
+                || (p.state() != PlayState::Ended && p.frames().latest().is_none())
+        });
+        self.started.is_some() || self.theme.background.is_animated() || video
     }
 
     fn footer(&self) -> Option<&str> {

@@ -662,7 +662,7 @@ fn shortcut_sheet_opens_lists_and_closes_on_escape() {
 }
 
 #[test]
-fn a_video_presentation_has_one_slide_and_no_theme_footer() {
+fn a_video_presentation_has_one_slide_and_a_black_background() {
     let mut app = app();
     let path = std::path::PathBuf::from("/clips/intro.mp4");
     app.live.go(Presentation {
@@ -727,6 +727,31 @@ fn live_video_seeks_on_next_and_prev_and_pauses_on_blank() {
     assert_eq!(player.state(), State::Playing);
     let scene = app.live.scene((160, 90), Instant::now());
     assert!(matches!(scene.current, Some(sda_render::Layer::Video(_))));
+    // Ticks pull frames until the 2 s clip runs out.
+    let run_to_end = |app: &mut App| {
+        let deadline = Instant::now() + Duration::from_secs(3);
+        while player.state() != State::Ended && Instant::now() < deadline {
+            let _ = app.update(Msg::Tick(Instant::now()));
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert_eq!(player.state(), State::Ended);
+    };
+    run_to_end(&mut app);
+    let _ = app.update(Msg::LivePrev);
+    assert_eq!(
+        player.state(),
+        State::Playing,
+        "an arrow replays an ended video"
+    );
+    assert!(app.live.animating());
+    run_to_end(&mut app);
+    let _ = app.update(Msg::LiveBlank);
+    let _ = app.update(Msg::LiveBlank);
+    assert_ne!(
+        player.state(),
+        State::Playing,
+        "unblank only resumes what blank paused"
+    );
     let _ = app.update(Msg::LiveStop);
     assert!(app.live.player.is_none(), "stop drops the player");
 }
