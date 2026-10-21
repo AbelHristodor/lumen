@@ -1,22 +1,182 @@
-//! Videos tab view. Owned by the Videos tab task. The downloader form on
-//! the left, the history on the right.
+//! Videos tab view. Owned by the Videos tab task. The picked file on the
+//! left, the preview and its transport in the middle, the downloader and
+//! its history on the right.
 
 use crate::app::App;
 use crate::msg::{Msg, VideosMsg};
+use crate::shortcuts::Action;
 use crate::state::videos::{self, Phase};
 use crate::ui_theme;
 use crate::widgets::card::card;
+use crate::widgets::hint::labeled;
+use crate::widgets::icon::{Icon, icon};
+use crate::widgets::scene_view::{key, scene_view};
 use iced::widget::{
-    button, column, container, image, progress_bar, row, scrollable, space, text, text_input,
+    button, column, container, image, progress_bar, row, scrollable, slider, space, text,
+    text_input,
 };
-use iced::{Alignment, Element, Fill};
+use iced::{Alignment, Element, Fill, Shrink};
+use sda_core::media::format_time;
+use sda_media::State;
+
+const PICKER_W: f32 = 260.0;
+const SIDE_W: f32 = 340.0;
 
 pub fn show(app: &App) -> Element<'_, Msg> {
-    row![downloader(app), history(app)]
+    let side = column![downloader(app), history(app)]
+        .spacing(ui_theme::SPACING)
+        .width(SIDE_W)
+        .height(Fill);
+    row![picker(app), preview(app), side]
         .spacing(ui_theme::SPACING)
         .padding([0, ui_theme::SPACING as u16])
         .height(Fill)
         .into()
+}
+
+/// The picked file and the Open button. Phase 2 grows this into a folder
+/// list with thumbnails.
+fn picker(app: &App) -> Element<'_, Msg> {
+    let s = &app.core.strings;
+    let v = &app.videos;
+    let open = button(labeled(Some(Icon::Search), &s.videos_open_file, 13.0, None))
+        .padding([6, 12])
+        .style(ui_theme::accent_button)
+        .on_press(Msg::Videos(VideosMsg::OpenFile));
+    let mut col = column![ui_theme::section_label(&s.tab_videos), open].spacing(ui_theme::SPACING);
+    match &v.picked {
+        Some(p) => {
+            let name = p
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            col = col.push(text(name).size(13));
+            if v.opening {
+                col = col.push(text(&s.videos_opening).size(12).color(ui_theme::MUTED));
+            }
+        }
+        None => col = col.push(text(&s.videos_pick_hint).size(13).color(ui_theme::MUTED)),
+    }
+    if let Some(e) = &v.error {
+        let danger = ui_theme::theme().palette().danger;
+        col = col.push(text(e.as_str()).size(12).color(danger));
+    }
+    card(col).width(PICKER_W).height(Fill).into()
+}
+
+/// The preview frame with the transport under it.
+fn preview(app: &App) -> Element<'_, Msg> {
+    let s = &app.core.strings;
+    let v = &app.videos;
+    let frame: Element<'_, Msg> = match (&v.player, app.gpu_ok) {
+        (Some(p), true) => {
+            let scene = std::sync::Arc::new(sda_render::Scene {
+                size: (1280, 720),
+                background: sda_render::BackgroundState::Solid(sda_core::theme::Rgba::BLACK),
+                background_opacity: 1.0,
+                current: Some(sda_render::Layer::Video(p.frames())),
+                outgoing: None,
+                transition: sda_core::theme::Transition::default(),
+                blank: false,
+                now_secs: 0.0,
+            });
+            scene_view(key("video_preview"), scene)
+        }
+        (Some(_), false) => text(&s.gpu_unavailable).size(13).center().into(),
+        (None, _) => text(&s.videos_pick_hint)
+            .size(13)
+            .color(ui_theme::MUTED)
+            .center()
+            .into(),
+    };
+    let frame = container(frame)
+        .width(Fill)
+        .height(Fill)
+        .style(ui_theme::thumb_frame);
+    let mut col = column![ui_theme::section_label(&s.preview), frame].spacing(ui_theme::SPACING);
+    if let Some(p) = &v.player {
+        col = col.push(transport(app, p));
+    }
+    card(col).width(Fill).height(Fill).into()
+}
+
+fn transport<'a>(app: &'a App, p: &'a sda_media::Player) -> Element<'a, Msg> {
+    let s = &app.core.strings;
+    let pos = p.position();
+    let dur = p.duration();
+    let playing = p.state() == State::Playing;
+    let seek = slider(0.0..=dur.as_secs_f32().max(0.01), pos.as_secs_f32(), |x| {
+        Msg::Videos(VideosMsg::Seek(x))
+    })
+    .step(0.1_f32);
+    let time = text(format!("{} / {}", format_time(pos), format_time(dur)))
+        .size(12)
+        .color(ui_theme::MUTED)
+        .wrapping(text::Wrapping::None);
+    let ghost = |body: Element<'a, Msg>, msg: Msg| {
+        button(body)
+            .padding([6, 10])
+            .style(ui_theme::ghost_button)
+            .on_press(msg)
+    };
+    let back = ghost(
+        icon(Icon::SkipBack, 14.0).into(),
+        Msg::Videos(VideosMsg::Step(-10)),
+    );
+    let fwd = ghost(
+        icon(Icon::SkipForward, 14.0).into(),
+        Msg::Videos(VideosMsg::Step(10)),
+    );
+    let (play_icon, play_label) = if playing {
+        (Icon::Square, s.pause.as_str())
+    } else {
+        (Icon::Play, s.play.as_str())
+    };
+    let toggle = ghost(
+        labeled(Some(play_icon), play_label, 13.0, None),
+        Msg::Videos(VideosMsg::Toggle),
+    );
+    let volume = slider(0.0..=1.0, app.videos.volume, |x| {
+        Msg::Videos(VideosMsg::Volume(x))
+    })
+    .step(0.05_f32)
+    .width(100);
+    let mut vol_row = row![text(&s.volume).size(12).color(ui_theme::MUTED), volume]
+        .spacing(6)
+        .align_y(Alignment::Center);
+    if p.muted() {
+        vol_row = vol_row.push(iced::widget::tooltip(
+            icon(Icon::EyeOff, 13.0).color(ui_theme::MUTED),
+            container(text(&s.videos_muted_hint).size(12))
+                .padding(6)
+                .style(ui_theme::card),
+            iced::widget::tooltip::Position::Top,
+        ));
+    }
+    let state_hint: Element<'a, Msg> = if p.state() == State::Ended {
+        text(&s.videos_ended).size(12).color(ui_theme::MUTED).into()
+    } else {
+        space::horizontal().into()
+    };
+    let present = button(labeled(
+        Some(Icon::Play),
+        &s.bible_present_selected,
+        13.0,
+        Some(Action::Present),
+    ))
+    .padding([6, 14])
+    .style(ui_theme::accent_button)
+    .on_press(Msg::Videos(VideosMsg::Present));
+    column![
+        row![time, seek]
+            .spacing(ui_theme::SPACING)
+            .align_y(Alignment::Center),
+        row![back, toggle, fwd, state_hint, vol_row, present]
+            .spacing(ui_theme::SPACING / 2.0)
+            .align_y(Alignment::Center),
+    ]
+    .spacing(ui_theme::SPACING / 2.0)
+    .into()
 }
 
 fn ghost<'a>(label: &'a str, msg: Option<Msg>) -> Element<'a, Msg> {
@@ -50,7 +210,7 @@ fn downloader(app: &App) -> Element<'_, Msg> {
     .spacing(ui_theme::SPACING);
 
     let mut col = column![
-        ui_theme::section_label(&s.videos),
+        ui_theme::section_label(&s.videos_download),
         text(&s.downloader_subtitle).size(13).color(ui_theme::MUTED),
         url_row,
     ]
@@ -136,7 +296,7 @@ fn downloader(app: &App) -> Element<'_, Msg> {
         ]
         .align_y(Alignment::Center),
     );
-    card(col).width(Fill).height(Fill).into()
+    card(col).width(Fill).height(Shrink).into()
 }
 
 fn history(app: &App) -> Element<'_, Msg> {

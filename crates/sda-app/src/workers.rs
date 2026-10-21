@@ -13,7 +13,7 @@ use sda_core::search::Searcher;
 use sda_core::sync::SyncOutcome;
 use sda_core::theme::Background;
 use sda_core::update::{self, UpdateOutcome};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 /// Output size of video backgrounds. The renderer covers the target.
@@ -194,5 +194,19 @@ pub fn fonts_list() -> Task<Msg> {
             names
         }),
         |r| Msg::FontsListed(r.unwrap_or_default()),
+    )
+}
+
+/// Open `file` in a player sized for `max`. Downloads ffmpeg first when it
+/// is missing, the same way the downloader does.
+pub fn open_video(file: PathBuf, max: (u32, u32)) -> Task<Msg> {
+    Task::perform(
+        blocking(move || {
+            let ffmpeg = downloader::ensure_ffmpeg().map_err(|e| e.to_string())?;
+            sda_media::Player::open(&ffmpeg, &file, max)
+                .map(Arc::new)
+                .map_err(|e| e.to_string())
+        }),
+        |r| Msg::Videos(crate::msg::VideosMsg::Opened(r.and_then(|inner| inner))),
     )
 }

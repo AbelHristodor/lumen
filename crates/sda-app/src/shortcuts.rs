@@ -6,7 +6,7 @@
 //! check: Escape so it clears the Bible search while the field has focus,
 //! the others as `Msg::Modifiers` and `BibleMsg::Release`.
 
-use crate::msg::{BibleMsg, Msg, Tab};
+use crate::msg::{BibleMsg, Msg, Tab, VideosMsg};
 use iced::keyboard::key::Named;
 use iced::keyboard::{self, Key};
 use iced::{Event, event, window};
@@ -22,6 +22,8 @@ pub enum Action {
     Clear,
     Stop,
     Next,
+    /// Space. Pauses a live video, else the next slide.
+    Space,
     Prev,
     Blank,
     Jump,
@@ -47,7 +49,8 @@ pub enum Scope {
     Everywhere,
     Present,
     Bible,
-    PresentAndBible,
+    /// The tabs that present content: Present, Bible, Videos.
+    Content,
 }
 
 impl Scope {
@@ -56,7 +59,7 @@ impl Scope {
             Scope::Everywhere => true,
             Scope::Present => tab == Tab::Present,
             Scope::Bible => tab == Tab::Bible,
-            Scope::PresentAndBible => matches!(tab, Tab::Present | Tab::Bible),
+            Scope::Content => matches!(tab, Tab::Present | Tab::Bible | Tab::Videos),
         }
     }
 }
@@ -97,7 +100,7 @@ pub const TABLE: &[Shortcut] = &[
         Action::Present,
         KeyDef::Named(Named::Enter),
         false,
-        Scope::PresentAndBible,
+        Scope::Content,
     ),
     sc(
         Action::Clear,
@@ -112,7 +115,7 @@ pub const TABLE: &[Shortcut] = &[
         Scope::Everywhere,
     ),
     sc(
-        Action::Next,
+        Action::Space,
         KeyDef::Named(Named::Space),
         false,
         Scope::Everywhere,
@@ -201,10 +204,12 @@ pub fn message(action: Action, tab: Tab) -> Msg {
         Action::FocusSearch => Msg::FocusSearch,
         Action::Projector => Msg::ProjectorToggle,
         Action::Present if tab == Tab::Bible => Msg::Bible(BibleMsg::Present),
+        Action::Present if tab == Tab::Videos => Msg::Videos(VideosMsg::Present),
         Action::Present => Msg::GoLive,
         Action::Clear => Msg::Clear,
         Action::Stop => Msg::LiveStop,
         Action::Next => Msg::LiveNext,
+        Action::Space => Msg::LiveSpace,
         Action::Prev => Msg::LivePrev,
         Action::Blank => Msg::LiveBlank,
         Action::Up => Msg::MoveSelection(-1),
@@ -287,6 +292,7 @@ pub fn label(action: Action, s: &Strings) -> &str {
         Action::Clear => &s.sc_clear,
         Action::Stop => &s.sc_stop,
         Action::Next => &s.sc_next,
+        Action::Space => &s.sc_space,
         Action::Prev => &s.sc_prev,
         Action::Blank => &s.sc_blank,
         Action::Jump => &s.sc_jump,

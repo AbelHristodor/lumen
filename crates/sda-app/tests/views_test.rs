@@ -166,7 +166,16 @@ fn enter_presents_on_present_and_bible_only() {
         ),
         Some(Msg::Bible(BibleMsg::Present))
     ));
-    for tab in [Tab::Videos, Tab::Themes, Tab::Settings] {
+    assert!(matches!(
+        sda_app::shortcuts::filter(
+            enter(),
+            event::Status::Ignored,
+            window::Id::unique(),
+            Tab::Videos
+        ),
+        Some(Msg::Videos(sda_app::msg::VideosMsg::Present))
+    ));
+    for tab in [Tab::Themes, Tab::Settings] {
         assert!(
             sda_app::shortcuts::filter(enter(), event::Status::Ignored, window::Id::unique(), tab)
                 .is_none(),

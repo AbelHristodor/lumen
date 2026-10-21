@@ -107,7 +107,7 @@ impl App {
             library: core.strings.status_loading.clone(),
             ..Status::default()
         };
-        App {
+        let mut app = App {
             live,
             status,
             core,
@@ -129,7 +129,9 @@ impl App {
             now: Instant::now(),
             modifiers: iced::keyboard::Modifiers::empty(),
             show_shortcuts: false,
-        }
+        };
+        app.videos.volume = app.core.cfg.video_volume;
+        app
     }
 
     /// Load state, open the operator window, start the boot workers.
@@ -244,7 +246,7 @@ impl App {
             event::listen_with(window_geometry),
             window::close_events().map(Msg::ProjectorClosed),
         ];
-        if self.live.animating() {
+        if self.live.animating() || state::videos::preview_playing(self) {
             subs.push(window::frames().map(Msg::Tick));
         }
         Subscription::batch(subs)
@@ -333,6 +335,10 @@ impl App {
             }
             Msg::ToggleShortcuts => self.show_shortcuts = !self.show_shortcuts,
             Msg::LiveNext => self.live.next(),
+            Msg::LiveSpace => match &self.live.player {
+                Some(p) => p.toggle(),
+                None => self.live.next(),
+            },
             Msg::LivePrev => self.live.prev(),
             Msg::LiveBlank => self.live.blank(),
             Msg::LiveJump(n) => self.live.jump(n),
@@ -350,6 +356,7 @@ impl App {
             }
             Msg::Tick(now) => {
                 self.live.tick_video();
+                state::videos::tick(self);
                 projector::tick(self, now);
             }
             Msg::Identify => return projector::identify(self),

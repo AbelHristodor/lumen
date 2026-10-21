@@ -118,6 +118,8 @@ pub enum Msg {
     /// Shift, Ctrl, Alt, Cmd state. Updated on every change, captured or not.
     Modifiers(iced::keyboard::Modifiers),
     LiveNext,
+    /// Space. Pauses a live video, else the next slide.
+    LiveSpace,
     LivePrev,
     LiveBlank,
     LiveJump(usize),

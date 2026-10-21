@@ -24,6 +24,7 @@ pub struct LiveState {
     pub video: Option<Arc<FrameSource>>,
     /// The video that is live. Set by `go_video`, dropped by `stop` and by
     /// any `go` of other content, which kills its ffmpeg children.
+    /// The Videos tab may share the Arc, so stop and go pause it before dropping.
     pub player: Option<Arc<Player>>,
     /// Blank paused the live video. Only then does unblank resume it.
     paused_by_blank: bool,
@@ -187,7 +188,9 @@ impl LiveState {
     pub fn go(&mut self, presentation: Presentation) {
         // Snapshot first so a video on its way out keeps its last frame.
         let prev = self.snapshot();
-        self.player = None;
+        if let Some(p) = self.player.take() {
+            p.pause();
+        }
         self.paused_by_blank = false;
         self.present = presentation;
         self.clear_cache();
@@ -292,7 +295,9 @@ impl LiveState {
             return;
         }
         let prev = self.snapshot();
-        self.player = None;
+        if let Some(p) = self.player.take() {
+            p.pause();
+        }
         self.paused_by_blank = false;
         self.present = Presentation::default();
         self.clear_cache();

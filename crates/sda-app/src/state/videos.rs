@@ -10,7 +10,8 @@ use iced::widget::image;
 use sda_core::downloader::{self, DownloadEvent, DownloadRecord, Probe};
 use sda_core::library;
 use std::io::Read;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::Duration;
 
 /// Download records kept, newest first.
@@ -27,7 +28,6 @@ pub enum Phase {
     Failed,
 }
 
-#[derive(Default)]
 pub struct VideosState {
     pub url: String,
     pub probe: Option<Probe>,
@@ -42,6 +42,82 @@ pub struct VideosState {
     pub message: String,
     /// Decoded probe thumbnail. Empty until fetched or when the fetch failed.
     pub thumbnail: Option<image::Handle>,
+    /// The file chosen to present.
+    pub picked: Option<PathBuf>,
+    /// The preview player. `Present` hands this same `Arc` to the live state.
+    pub player: Option<Arc<sda_media::Player>>,
+    pub opening: bool,
+    /// Why the last open failed, shown under the picker.
+    pub error: Option<String>,
+    /// Playback volume, 0.0 to 1.0, from the config.
+    pub volume: f32,
+}
+
+impl Default for VideosState {
+    fn default() -> Self {
+        VideosState {
+            url: String::new(),
+            probe: None,
+            format_id: None,
+            dir: PathBuf::new(),
+            phase: Phase::default(),
+            percent: 0.0,
+            speed: String::new(),
+            eta: String::new(),
+            title: String::new(),
+            message: String::new(),
+            thumbnail: None,
+            picked: None,
+            player: None,
+            opening: false,
+            error: None,
+            volume: 1.0,
+        }
+    }
+}
+
+/// The largest picture the live output needs, the chosen display or 1080p.
+fn projector_size(app: &App) -> (u32, u32) {
+    app.projector_display
+        .and_then(|i| app.displays.get(i))
+        .map(|d| {
+            let (_, _, w, h) = d.rect;
+            ((w as f32 * d.scale) as u32, (h as f32 * d.scale) as u32)
+        })
+        .unwrap_or((1920, 1080))
+}
+
+/// True while the preview player plays. When it is also the live player the
+/// live state keeps the frame clock on too, which does no harm.
+pub fn preview_playing(app: &App) -> bool {
+    app.videos
+        .player
+        .as_ref()
+        .is_some_and(|p| p.state() == sda_media::State::Playing)
+}
+
+/// Per frame. The live state ticks the same player when it is live. A
+/// second tick in one frame is harmless.
+pub fn tick(app: &App) {
+    if let Some(p) = &app.videos.player {
+        p.tick();
+    }
+}
+
+/// Let go of the preview player. When it is also live the live state keeps
+/// its own clone and plays on. Otherwise this was the last clone and the
+/// drop stops its ffmpeg children.
+fn release_preview(app: &mut App) {
+    if let Some(old) = app.videos.player.take() {
+        let live = app
+            .live
+            .player
+            .as_ref()
+            .is_some_and(|l| Arc::ptr_eq(l, &old));
+        if !live {
+            drop(old);
+        }
+    }
 }
 
 /// The folder downloads go to. Falls back to the config when `dir` is unset.
@@ -172,6 +248,79 @@ pub fn update(app: &mut App, msg: VideosMsg) -> Task<Msg> {
             if v.phase == Phase::Downloading {
                 v.phase = Phase::Failed;
                 v.message = format!("{}yt-dlp", app.core.strings.download_failed_prefix);
+            }
+        }
+        VideosMsg::OpenFile => {
+            let start = v
+                .picked
+                .as_ref()
+                .and_then(|p| p.parent().map(Path::to_path_buf))
+                .unwrap_or_else(|| dir(app));
+            return Task::perform(
+                async move {
+                    rfd::AsyncFileDialog::new()
+                        .set_directory(start)
+                        .add_filter("Video", &["mp4", "mkv", "mov", "webm", "avi", "m4v"])
+                        .pick_file()
+                        .await
+                        .map(|h| h.path().to_path_buf())
+                },
+                |p| Msg::Videos(VideosMsg::FileChosen(p)),
+            );
+        }
+        VideosMsg::FileChosen(None) => {}
+        VideosMsg::FileChosen(Some(path)) => {
+            release_preview(app);
+            let v = &mut app.videos;
+            v.picked = Some(path.clone());
+            v.error = None;
+            v.opening = true;
+            return crate::workers::open_video(path, projector_size(app));
+        }
+        VideosMsg::Opened(result) => {
+            release_preview(app);
+            let v = &mut app.videos;
+            v.opening = false;
+            match result {
+                Ok(player) => {
+                    player.set_volume(v.volume);
+                    v.player = Some(player);
+                }
+                Err(e) => v.error = Some(e),
+            }
+        }
+        VideosMsg::Toggle => {
+            if let Some(p) = &v.player {
+                p.toggle();
+            }
+        }
+        VideosMsg::Seek(secs) => {
+            if let Some(p) = &v.player {
+                p.seek(Duration::from_secs_f32(secs.max(0.0)));
+            }
+        }
+        VideosMsg::Step(by) => {
+            if let Some(p) = &v.player {
+                p.step(by);
+            }
+        }
+        VideosMsg::Volume(vol) => {
+            v.volume = vol.clamp(0.0, 1.0);
+            if let Some(p) = &v.player {
+                p.set_volume(v.volume);
+            }
+            app.core.cfg.video_volume = v.volume;
+            app.core.save_cfg();
+        }
+        VideosMsg::Present => {
+            let player = v.player.clone();
+            if let Some(p) = player {
+                let title = p
+                    .file()
+                    .file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or_default();
+                app.live.go_video(p, title);
             }
         }
         VideosMsg::Reveal(p) => {
