@@ -6,8 +6,10 @@ use sda_core::resolve::SlideContent;
 use std::time::{Duration, Instant};
 
 /// Tests that set env vars hold this lock, because env vars are process wide.
+#[cfg(unix)]
 static ENV: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
+#[cfg(unix)]
 fn env_lock() -> std::sync::MutexGuard<'static, ()> {
     ENV.lock().unwrap_or_else(|e| e.into_inner())
 }

@@ -156,8 +156,10 @@ fn thumbnail_bytes_are_shown_after_probe() {
 
 /// Guards the env vars the fake ffmpeg reads. Every test that sets
 /// `LUMEN_NO_AUDIO` or `FAKE_FRAMES` holds it for its whole body.
+#[cfg(unix)]
 static ENV: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
+#[cfg(unix)]
 fn env_lock() -> std::sync::MutexGuard<'static, ()> {
     ENV.lock().unwrap_or_else(|e| e.into_inner())
 }
