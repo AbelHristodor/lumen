@@ -189,3 +189,26 @@ fn open_fails_with_ffmpegs_words() {
     unsafe { std::env::remove_var("FAKE_FAIL") };
     assert!(r.unwrap_err().to_string().contains("Invalid data"));
 }
+
+#[test]
+fn seek_while_paused_holds_one_frame() {
+    let _env = env_lock();
+    unsafe { std::env::set_var("FAKE_FRAMES", "60") };
+    let p = open_player();
+    p.seek(Duration::from_millis(1500));
+    for _ in 0..50 {
+        p.tick();
+        if p.frames().latest().is_some() {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert!(p.frames().latest().is_some(), "a frame at the seek point");
+    for _ in 0..5 {
+        std::thread::sleep(Duration::from_millis(10));
+        p.tick();
+    }
+    unsafe { std::env::remove_var("FAKE_FRAMES") };
+    let f = p.frames().latest().expect("still a frame");
+    assert_eq!(f.get_pixel(0, 0)[0], 1, "paused keeps the first frame");
+}
