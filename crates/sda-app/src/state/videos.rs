@@ -327,6 +327,10 @@ pub fn update(app: &mut App, msg: VideosMsg) -> Task<Msg> {
             }
         }
         VideosMsg::Reveal(p) => {
+            if !p.exists() {
+                app.core.prune_downloads();
+                return Task::none();
+            }
             let target = if p.is_file() {
                 p.parent().map(PathBuf::from).unwrap_or(p)
             } else {

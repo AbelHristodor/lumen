@@ -20,7 +20,6 @@ pub struct LiveState {
     pub started: Option<Instant>,
     /// The slide on its way out.
     pub outgoing: Option<SlideContent>,
-    pub ffmpeg: Option<PathBuf>,
     pub video: Option<Arc<FrameSource>>,
     /// The video that is live. Set by `go_video`, dropped by `stop` and by
     /// any `go` of other content, which kills its ffmpeg children.
@@ -52,7 +51,6 @@ impl LiveState {
             theme: Theme::default(),
             started: None,
             outgoing: None,
-            ffmpeg: None,
             video: None,
             player: None,
             paused_by_blank: false,

@@ -66,8 +66,9 @@ pub fn spawn_video(
         ])
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
-        .stderr(Stdio::inherit())
+        .stderr(Stdio::piped())
         .spawn()?;
+    sda_render::log_stderr(&mut child, "ffmpeg video");
     let mut stdout = child
         .stdout
         .take()
@@ -122,8 +123,9 @@ pub fn spawn_audio(
         ])
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
-        .stderr(Stdio::inherit())
+        .stderr(Stdio::piped())
         .spawn()?;
+    sda_render::log_stderr(&mut child, "ffmpeg audio");
     let mut stdout = child
         .stdout
         .take()

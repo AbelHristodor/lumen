@@ -6,7 +6,7 @@
 
 use image::RgbaImage;
 use std::fmt;
-use std::io::Read;
+use std::io::{BufRead, BufReader, Read};
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex, Weak};
@@ -79,6 +79,28 @@ pub fn hide_console(cmd: &mut Command) {
     }
 }
 
+/// Forward the child's piped stderr to the log, one line per warning.
+/// `Broken pipe` lines are dropped: ffmpeg prints a burst of them whenever
+/// its reader goes away, on seek, stop, or quit, and that is expected. The
+/// child must have been spawned with `Stdio::piped()` for stderr.
+pub fn log_stderr(child: &mut Child, what: &'static str) {
+    let Some(stderr) = child.stderr.take() else {
+        return;
+    };
+    let spawned = std::thread::Builder::new()
+        .name(format!("{what} stderr"))
+        .spawn(move || {
+            for line in BufReader::new(stderr).lines().map_while(Result::ok) {
+                if !line.contains("Broken pipe") && !line.trim().is_empty() {
+                    log::warn!("{what}: {line}");
+                }
+            }
+        });
+    if let Err(e) = spawned {
+        log::warn!("{what}: cannot read ffmpeg stderr: {e}");
+    }
+}
+
 /// Start `ffmpeg` decoding `media` in a loop at `size` and feed frames into
 /// the returned source. Fails when `ffmpeg` is not a file or cannot start.
 pub fn spawn_decoder(
@@ -102,8 +124,9 @@ pub fn spawn_decoder(
         .args(["-r", &FPS.to_string(), "-"])
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
-        .stderr(Stdio::inherit())
+        .stderr(Stdio::piped())
         .spawn()?;
+    log_stderr(&mut child, "ffmpeg background");
     let mut stdout = child
         .stdout
         .take()

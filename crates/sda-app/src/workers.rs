@@ -149,8 +149,11 @@ fn load_background(bg: &Background) -> Result<BackgroundAsset, String> {
     match bg {
         Background::Image(path) => still(path),
         Background::Video { path } => {
-            let spawned = downloader::find_existing("ffmpeg")
-                .ok_or_else(|| "ffmpeg not found".to_string())
+            // Same lookup as the Videos tab: PATH, the tools dir, else a
+            // download. A theme with a video background must work on a
+            // machine that never opened the Videos tab.
+            let spawned = downloader::ensure_ffmpeg()
+                .map_err(|e| format!("ffmpeg unavailable: {e}"))
                 .and_then(|ffmpeg| {
                     sda_render::spawn_decoder(&ffmpeg, path, VIDEO_SIZE).map_err(|e| e.to_string())
                 });

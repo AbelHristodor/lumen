@@ -131,6 +131,7 @@ impl Core {
             None => Theme::default(),
         };
         ui_theme::set_app_theme(AppTheme::from_code(core.cfg.app_theme.as_deref()));
+        core.prune_downloads();
         core
     }
 
@@ -163,6 +164,16 @@ impl Core {
     pub fn save_downloads(&self) {
         if let Err(e) = json_save(&self.paths.downloads, &self.downloads) {
             log::warn!("saving downloads failed: {e}");
+        }
+    }
+
+    /// Drop download records whose file was deleted or moved. Saves only
+    /// when something went away.
+    pub fn prune_downloads(&mut self) {
+        let before = self.downloads.len();
+        self.downloads.retain(|r| r.path.exists());
+        if self.downloads.len() != before {
+            self.save_downloads();
         }
     }
 

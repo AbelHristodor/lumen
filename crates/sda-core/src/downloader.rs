@@ -258,15 +258,81 @@ fn make_executable(path: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// GitHub release asset name for yt-dlp on the current platform.
-fn ytdlp_asset_name() -> &'static str {
-    if cfg!(target_os = "windows") {
-        "yt-dlp.exe"
-    } else if cfg!(target_os = "macos") {
-        "yt-dlp_macos"
-    } else {
-        "yt-dlp" // linux x86_64; the universal binary
+const HOST_OS: &str = std::env::consts::OS;
+const HOST_ARCH: &str = std::env::consts::ARCH;
+
+/// GitHub release asset name for yt-dlp. Every pick is a standalone
+/// executable. The bare `yt-dlp` asset is a Python zipapp and would need a
+/// system Python, so it is never used.
+pub fn ytdlp_asset_name(os: &str, arch: &str) -> anyhow::Result<&'static str> {
+    Ok(match (os, arch) {
+        ("windows", "x86_64") => "yt-dlp.exe",
+        ("windows", "x86") => "yt-dlp_x86.exe",
+        ("macos", _) => "yt-dlp_macos",
+        ("linux", "x86_64") => "yt-dlp_linux",
+        ("linux", "aarch64") => "yt-dlp_linux_aarch64",
+        ("linux", "arm") => "yt-dlp_linux_armv7l",
+        _ => anyhow::bail!("no yt-dlp build for {os} {arch}"),
+    })
+}
+
+/// How a downloaded ffmpeg artifact is unpacked.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FfmpegPackaging {
+    /// The artifact is the executable itself.
+    Raw,
+    /// A zip holding `ffmpeg` at the root or under `bin/`.
+    Zip,
+    /// A tar.xz holding `*/bin/ffmpeg`.
+    TarXz,
+}
+
+/// Download URL and packaging of a static ffmpeg for `os` and `arch`.
+/// Windows and Linux come from yt-dlp's FFmpeg-Builds. macOS comes from
+/// eugeneware/ffmpeg-static, which ships one raw binary per architecture.
+/// Neither source publishes checksums, so `verify_runs` is the only check.
+pub fn ffmpeg_source(os: &str, arch: &str) -> anyhow::Result<(String, FfmpegPackaging)> {
+    const BUILDS: &str = "https://github.com/yt-dlp/FFmpeg-Builds/releases/latest/download";
+    const STATIC: &str = "https://github.com/eugeneware/ffmpeg-static/releases/latest/download";
+    use FfmpegPackaging::*;
+    let (url, packaging) = match (os, arch) {
+        ("windows", "x86_64") => (format!("{BUILDS}/ffmpeg-master-latest-win64-gpl.zip"), Zip),
+        ("macos", "aarch64") => (format!("{STATIC}/ffmpeg-darwin-arm64"), Raw),
+        ("macos", "x86_64") => (format!("{STATIC}/ffmpeg-darwin-x64"), Raw),
+        ("linux", "x86_64") => (format!("{BUILDS}/ffmpeg-master-latest-linux64-gpl.tar.xz"), TarXz),
+        ("linux", "aarch64") => (format!("{BUILDS}/ffmpeg-master-latest-linuxarm64-gpl.tar.xz"), TarXz),
+        _ => anyhow::bail!("no ffmpeg build for {os} {arch}"),
+    };
+    Ok((url, packaging))
+}
+
+/// Run `bin flag` and fail unless it exits 0. Catches a wrong architecture,
+/// a truncated download, or an HTML error page saved as a binary.
+fn verify_runs(bin: &Path, flag: &str) -> anyhow::Result<()> {
+    let mut cmd = Command::new(bin);
+    hide_console(&mut cmd);
+    let status = cmd
+        .arg(flag)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .map_err(|e| anyhow::anyhow!("{} does not start: {e}", bin.display()))?;
+    if !status.success() {
+        anyhow::bail!("{} exited with {status}", bin.display());
     }
+    Ok(())
+}
+
+/// Move the verified `tmp` to `dest`, or remove `tmp` and fail.
+fn install_tool(tmp: &Path, dest: &Path, flag: &str) -> anyhow::Result<()> {
+    let result = make_executable(tmp).and_then(|_| verify_runs(tmp, flag));
+    if let Err(e) = result {
+        let _ = std::fs::remove_file(tmp);
+        return Err(e);
+    }
+    std::fs::rename(tmp, dest)?;
+    Ok(())
 }
 
 /// Ensure a yt-dlp binary exists, downloading the latest release into the
@@ -276,13 +342,11 @@ pub fn ensure_ytdlp() -> anyhow::Result<PathBuf> {
         maybe_self_update(&p);
         return Ok(p);
     }
+    let asset = ytdlp_asset_name(HOST_OS, HOST_ARCH)?;
     let dir = tools_dir().ok_or_else(|| anyhow::anyhow!("no data directory available"))?;
     std::fs::create_dir_all(&dir)?;
     let dest = dir.join(binary_name("yt-dlp"));
-    let url = format!(
-        "https://github.com/yt-dlp/yt-dlp/releases/latest/download/{}",
-        ytdlp_asset_name()
-    );
+    let url = format!("https://github.com/yt-dlp/yt-dlp/releases/latest/download/{asset}");
     let agent = ureq::AgentBuilder::new()
         .timeout(std::time::Duration::from_secs(120))
         .build();
@@ -290,22 +354,8 @@ pub fn ensure_ytdlp() -> anyhow::Result<PathBuf> {
     // GitHub releases/latest/download issues a 302 to the CDN; ureq follows
     // redirects by default (do not disable that).
     download_to(&agent, &url, &tmp)?;
-    make_executable(&tmp)?;
-    std::fs::rename(&tmp, &dest)?;
+    install_tool(&tmp, &dest, "--version")?;
     Ok(dest)
-}
-
-/// Download URL for a static ffmpeg build for the current platform.
-fn ffmpeg_archive_url() -> &'static str {
-    if cfg!(target_os = "windows") {
-        "https://github.com/yt-dlp/FFmpeg-Builds/releases/latest/download/ffmpeg-master-latest-win64-gpl.zip"
-    } else if cfg!(target_os = "macos") {
-        // evermeet.cx is a third-party ffmpeg builder (yt-dlp's FFmpeg-Builds
-        // has no macOS asset). HTTPS-only; no checksum verification.
-        "https://evermeet.cx/ffmpeg/getrelease/zip"
-    } else {
-        "https://github.com/yt-dlp/FFmpeg-Builds/releases/latest/download/ffmpeg-master-latest-linux64-gpl.tar.xz"
-    }
 }
 
 /// Extract the ffmpeg binary from a zip archive (Windows/macOS builds) into `dest`.
@@ -355,31 +405,31 @@ pub fn ensure_ffmpeg() -> anyhow::Result<PathBuf> {
     if let Some(p) = find_existing("ffmpeg") {
         return Ok(p);
     }
+    let (url, packaging) = ffmpeg_source(HOST_OS, HOST_ARCH)?;
     let dir = tools_dir().ok_or_else(|| anyhow::anyhow!("no data directory available"))?;
     std::fs::create_dir_all(&dir)?;
     let dest = dir.join(binary_name("ffmpeg"));
-    let url = ffmpeg_archive_url();
     // ffmpeg archives are tens of MB; allow a generous timeout.
     let agent = ureq::AgentBuilder::new()
         .timeout(std::time::Duration::from_secs(300))
         .build();
-    let archive = dir.join("ffmpeg-archive.part");
-    // GitHub releases/latest/download (and evermeet.cx) redirect to a CDN;
-    // ureq follows redirects by default.
-    download_to(&agent, url, &archive)?;
     let tmp = dir.join(format!("{}.part", binary_name("ffmpeg")));
-    let extracted = if url.ends_with(".tar.xz") {
-        extract_ffmpeg_from_tar_xz(&archive, &tmp)
+    if packaging == FfmpegPackaging::Raw {
+        download_to(&agent, &url, &tmp)?;
     } else {
-        extract_ffmpeg_from_zip(&archive, &tmp)
-    };
-    let _ = std::fs::remove_file(&archive);
-    if extracted.is_err() {
-        let _ = std::fs::remove_file(&tmp);
+        let archive = dir.join("ffmpeg-archive.part");
+        download_to(&agent, &url, &archive)?;
+        let extracted = match packaging {
+            FfmpegPackaging::TarXz => extract_ffmpeg_from_tar_xz(&archive, &tmp),
+            _ => extract_ffmpeg_from_zip(&archive, &tmp),
+        };
+        let _ = std::fs::remove_file(&archive);
+        if extracted.is_err() {
+            let _ = std::fs::remove_file(&tmp);
+        }
+        extracted?;
     }
-    extracted?;
-    make_executable(&tmp)?;
-    std::fs::rename(&tmp, &dest)?;
+    install_tool(&tmp, &dest, "-version")?;
     Ok(dest)
 }
 
@@ -729,16 +779,40 @@ mod tests {
     }
 
     #[test]
-    fn ffmpeg_url_matches_platform() {
-        let url = ffmpeg_archive_url();
-        assert!(!url.is_empty());
-        if cfg!(target_os = "windows") {
-            assert!(url.ends_with(".zip"));
-        } else if cfg!(target_os = "macos") {
-            assert!(url.ends_with("zip"));
-        } else {
-            assert!(url.ends_with(".tar.xz"));
-        }
+    fn ffmpeg_source_matches_arch() {
+        let (url, pack) = ffmpeg_source("linux", "aarch64").unwrap();
+        assert!(url.contains("linuxarm64") && url.ends_with(".tar.xz"));
+        assert_eq!(pack, FfmpegPackaging::TarXz);
+        let (url, pack) = ffmpeg_source("macos", "aarch64").unwrap();
+        assert!(url.ends_with("ffmpeg-darwin-arm64"));
+        assert_eq!(pack, FfmpegPackaging::Raw);
+        let (url, _) = ffmpeg_source("macos", "x86_64").unwrap();
+        assert!(url.ends_with("ffmpeg-darwin-x64"));
+        let (url, pack) = ffmpeg_source("windows", "x86_64").unwrap();
+        assert!(url.contains("win64") && url.ends_with(".zip"));
+        assert_eq!(pack, FfmpegPackaging::Zip);
+        assert!(ffmpeg_source("freebsd", "x86_64").is_err());
+        assert!(ffmpeg_source(HOST_OS, HOST_ARCH).is_ok());
+    }
+
+    #[test]
+    fn ytdlp_asset_is_standalone_per_arch() {
+        assert_eq!(ytdlp_asset_name("linux", "x86_64").unwrap(), "yt-dlp_linux");
+        assert_eq!(ytdlp_asset_name("linux", "aarch64").unwrap(), "yt-dlp_linux_aarch64");
+        assert_eq!(ytdlp_asset_name("macos", "aarch64").unwrap(), "yt-dlp_macos");
+        assert_eq!(ytdlp_asset_name("windows", "x86_64").unwrap(), "yt-dlp.exe");
+        assert!(ytdlp_asset_name("linux", "riscv64").is_err());
+        assert!(ytdlp_asset_name(HOST_OS, HOST_ARCH).is_ok());
+    }
+
+    #[test]
+    fn install_tool_rejects_a_binary_that_does_not_run() {
+        let dir = tempfile::tempdir().unwrap();
+        let tmp = dir.path().join("tool.part");
+        let dest = dir.path().join("tool");
+        fs::write(&tmp, b"<html>not a binary</html>").unwrap();
+        assert!(install_tool(&tmp, &dest, "--version").is_err());
+        assert!(!tmp.exists() && !dest.exists());
     }
 
     #[test]

@@ -117,13 +117,16 @@ fn parse_all(misses: &[(usize, PathBuf, i64)], library: &str) -> Vec<(usize, Opt
             .collect();
         handles
             .into_iter()
-            .flat_map(|h| h.join().expect("parse thread panicked"))
+            .flat_map(|h| h.join().unwrap_or_default())
             .collect()
     })
 }
 
 fn parse_one(path: &Path, mtime: i64, library: &str) -> Option<Hymn> {
-    match extract(path) {
+    // One corrupt deck must not take the whole index down with it.
+    let parsed = std::panic::catch_unwind(|| extract(path))
+        .unwrap_or_else(|_| Err(anyhow::anyhow!("parser panicked")));
+    match parsed {
         Ok(parsed) => Some(Hymn {
             number: parsed.number,
             title: parsed.title,

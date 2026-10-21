@@ -97,6 +97,29 @@ fn download_events_drive_phase_and_history() {
 }
 
 #[test]
+fn opening_the_tab_drops_history_rows_whose_file_is_gone() {
+    let mut app = probed_app();
+    let dir = tempfile::tempdir().unwrap();
+    let kept = dir.path().join("kept.mp4");
+    std::fs::write(&kept, b"x").unwrap();
+    let gone = dir.path().join("gone.mp4");
+    for path in [kept.clone(), gone] {
+        let _ = app.update(Msg::Videos(VideosMsg::Event(DownloadEvent::Title(
+            path.file_name().unwrap().to_string_lossy().into_owned(),
+        ))));
+        let _ = app.update(Msg::Videos(VideosMsg::Event(DownloadEvent::Done { path })));
+    }
+    assert_eq!(app.core.downloads.len(), 2);
+    let _ = app.update(Msg::Tab(Tab::Present));
+    let _ = app.update(Msg::Tab(Tab::Videos));
+    assert_eq!(app.core.downloads.len(), 1);
+    assert_eq!(app.core.downloads[0].path, kept);
+    let mut ui = Simulator::new(app.view_operator());
+    assert!(ui.find("kept.mp4").is_ok());
+    assert!(ui.find("gone.mp4").is_err());
+}
+
+#[test]
 fn fetch_is_ignored_while_downloading() {
     let mut app = probed_app();
     let _ = app.update(Msg::Videos(VideosMsg::Event(DownloadEvent::Resolving)));

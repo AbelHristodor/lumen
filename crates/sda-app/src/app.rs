@@ -167,6 +167,18 @@ impl App {
         (app, task)
     }
 
+    /// Kill every ffmpeg child before the process ends. `iced::exit` does
+    /// not drop the app, so without this the children live on until their
+    /// pipe breaks.
+    pub fn release_media(&mut self) {
+        self.live.stop();
+        self.live.player = None;
+        self.live.video = None;
+        self.videos.player = None;
+        self.themes.preview.player = None;
+        self.themes.preview.video = None;
+    }
+
     /// An app with no window, no GPU, and the four fixture hymns indexed.
     /// Files go to a fresh folder inside one shared temp dir.
     pub fn for_test() -> App {
@@ -284,6 +296,10 @@ impl App {
                 return match t {
                     Tab::Bible => bible::opened(self),
                     Tab::Themes => themes::opened(self),
+                    Tab::Videos => {
+                        self.core.prune_downloads();
+                        Task::none()
+                    }
                     _ => Task::none(),
                 };
             }
@@ -350,6 +366,7 @@ impl App {
             Msg::ProjectorDisplay(i) => return projector::choose_display(self, i),
             Msg::ProjectorClosed(id) => {
                 if id == self.operator {
+                    self.release_media();
                     return iced::exit();
                 }
                 projector::closed(self, id);
