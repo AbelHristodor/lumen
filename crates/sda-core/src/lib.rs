@@ -7,6 +7,7 @@ pub mod history;
 pub mod i18n;
 pub mod index;
 pub mod library;
+pub mod media;
 pub mod model;
 pub mod overrides;
 pub mod pptx;
