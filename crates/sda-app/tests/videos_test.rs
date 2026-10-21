@@ -263,6 +263,16 @@ mod with_fake_ffmpeg {
     }
 
     #[test]
+    fn seek_uses_the_last_scrub_over_a_stale_release_value() {
+        let _env = env_lock();
+        let (mut app, player) = opened_app();
+        let _ = app.update(Msg::Videos(VideosMsg::Scrub(1.0)));
+        let _ = app.update(Msg::Videos(VideosMsg::Seek(0.2)));
+        assert_eq!(player.position(), Duration::from_secs(1));
+        assert_eq!(app.videos.scrub, None);
+    }
+
+    #[test]
     fn a_late_open_for_an_older_pick_is_dropped() {
         let _env = env_lock();
         unsafe { std::env::set_var("LUMEN_NO_AUDIO", "1") };

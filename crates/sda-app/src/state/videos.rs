@@ -267,6 +267,7 @@ pub fn update(app: &mut App, msg: VideosMsg) -> Task<Msg> {
             let v = &mut app.videos;
             v.picked = Some(path.clone());
             v.error = None;
+            v.scrub = None;
             v.opening = true;
             return crate::workers::open_video(path, projector_size(app));
         }
@@ -280,24 +281,28 @@ pub fn update(app: &mut App, msg: VideosMsg) -> Task<Msg> {
             }
         }
         VideosMsg::Opened(Err(e)) => {
+            v.scrub = None;
             if v.opening {
                 v.opening = false;
                 v.error = Some(e);
             }
         }
         VideosMsg::Toggle => {
+            v.scrub = None;
             if let Some(p) = &v.player {
                 p.toggle();
             }
         }
         VideosMsg::Scrub(secs) => v.scrub = Some(secs),
         VideosMsg::Seek(secs) => {
-            v.scrub = None;
+            // The release value from the view can lag the last scrub in one batch.
+            let target = v.scrub.take().unwrap_or(secs);
             if let Some(p) = &v.player {
-                p.seek(Duration::from_secs_f32(secs.max(0.0)));
+                p.seek(Duration::from_secs_f32(target.max(0.0)));
             }
         }
         VideosMsg::Step(by) => {
+            v.scrub = None;
             if let Some(p) = &v.player {
                 p.step(by);
             }
