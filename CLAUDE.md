@@ -28,6 +28,7 @@ cargo test -p sda-core -- matches_by_number   # one test by name
 cargo test -p sda-render              # headless goldens, skip without a GPU
 UPDATE_GOLDENS=1 cargo test -p sda-render     # rewrite the golden PNGs
 cargo test -p sda-app                 # iced_test simulator tests
+cargo test -p sda-media -- --test-threads=1   # video player, unix only
 cargo clippy --workspace --all-targets -- -D warnings
 RUST_LOG=sda_app=debug,sda_core=debug,sda_render=debug cargo run -p sda-app
 ```
@@ -74,7 +75,7 @@ edition 2024 and let chains.
 
 ## Architecture
 
-Three crates. Logic lives in the core. The renderer knows nothing about Iced.
+Four crates. Logic lives in the core. The renderer knows nothing about Iced.
 The app stays thin.
 
 - **`crates/sda-core`**: no UI, no GPU, unit tested. Modules: `asis`, `bible`
@@ -87,6 +88,13 @@ The app stays thin.
   one scene under a caller chosen key and `render` draws it into a viewport
   with a scissor. `trim` runs at the end of every frame and drops scenes not
   prepared for two frames.
+- **`crates/sda-media`**: video playback for presenting. `Player` runs two
+  `ffmpeg` children per file, raw RGBA frames and f32 PCM, both from the
+  same `-ss`. Frames are paced against the audio clock, a `SampleClock`
+  fed by the rodio source, or a `WallClock` when there is no sound. Seek
+  restarts both children. `tick` runs once per rendered frame from
+  `Msg::Tick`. Tests run a fake ffmpeg shell script and never open a
+  device, so they are unix only.
 - **`crates/sda-app`**: the Iced daemon, binary `lumen`. `build.rs`
   embeds `assets/icon.ico` on Windows. `#![windows_subsystem = "windows"]`
   hides the console on Windows. Modules:
@@ -107,7 +115,7 @@ ui_theme.rs      palette, container and button styles
 shortcuts.rs     event filter
 displays.rs      display-info wrapper
 workers.rs       Task builders for boot, sync, reindex, update, gpu probe,
-                 backgrounds, converter detect, fonts list
+                 backgrounds, converter detect, fonts list, open_video
 ```
 
 `Core` in `state/core.rs` holds config, strings, searcher, themes, history,
@@ -173,6 +181,9 @@ and `window::close_events`. It adds `window::frames` as `Msg::Tick` only while
 - `i18n::Strings` has every UI string. Tabs take their label from it.
 - The Themes editor shows a Hymn or Bible sample. Verse and reference edits
   switch it to Bible.
+- A video slide is `SlideContent::Video`. `LiveState` keeps the `Player`,
+  `next` and `prev` seek 10 s, `blank` pauses, the scene background is black
+  whatever the theme says.
 
 ### Keyboard
 

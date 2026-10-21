@@ -34,6 +34,12 @@
 - Enter presents on Present and Bible. Esc clears the search or selection and closes dialogs. Stop moved from Esc to ⌘. so a stray Esc never blanks the hall. ⌘K or ⌘F focus the search of the current tab, → or Space is next, [ and ] step the Bible preview.
 - Icons from a Lucide subset on the live strip, Go Live, Present, the search bars, and the Bibles cog.
 
+### Video
+
+- Videos tab: open a video file, preview it with play, pause, a seek bar, 10 s steps, and volume, then present it. Sound plays through the default output. On the projector the picture is letterboxed over black, no theme applies. Space pauses, → ← step 10 s, B blanks and pauses. The file ends to a black screen.
+- The downloader is one card on the right of the Videos tab.
+- Linux packages now depend on `libasound2` for sound output.
+
 ### Present
 
 - The Notes card became a History card.

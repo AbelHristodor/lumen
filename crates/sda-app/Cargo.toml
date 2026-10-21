@@ -44,7 +44,7 @@ maintainer = "Abel Hristodor <habelor@gmail.com>"
 copyright = "Abel Hristodor"
 extended-description = "Project hymns and Bible verses on a second screen."
 section = "graphics"
-depends = "$auto"
+depends = "$auto, libasound2 | libasound2t64"
 assets = [
     ["target/release/lumen", "usr/bin/", "755"],
     ["../../packaging/linux/lumen.desktop", "usr/share/applications/", "644"],
@@ -61,3 +61,6 @@ assets = [
     { source = "../../packaging/linux/lumen.desktop", dest = "/usr/share/applications/lumen.desktop", mode = "644" },
     { source = "../../assets/icon.png", dest = "/usr/share/icons/hicolor/512x512/apps/lumen.png", mode = "644" },
 ]
+
+[package.metadata.generate-rpm.requires]
+alsa-lib = "*"
