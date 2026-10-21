@@ -171,9 +171,9 @@ impl Renderer {
         p.draws.clear();
         let opacity = scene.background_opacity.clamp(0.0, 1.0);
         // A key that stops showing video no longer pins its last frame.
-        if !matches!(scene.background, BackgroundState::Video(_))
-            && let Some(old) = p.video_key.take()
-        {
+        let shows_video = matches!(scene.background, BackgroundState::Video(_))
+            || matches!(scene.current, Some(Layer::Video(_)));
+        if !shows_video && let Some(old) = p.video_key.take() {
             self.stale.push(old);
         }
         p.bg = match &scene.background {
@@ -241,26 +241,62 @@ impl Renderer {
             let progress = scene.outgoing.as_ref().map_or(1.0, |(_, p)| *p);
             let (out_params, cur_params) = composite::transition(&scene.transition, progress);
             if let (Some((layer, _)), Some(params)) = (&scene.outgoing, out_params) {
-                self.queue_draw(
-                    device,
-                    queue,
-                    &mut p,
-                    composite::OUTGOING,
-                    layer,
-                    params,
-                    scene.size,
-                );
+                // A video on its way out shows its last frame. The layer cache
+                // cap evicts that frame later, so it does not pin `video_key`.
+                let (layer, fit) = match layer {
+                    Layer::Video(src) => match src.latest() {
+                        Some(frame) => (Some(Layer::Bitmap(frame)), composite::Fit::Contain),
+                        None => (None, composite::Fit::Contain),
+                    },
+                    other => (Some(other.clone()), composite::Fit::Cover),
+                };
+                if let Some(layer) = layer {
+                    self.queue_draw(
+                        device,
+                        queue,
+                        &mut p,
+                        composite::OUTGOING,
+                        &layer,
+                        params,
+                        fit,
+                        scene.size,
+                    );
+                }
             }
             if let Some(layer) = &scene.current {
-                self.queue_draw(
-                    device,
-                    queue,
-                    &mut p,
-                    composite::CURRENT,
-                    layer,
-                    cur_params,
-                    scene.size,
-                );
+                match layer {
+                    Layer::Video(src) => {
+                        if let Some(frame) = src.latest() {
+                            let key = self.queue_draw(
+                                device,
+                                queue,
+                                &mut p,
+                                composite::CURRENT,
+                                &Layer::Bitmap(frame),
+                                cur_params,
+                                composite::Fit::Contain,
+                                scene.size,
+                            );
+                            if let Some(old) = p.video_key.replace(key)
+                                && old != key
+                            {
+                                self.stale.push(old);
+                            }
+                        }
+                    }
+                    other => {
+                        self.queue_draw(
+                            device,
+                            queue,
+                            &mut p,
+                            composite::CURRENT,
+                            other,
+                            cur_params,
+                            composite::Fit::Cover,
+                            scene.size,
+                        );
+                    }
+                }
             }
         }
         self.scenes.insert(key, p);
@@ -305,6 +341,7 @@ impl Renderer {
             composite::BACKGROUND,
             &Layer::Bitmap(img),
             params,
+            composite::Fit::Cover,
             size,
         )
     }
@@ -373,7 +410,7 @@ impl Renderer {
 
     /// Make sure `layer` has a texture, write `params` into the layer
     /// `slot` of `p`, and add the draw to `p`. Bitmaps are scaled to cover
-    /// the output. Returns the cache key.
+    /// the output or to fit inside it, as `fit` says. Returns the cache key.
     #[allow(clippy::too_many_arguments)]
     fn queue_draw(
         &mut self,
@@ -383,12 +420,16 @@ impl Renderer {
         slot: usize,
         layer: &Layer,
         params: LayerParams,
+        fit: composite::Fit,
         size: (u32, u32),
     ) -> u64 {
-        let params = match layer {
-            Layer::Text(_) => params,
-            Layer::Bitmap(img) => {
+        let params = match (layer, fit) {
+            (Layer::Text(_), _) | (Layer::Video(_), _) => params,
+            (Layer::Bitmap(img), composite::Fit::Cover) => {
                 composite::scaled(params, composite::cover(img.dimensions(), size))
+            }
+            (Layer::Bitmap(img), composite::Fit::Contain) => {
+                composite::scaled(params, composite::contain(img.dimensions(), size))
             }
         };
         let key = self.texture(device, queue, layer, size);
@@ -414,6 +455,7 @@ impl Renderer {
                 size.hash(&mut h);
             }
             Layer::Bitmap(b) => (Arc::as_ptr(b) as usize).hash(&mut h),
+            Layer::Video(src) => (Arc::as_ptr(src) as usize).hash(&mut h),
         }
         let key = h.finish();
         if !self.cache.contains_key(&key) {
@@ -423,6 +465,7 @@ impl Renderer {
                     self.layer.upload(device, queue, &img)
                 }
                 Layer::Bitmap(img) => self.layer.upload(device, queue, img),
+                Layer::Video(_) => unreachable!("video layers are unwrapped in prepare"),
             };
             self.cache.insert(
                 key,

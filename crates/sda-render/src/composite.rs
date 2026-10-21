@@ -66,6 +66,25 @@ pub fn cover(tex: (u32, u32), out: (u32, u32)) -> [f32; 2] {
     }
 }
 
+/// Scale factors that fit `tex` inside `out` with its aspect kept. The
+/// shorter side stays at 1.0, the other shrinks. The opposite of `cover`.
+pub fn contain(tex: (u32, u32), out: (u32, u32)) -> [f32; 2] {
+    let ta = tex.0 as f32 / tex.1.max(1) as f32;
+    let oa = out.0 as f32 / out.1.max(1) as f32;
+    if ta > oa {
+        [1.0, oa / ta]
+    } else {
+        [ta / oa, 1.0]
+    }
+}
+
+/// How a bitmap meets the output: fill it and crop, or fit inside it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Fit {
+    Cover,
+    Contain,
+}
+
 /// Multiply the quad scale of `params` by `by` per axis.
 pub fn scaled(mut params: LayerParams, by: [f32; 2]) -> LayerParams {
     params.scale = [params.scale[0] * by[0], params.scale[1] * by[1]];
@@ -115,5 +134,17 @@ mod tests {
         let [x, y] = cover((40, 10), (20, 10));
         assert_eq!(y, 1.0);
         assert_eq!(x, 2.0);
+    }
+
+    #[test]
+    fn contain_fits_inside_and_cover_fills() {
+        // 4:3 into 16:9: width shrinks to 0.75, height stays.
+        let c = contain((400, 300), (1600, 900));
+        assert!((c[0] - 0.75).abs() < 1e-5 && (c[1] - 1.0).abs() < 1e-5);
+        // 21:9 into 16:9: height shrinks.
+        let c = contain((2100, 900), (1600, 900));
+        assert!((c[0] - 1.0).abs() < 1e-5 && (c[1] - 16.0 / 21.0).abs() < 1e-5);
+        // Same aspect: no change.
+        assert_eq!(contain((16, 9), (1920, 1080)), [1.0, 1.0]);
     }
 }

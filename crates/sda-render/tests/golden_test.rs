@@ -583,3 +583,42 @@ fn verses_reference_band() {
     assert!(red, "red reference in the top band");
     check("verses_reference_band", &s);
 }
+
+/// A 4:3 frame on a 16:9 scene draws letterboxed: black at the sides,
+/// the frame's color in the middle, nothing stretched.
+#[test]
+fn video_contain() {
+    use sda_render::FrameSource;
+    let src = FrameSource::new((120, 90));
+    src.push(image::RgbaImage::from_pixel(
+        120,
+        90,
+        image::Rgba([0, 160, 255, 255]),
+    ));
+    let mut s = base();
+    s.current = Some(Layer::Video(src));
+    let Some(img) = headless::render_to_image(&s) else {
+        return;
+    };
+    // Scene is 320 by 180. A 4:3 frame fitted by height is 240 wide, so
+    // columns 0..40 and 280..320 stay black and the middle is blue.
+    assert_eq!(img.get_pixel(10, 90)[2], 0, "left band black");
+    assert_eq!(img.get_pixel(310, 90)[2], 0, "right band black");
+    let mid = img.get_pixel(160, 90);
+    assert!(
+        mid[2] > 200 && mid[1] > 120,
+        "frame color in the middle {mid:?}"
+    );
+    check("video_contain", &s);
+}
+
+#[test]
+fn video_layer_without_a_frame_draws_nothing() {
+    use sda_render::FrameSource;
+    let mut s = base();
+    s.current = Some(Layer::Video(FrameSource::new((120, 90))));
+    let Some(img) = headless::render_to_image(&s) else {
+        return;
+    };
+    assert!((0..320).step_by(16).all(|x| img.get_pixel(x, 90)[2] == 0));
+}

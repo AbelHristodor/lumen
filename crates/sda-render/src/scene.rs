@@ -33,6 +33,8 @@ pub struct Scene {
 pub enum Layer {
     Text(Arc<ResolvedSlide>),
     Bitmap(Arc<RgbaImage>),
+    /// Live frames from a player. Drawn letterboxed over the background.
+    Video(Arc<FrameSource>),
 }
 
 /// What sits behind the slide.
