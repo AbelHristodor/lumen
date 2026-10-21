@@ -45,15 +45,15 @@ pub fn show(app: &App) -> Element<'_, Msg> {
         );
         let mut col = column![text(live.present.title.as_str()).size(15)].spacing(2);
         if let Some(sub) = &live.present.subtitle {
-            col = col.push(text(sub.as_str()).size(12).color(ui_theme::MUTED));
+            col = col.push(text(sub.as_str()).size(12).color(ui_theme::palette().muted));
         }
-        col.push(text(counter).size(12).color(ui_theme::MUTED))
+        col.push(text(counter).size(12).color(ui_theme::palette().muted))
             .width(Fill)
             .into()
     } else {
         text(&s.nothing_live)
             .size(13)
-            .color(ui_theme::MUTED)
+            .color(ui_theme::palette().muted)
             .width(Fill)
             .into()
     };

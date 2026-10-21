@@ -1,6 +1,7 @@
 //! Persistent app data: config, language, themes, history, overrides and
 //! download records. Loaded once at boot. No workers here, see `workers.rs`.
 
+use crate::ui_theme::{self, AppTheme};
 use sda_core::asis::Converter;
 use sda_core::downloader::DownloadRecord;
 use sda_core::history::{HistoryEntry, VerseHistoryEntry};
@@ -129,6 +130,7 @@ impl Core {
             }),
             None => Theme::default(),
         };
+        ui_theme::set_app_theme(AppTheme::from_code(core.cfg.app_theme.as_deref()));
         core
     }
 
@@ -169,6 +171,13 @@ impl Core {
         self.language = lang;
         self.strings = Strings::for_language(lang);
         self.cfg.language = Some(lang.code().to_string());
+        self.save_cfg();
+    }
+
+    /// Switch the operator window palette and persist it.
+    pub fn set_app_theme(&mut self, theme: AppTheme) {
+        ui_theme::set_app_theme(theme);
+        self.cfg.app_theme = Some(theme.code().to_string());
         self.save_cfg();
     }
 

@@ -33,7 +33,7 @@ fn edit(e: DraftEdit) -> Msg {
 fn label(t: &str) -> Element<'_, Msg> {
     text(t)
         .size(13)
-        .color(ui_theme::MUTED)
+        .color(ui_theme::palette().muted)
         .width(LABEL_W)
         .into()
 }
@@ -147,7 +147,7 @@ fn inherit_row<'a>(
         r = r.push(
             text(format!("·  {v}"))
                 .size(13)
-                .color(ui_theme::MUTED)
+                .color(ui_theme::palette().muted)
                 .wrapping(text::Wrapping::None),
         );
     }
@@ -165,7 +165,7 @@ fn slide<'a>(
         slider(range, value, move |v| edit(f(v)))
             .step(step)
             .width(SLIDER_W),
-        text(shown).size(13).color(ui_theme::MUTED),
+        text(shown).size(13).color(ui_theme::palette().muted),
     ]
     .spacing(ui_theme::SPACING / 2.0)
     .align_y(Alignment::Center)
@@ -184,7 +184,7 @@ fn color_field<'a>(app: &'a App, which: ColorField, current: Rgba) -> Element<'a
         .style(move |_| container::Style {
             background: Some(color.into()),
             border: Border {
-                color: ui_theme::MUTED,
+                color: ui_theme::palette().muted,
                 width: 1.0,
                 radius: 4.0.into(),
             },
@@ -665,7 +665,9 @@ fn background_section<'a>(app: &'a App, d: &'a Theme) -> Element<'a, Msg> {
                     slider(10..=500u32, *count, |n| edit(DraftEdit::BgParticleCount(n)))
                         .step(10u32)
                         .width(SLIDER_W),
-                    text(count.to_string()).size(13).color(ui_theme::MUTED),
+                    text(count.to_string())
+                        .size(13)
+                        .color(ui_theme::palette().muted),
                 ]
                 .spacing(ui_theme::SPACING / 2.0)
                 .align_y(Alignment::Center),
@@ -686,7 +688,7 @@ fn background_section<'a>(app: &'a App, d: &'a Theme) -> Element<'a, Msg> {
             row![
                 text(path.to_string_lossy().into_owned())
                     .size(13)
-                    .color(ui_theme::MUTED),
+                    .color(ui_theme::palette().muted),
                 choose(Msg::Themes(ThemesMsg::PickImage)),
             ]
             .spacing(ui_theme::SPACING)
@@ -697,7 +699,7 @@ fn background_section<'a>(app: &'a App, d: &'a Theme) -> Element<'a, Msg> {
             row![
                 text(path.to_string_lossy().into_owned())
                     .size(13)
-                    .color(ui_theme::MUTED),
+                    .color(ui_theme::palette().muted),
                 choose(Msg::Themes(ThemesMsg::PickVideo)),
             ]
             .spacing(ui_theme::SPACING)
@@ -750,7 +752,7 @@ fn transition_section<'a>(app: &'a App, d: &'a Theme) -> Element<'a, Msg> {
         .width(SLIDER_W),
         text(format!("{} ms", tr.duration_ms))
             .size(13)
-            .color(ui_theme::MUTED),
+            .color(ui_theme::palette().muted),
     ]
     .spacing(ui_theme::SPACING / 2.0)
     .align_y(Alignment::Center);

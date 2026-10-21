@@ -2,6 +2,11 @@
 
 ## v2.1.0
 
+### App look
+
+- The operator window takes its colors from the app mark: navy, gold, lavender. The wordmark is set in Lora.
+- Settings has an App theme section with Lumen, Graphite, the previous neutral look, Ember, and Dawn, the first light theme.
+
 ### Bible
 
 - Click a verse to select it, Shift click or drag for a range. The checkbox and "Select to here" are gone.

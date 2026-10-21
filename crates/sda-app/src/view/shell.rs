@@ -72,7 +72,9 @@ fn shortcut_sheet(app: &App) -> Element<'_, Msg> {
             container(text(shortcuts::hints(a)).size(13).font(ui_theme::BOLD))
                 .width(130)
                 .align_x(iced::Right),
-            text(shortcuts::label(a, s)).size(13).color(ui_theme::TEXT),
+            text(shortcuts::label(a, s))
+                .size(13)
+                .color(ui_theme::palette().text),
         ]
         .spacing(ui_theme::SPACING)
         .align_y(Alignment::Center)
@@ -113,9 +115,12 @@ fn top_bar(app: &App) -> Element<'_, Msg> {
     let tabs = segmented(Tab::ALL.iter().map(|t| (t.label(s), *t)), app.tab, Msg::Tab);
     let brand = row![
         image(logo()).width(LOGO_SIZE).height(LOGO_SIZE),
-        text(&s.app_title).size(18).font(ui_theme::BOLD),
+        text(&s.app_title)
+            .size(20)
+            .font(ui_theme::SERIF_BOLD)
+            .color(ui_theme::palette().brand),
     ]
-    .spacing(ui_theme::SPACING / 1.5)
+    .spacing(10)
     .align_y(Alignment::Center);
     // Equal side columns keep the tabs centered whatever the chips say.
     row![
@@ -146,7 +151,7 @@ fn status_chips(app: &App) -> Element<'_, Msg> {
     let dot = if st.library_error {
         palette.danger
     } else if st.sync_busy {
-        ui_theme::ACCENT
+        ui_theme::palette().accent
     } else {
         palette.success
     };
@@ -252,7 +257,7 @@ fn banner(message: &str) -> Element<'_, Msg> {
         .padding([6, ui_theme::SPACING as u16])
         .width(Fill)
         .style(|_| container::Style {
-            background: Some(ui_theme::SURFACE_HI.into()),
+            background: Some(ui_theme::palette().surface_hi.into()),
             ..container::Style::default()
         })
         .into()

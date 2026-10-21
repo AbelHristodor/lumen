@@ -1,5 +1,6 @@
 use iced_test::Simulator;
 use sda_app::msg::settings::{Section, SettingsMsg};
+use sda_app::ui_theme::{self, AppTheme};
 use sda_app::{App, Msg, Tab};
 use sda_core::i18n::Language;
 
@@ -42,6 +43,33 @@ fn language_pick_updates_strings() {
     assert_eq!(app.core.cfg.language.as_deref(), Some("it"));
     let mut ui = Simulator::new(app.view_operator());
     assert!(ui.find("Impostazioni").is_ok());
+}
+
+#[test]
+fn app_theme_pick_applies_and_persists() {
+    let mut app = settings_app(Section::Appearance);
+    let mut ui = Simulator::new(app.view_operator());
+    ui.click("Ember").expect("ember theme row");
+    let msgs: Vec<Msg> = ui.into_messages().collect();
+    drain(&mut app, &msgs);
+    assert!(
+        msgs.iter()
+            .any(|m| matches!(m, Msg::Settings(SettingsMsg::AppTheme(AppTheme::Ember)))),
+        "got {msgs:?}"
+    );
+    assert_eq!(app.core.cfg.app_theme.as_deref(), Some("ember"));
+    assert_eq!(ui_theme::app_theme(), AppTheme::Ember);
+    assert_eq!(ui_theme::theme().to_string(), "Ember");
+    let _ = app.update(Msg::Settings(SettingsMsg::AppTheme(AppTheme::Lumen)));
+}
+
+#[test]
+fn app_theme_code_round_trips() {
+    for t in AppTheme::ALL {
+        assert_eq!(AppTheme::from_code(Some(t.code())), t);
+    }
+    assert_eq!(AppTheme::from_code(None), AppTheme::Lumen);
+    assert_eq!(AppTheme::from_code(Some("neon")), AppTheme::Lumen);
 }
 
 #[test]

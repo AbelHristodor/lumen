@@ -177,7 +177,10 @@ and `window::close_events`. It adds `window::frames` as `Msg::Tick` only while
   from it.
 - The projector is a second Iced window with no decorations. A close request
   only comes from the OS and `Msg::ProjectorClosed` clears the state.
-- One dark palette lives in `ui_theme.rs`. A second palette is one file.
+- App palettes live in `ui_theme.rs` as `AppTheme` variants: Graphite,
+  Lumen, Ember, Dawn. The active one is a process wide atomic read through
+  `ui_theme::palette()`, saved as `Config.app_theme`, picked in Settings
+  under App theme. A new palette is one `Palette` const plus one variant.
 - `i18n::Strings` has every UI string. Tabs take their label from it.
 - The Themes editor shows a Hymn or Bible sample. Verse and reference edits
   switch it to Bible.

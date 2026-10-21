@@ -1,5 +1,6 @@
 //! Settings tab messages. Owned by the Settings tab task.
 
+use crate::ui_theme::AppTheme;
 use sda_core::asis::Converter;
 use sda_core::i18n::{Language, Strings};
 use std::path::PathBuf;
@@ -9,6 +10,7 @@ use std::path::PathBuf;
 pub enum Section {
     #[default]
     General,
+    Appearance,
     Library,
     Display,
     Presenting,
@@ -16,8 +18,9 @@ pub enum Section {
 }
 
 impl Section {
-    pub const ALL: [Section; 5] = [
+    pub const ALL: [Section; 6] = [
         Section::General,
+        Section::Appearance,
         Section::Library,
         Section::Display,
         Section::Presenting,
@@ -27,6 +30,7 @@ impl Section {
     pub fn label(self, s: &Strings) -> &str {
         match self {
             Section::General => &s.settings_general,
+            Section::Appearance => &s.settings_appearance,
             Section::Library => &s.settings_library,
             Section::Display => &s.settings_display,
             Section::Presenting => &s.settings_presenting,
@@ -40,6 +44,7 @@ pub enum SettingsMsg {
     Noop,
     Section(Section),
     Language(Language),
+    AppTheme(AppTheme),
     CheckUpdate,
     ForceSync,
     /// Open the folder picker.

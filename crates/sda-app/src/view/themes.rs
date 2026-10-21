@@ -217,7 +217,7 @@ fn theme_card<'a>(app: &'a App, i: usize, theme: &'a Theme, now: f32) -> Element
         .spacing(6)
         .align_y(Alignment::Center);
     if theme.favorite {
-        info = info.push(text("★").size(13).color(ui_theme::ACCENT));
+        info = info.push(text("★").size(13).color(ui_theme::palette().accent));
     }
     if theme.name == app.core.active_theme.name {
         info = info.push(
@@ -346,7 +346,7 @@ fn preview(app: &App, w: f32) -> Element<'_, Msg> {
     .spacing(ui_theme::SPACING)
     .align_y(Alignment::Center);
     if let Some(e) = &app.themes.error {
-        toolbar = toolbar.push(text(e.as_str()).size(12).color(ui_theme::MUTED));
+        toolbar = toolbar.push(text(e.as_str()).size(12).color(ui_theme::palette().muted));
     }
     card(
         column![ui_theme::section_label(&s.preview), frame, toolbar.wrap(),]

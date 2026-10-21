@@ -52,10 +52,20 @@ fn picker(app: &App) -> Element<'_, Msg> {
                 .unwrap_or_default();
             col = col.push(text(name).size(13));
             if v.opening {
-                col = col.push(text(&s.videos_opening).size(12).color(ui_theme::MUTED));
+                col = col.push(
+                    text(&s.videos_opening)
+                        .size(12)
+                        .color(ui_theme::palette().muted),
+                );
             }
         }
-        None => col = col.push(text(&s.videos_pick_hint).size(13).color(ui_theme::MUTED)),
+        None => {
+            col = col.push(
+                text(&s.videos_pick_hint)
+                    .size(13)
+                    .color(ui_theme::palette().muted),
+            )
+        }
     }
     if let Some(e) = &v.error {
         let danger = ui_theme::theme().palette().danger;
@@ -85,7 +95,7 @@ fn preview(app: &App) -> Element<'_, Msg> {
         (Some(_), false) => text(&s.gpu_unavailable).size(13).center().into(),
         (None, _) => text(&s.videos_pick_hint)
             .size(13)
-            .color(ui_theme::MUTED)
+            .color(ui_theme::palette().muted)
             .center()
             .into(),
     };
@@ -119,7 +129,7 @@ fn transport<'a>(app: &'a App, p: &'a sda_media::Player) -> Element<'a, Msg> {
         format_time(dur)
     ))
     .size(12)
-    .color(ui_theme::MUTED)
+    .color(ui_theme::palette().muted)
     .wrapping(text::Wrapping::None);
     let tbtn = |body: Element<'a, Msg>, msg: Msg| {
         button(body)
@@ -149,12 +159,15 @@ fn transport<'a>(app: &'a App, p: &'a sda_media::Player) -> Element<'a, Msg> {
     })
     .step(0.05_f32)
     .width(100);
-    let mut vol_row = row![text(&s.volume).size(12).color(ui_theme::MUTED), volume]
-        .spacing(6)
-        .align_y(Alignment::Center);
+    let mut vol_row = row![
+        text(&s.volume).size(12).color(ui_theme::palette().muted),
+        volume
+    ]
+    .spacing(6)
+    .align_y(Alignment::Center);
     if p.muted() {
         vol_row = vol_row.push(iced::widget::tooltip(
-            icon(Icon::EyeOff, 13.0).color(ui_theme::MUTED),
+            icon(Icon::EyeOff, 13.0).color(ui_theme::palette().muted),
             container(text(&s.videos_muted_hint).size(12))
                 .padding(6)
                 .style(ui_theme::card),
@@ -162,7 +175,10 @@ fn transport<'a>(app: &'a App, p: &'a sda_media::Player) -> Element<'a, Msg> {
         ));
     }
     let state_hint: Element<'a, Msg> = if p.state() == State::Ended {
-        text(&s.videos_ended).size(12).color(ui_theme::MUTED).into()
+        text(&s.videos_ended)
+            .size(12)
+            .color(ui_theme::palette().muted)
+            .into()
     } else {
         space::horizontal().into()
     };
@@ -219,7 +235,9 @@ fn downloader(app: &App) -> Element<'_, Msg> {
 
     let mut col = column![
         ui_theme::section_label(&s.videos_download),
-        text(&s.downloader_subtitle).size(13).color(ui_theme::MUTED),
+        text(&s.downloader_subtitle)
+            .size(13)
+            .color(ui_theme::palette().muted),
         url_row,
     ]
     .spacing(ui_theme::SPACING);
@@ -230,9 +248,13 @@ fn downloader(app: &App) -> Element<'_, Msg> {
             head = head.push(image(h.clone()).width(160));
         }
         col = col.push(head.push(text(&p.title).size(15)));
-        let mut qualities = row![text(&s.videos_quality).size(13).color(ui_theme::MUTED)]
-            .spacing(ui_theme::SPACING / 2.0)
-            .align_y(Alignment::Center);
+        let mut qualities = row![
+            text(&s.videos_quality)
+                .size(13)
+                .color(ui_theme::palette().muted)
+        ]
+        .spacing(ui_theme::SPACING / 2.0)
+        .align_y(Alignment::Center);
         for q in &p.qualities {
             let active = v.format_id.as_deref() == Some(q.format_id.as_str());
             qualities = qualities.push(
@@ -247,7 +269,9 @@ fn downloader(app: &App) -> Element<'_, Msg> {
 
     let dir = videos::dir(app).to_string_lossy().into_owned();
     let folder_row = row![
-        text(&s.videos_folder).size(13).color(ui_theme::MUTED),
+        text(&s.videos_folder)
+            .size(13)
+            .color(ui_theme::palette().muted),
         text_input("", &dir)
             .style(ui_theme::input)
             .padding([6, 10])
@@ -271,7 +295,7 @@ fn downloader(app: &App) -> Element<'_, Msg> {
             };
             col = col
                 .push(progress_bar(0.0..=100.0, v.percent).girth(6))
-                .push(text(detail).size(13).color(ui_theme::MUTED));
+                .push(text(detail).size(13).color(ui_theme::palette().muted));
         }
         Phase::Done(path) => {
             col = col.push(
@@ -288,7 +312,9 @@ fn downloader(app: &App) -> Element<'_, Msg> {
             );
         }
         Phase::Failed => col = col.push(text(&v.message).size(13)),
-        Phase::Probing => col = col.push(text(&s.probing).size(13).color(ui_theme::MUTED)),
+        Phase::Probing => {
+            col = col.push(text(&s.probing).size(13).color(ui_theme::palette().muted))
+        }
         Phase::Idle | Phase::Ready => {}
     }
 
@@ -311,7 +337,11 @@ fn history(app: &App) -> Element<'_, Msg> {
     let s = &app.core.strings;
     let mut rows = column![].spacing(ui_theme::SPACING / 2.0);
     if app.core.downloads.is_empty() {
-        rows = rows.push(text(&s.downloads_empty).size(13).color(ui_theme::MUTED));
+        rows = rows.push(
+            text(&s.downloads_empty)
+                .size(13)
+                .color(ui_theme::palette().muted),
+        );
     }
     for rec in &app.core.downloads {
         rows = rows.push(
@@ -324,7 +354,7 @@ fn history(app: &App) -> Element<'_, Msg> {
                         rec.path.to_string_lossy()
                     ))
                     .size(11)
-                    .color(ui_theme::MUTED),
+                    .color(ui_theme::palette().muted),
                 ]
                 .spacing(2)
                 .width(Fill),

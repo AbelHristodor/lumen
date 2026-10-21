@@ -71,10 +71,14 @@ fn search_panel(app: &App) -> Element<'_, Msg> {
     let mut list = column![].spacing(2);
     if p.hits.is_empty() {
         list = list.push(
-            container(text(&s.no_results).size(13).color(ui_theme::MUTED))
-                .padding(SPACING)
-                .width(Fill)
-                .center_x(Fill),
+            container(
+                text(&s.no_results)
+                    .size(13)
+                    .color(ui_theme::palette().muted),
+            )
+            .padding(SPACING)
+            .width(Fill)
+            .center_x(Fill),
         );
     }
     for pos in 0..p.hits.len() {
@@ -120,7 +124,7 @@ fn hymn_row(hymn: &Hymn, selected: bool, show_library: bool, pos: usize) -> Elem
         line = line.push(space::horizontal()).push(
             text(&hymn.library)
                 .size(11)
-                .color(ui_theme::MUTED)
+                .color(ui_theme::palette().muted)
                 .wrapping(text::Wrapping::None),
         );
     }
@@ -172,7 +176,7 @@ fn preview(app: &App, w: f32, h: f32) -> Element<'_, Msg> {
     let inner: Element<'_, Msg> = match st::selected_hymn(app).map(|(_, h)| h) {
         None => text(&s.nothing_selected)
             .size(14)
-            .color(ui_theme::MUTED)
+            .color(ui_theme::palette().muted)
             .into(),
         Some(_) if app.gpu_ok => {
             match st::slide_scene(app, p.preview_slide, (w as u32, h as u32)) {
@@ -238,7 +242,7 @@ fn thumbs(app: &App) -> Element<'_, Msg> {
         strip = strip.push(
             text(format!("+{}", count - MAX_THUMBS))
                 .size(13)
-                .color(ui_theme::MUTED),
+                .color(ui_theme::palette().muted),
         );
     }
     scrollable(container(strip).padding(iced::Padding::ZERO.bottom(10)))
@@ -359,7 +363,11 @@ fn side_panel(app: &App) -> Element<'_, Msg> {
         .unwrap_or(0);
     let mut rows = column![].spacing(2);
     if app.core.history.is_empty() {
-        rows = rows.push(text(&s.history_empty).size(13).color(ui_theme::MUTED));
+        rows = rows.push(
+            text(&s.history_empty)
+                .size(13)
+                .color(ui_theme::palette().muted),
+        );
     }
     for e in &app.core.history {
         let indexed = app
@@ -368,9 +376,9 @@ fn side_panel(app: &App) -> Element<'_, Msg> {
             .as_ref()
             .is_some_and(|sr| sr.has_path(&e.path));
         let color = if indexed {
-            ui_theme::TEXT
+            ui_theme::palette().text
         } else {
-            ui_theme::MUTED
+            ui_theme::palette().muted
         };
         let line = row![
             text(e.number.clone().unwrap_or_default())
@@ -385,7 +393,7 @@ fn side_panel(app: &App) -> Element<'_, Msg> {
                 .wrapping(text::Wrapping::None),
             text(relative_time(s, e.opened_at, unix_now))
                 .size(11)
-                .color(ui_theme::MUTED),
+                .color(ui_theme::palette().muted),
         ]
         .spacing(4)
         .height(Fill)

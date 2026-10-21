@@ -4,10 +4,12 @@ use crate::app::App;
 use crate::msg::settings::Section;
 use crate::msg::{Msg, SettingsMsg};
 use crate::state::settings::{data_dir, installed_bibles};
-use crate::ui_theme;
+use crate::ui_theme::{self, AppTheme};
 use crate::widgets::card::card;
 use crate::widgets::segmented::segmented_on_card;
-use iced::widget::{Column, button, column, container, pick_list, row, scrollable, text, toggler};
+use iced::widget::{
+    Column, button, column, container, pick_list, row, scrollable, space, text, toggler,
+};
 use iced::{Alignment, Element, Fill};
 use sda_core::asis::Converter;
 use sda_core::i18n::Language;
@@ -36,7 +38,7 @@ fn heading(label: &str) -> Element<'_, Msg> {
 }
 
 fn hint(label: &str) -> Element<'_, Msg> {
-    text(label).size(13).color(ui_theme::MUTED).into()
+    text(label).size(13).color(ui_theme::palette().muted).into()
 }
 
 fn ghost<'a>(label: &'a str, msg: Option<Msg>) -> Element<'a, Msg> {
@@ -95,6 +97,7 @@ pub fn show(app: &App) -> Element<'_, Msg> {
         });
     let body = match section {
         Section::General => general(app),
+        Section::Appearance => appearance(app),
         Section::Library => library_section(app),
         Section::Display => display(app),
         Section::Presenting => presenting(app),
@@ -129,7 +132,7 @@ fn general(app: &App) -> Column<'_, Msg> {
     if let Some(u) = app.status.update.as_deref().filter(|u| !u.is_empty()) {
         let palette = ui_theme::theme().palette();
         let dot = if checking {
-            ui_theme::ACCENT
+            ui_theme::palette().accent
         } else if app.status.update_staged {
             palette.warning
         } else if *u == s.update_failed {
@@ -145,6 +148,45 @@ fn general(app: &App) -> Column<'_, Msg> {
     ]
 }
 
+/// One row per app theme: three swatches, the name, an accent outline on
+/// the active one.
+fn appearance(app: &App) -> Column<'_, Msg> {
+    let s = &app.core.strings;
+    let active = ui_theme::app_theme();
+    let swatch = |c: iced::Color| {
+        container(space().width(18).height(18)).style(move |_| container::Style {
+            background: Some(c.into()),
+            border: iced::Border {
+                color: ui_theme::palette().surface_hi,
+                width: 1.0,
+                radius: 4.0.into(),
+            },
+            ..container::Style::default()
+        })
+    };
+    let rows = AppTheme::ALL.into_iter().map(|t| {
+        let p = t.palette();
+        button(
+            row![
+                row![swatch(p.bg), swatch(p.surface), swatch(p.accent)].spacing(4),
+                text(t.label()).size(14),
+            ]
+            .spacing(ui_theme::SPACING)
+            .align_y(Alignment::Center),
+        )
+        .padding([8, 12])
+        .width(Fill)
+        .style(ui_theme::outlined_row(t == active))
+        .on_press(m(SettingsMsg::AppTheme(t)))
+        .into()
+    });
+    column![group([
+        heading(&s.app_theme_heading),
+        hint(&s.app_theme_hint),
+        Column::with_children(rows).spacing(4).into(),
+    ])]
+}
+
 fn library_section(app: &App) -> Column<'_, Msg> {
     let s = &app.core.strings;
     let busy = app.status.sync_busy;
@@ -157,7 +199,7 @@ fn library_section(app: &App) -> Column<'_, Msg> {
     let dot = if app.status.library_error {
         palette.danger
     } else if busy {
-        ui_theme::ACCENT
+        ui_theme::palette().accent
     } else {
         palette.success
     };
@@ -186,7 +228,7 @@ fn library_section(app: &App) -> Column<'_, Msg> {
             container(
                 text(truncate_middle(&lib.path, 48))
                     .size(12)
-                    .color(ui_theme::MUTED)
+                    .color(ui_theme::palette().muted)
             )
             .width(Fill),
             toggler(lib.enabled).size(18).on_toggle({
@@ -208,7 +250,7 @@ fn library_section(app: &App) -> Column<'_, Msg> {
                 .padding([6, 10])
                 .width(Fill)
                 .style(|_| container::Style {
-                    background: Some(ui_theme::SURFACE_HI.into()),
+                    background: Some(ui_theme::palette().surface_hi.into()),
                     border: iced::Border::default().rounded(ui_theme::RADIUS),
                     ..container::Style::default()
                 }),
@@ -267,7 +309,7 @@ fn display(app: &App) -> Column<'_, Msg> {
         container(picker)
             .padding(4)
             .style(|_| container::Style {
-                background: Some(ui_theme::BG.into()),
+                background: Some(ui_theme::palette().bg.into()),
                 border: iced::Border::default().rounded(ui_theme::RADIUS),
                 ..container::Style::default()
             })

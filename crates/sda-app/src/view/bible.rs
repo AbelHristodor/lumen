@@ -148,7 +148,7 @@ fn empty_state(app: &App) -> Element<'_, Msg> {
         .style(ui_theme::accent_button)
         .on_press(b(BibleMsg::ManageOpen));
     card(center(
-        column![text(line).size(15).color(ui_theme::MUTED), open]
+        column![text(line).size(15).color(ui_theme::palette().muted), open]
             .spacing(ui_theme::SPACING)
             .align_x(Alignment::Center),
     ))
@@ -264,7 +264,7 @@ fn verses_pane(app: &App) -> Element<'_, Msg> {
             text(n.to_string())
                 .size(12)
                 .font(ui_theme::BOLD)
-                .color(ui_theme::MUTED)
+                .color(ui_theme::palette().muted)
                 .width(26),
             text(verse).size(14).width(Fill),
         ]
@@ -284,7 +284,12 @@ fn verses_pane(app: &App) -> Element<'_, Msg> {
     }))
     .spacing(2);
     let list: Element<'_, Msg> = if st.chapter_count() == 0 {
-        center(text(&s.bible_pick_chapter).size(13).color(ui_theme::MUTED)).into()
+        center(
+            text(&s.bible_pick_chapter)
+                .size(13)
+                .color(ui_theme::palette().muted),
+        )
+        .into()
     } else {
         scrollable(gutter(rows))
             .direction(thin_scrollbar())
@@ -334,7 +339,12 @@ fn preview_pane(app: &App) -> Element<'_, Msg> {
     let i = st.preview_slide.min(count.saturating_sub(1));
     let w = PREVIEW_WIDTH - 2.0 * ui_theme::SPACING;
     let frame: Element<'_, Msg> = match slides.get(i) {
-        None => center(text(&s.bible_preview_empty).size(13).color(ui_theme::MUTED)).into(),
+        None => center(
+            text(&s.bible_preview_empty)
+                .size(13)
+                .color(ui_theme::palette().muted),
+        )
+        .into(),
         Some(content) if app.gpu_ok => {
             match crate::state::bible::preview_scene(
                 app,
@@ -402,7 +412,9 @@ fn preview_pane(app: &App) -> Element<'_, Msg> {
                     text(format_reference(r, lang))
                         .size(12)
                         .font(ui_theme::BOLD),
-                    text(verse.as_str()).size(12).color(ui_theme::MUTED),
+                    text(verse.as_str())
+                        .size(12)
+                        .color(ui_theme::palette().muted),
                 ]
                 .spacing(2),
             )
@@ -417,7 +429,7 @@ fn preview_pane(app: &App) -> Element<'_, Msg> {
             center(
                 text(&s.bible_search_empty)
                     .size(13)
-                    .color(ui_theme::MUTED)
+                    .color(ui_theme::palette().muted)
                     .center(),
             )
             .padding(ui_theme::SPACING)
@@ -449,7 +461,7 @@ fn history_list(app: &App) -> Element<'_, Msg> {
         return center(
             text(&s.verse_history_empty)
                 .size(13)
-                .color(ui_theme::MUTED)
+                .color(ui_theme::palette().muted)
                 .center(),
         )
         .padding(ui_theme::SPACING)
@@ -459,9 +471,9 @@ fn history_list(app: &App) -> Element<'_, Msg> {
     let rows = Column::with_children(app.core.verse_history.iter().enumerate().map(|(i, e)| {
         let installed = st.installed.contains(&e.version);
         let color = if installed {
-            ui_theme::TEXT
+            ui_theme::palette().text
         } else {
-            ui_theme::MUTED
+            ui_theme::palette().muted
         };
         let r = Reference {
             book: e.book,
@@ -480,7 +492,7 @@ fn history_list(app: &App) -> Element<'_, Msg> {
                 .style(ui_theme::chip),
             text(crate::state::present::relative_time(s, e.presented_at, now))
                 .size(11)
-                .color(ui_theme::MUTED),
+                .color(ui_theme::palette().muted),
         ]
         .spacing(6)
         .align_y(Alignment::Center);
@@ -520,7 +532,7 @@ fn manage_modal(app: &App) -> Element<'_, Msg> {
         .size(13);
     let mut col = column![header, filter].spacing(ui_theme::SPACING);
     if let Some(e) = &st.error {
-        col = col.push(text(e.as_str()).size(12).color(ui_theme::MUTED));
+        col = col.push(text(e.as_str()).size(12).color(ui_theme::palette().muted));
     }
     let list: Element<'_, Msg> = if st.index.is_empty() {
         let line = if st.busy.is_some() {
@@ -528,9 +540,13 @@ fn manage_modal(app: &App) -> Element<'_, Msg> {
         } else {
             &s.bible_download
         };
-        center(text(line.as_str()).size(13).color(ui_theme::MUTED))
-            .height(120)
-            .into()
+        center(
+            text(line.as_str())
+                .size(13)
+                .color(ui_theme::palette().muted),
+        )
+        .height(120)
+        .into()
     } else {
         scrollable(gutter(version_list(s, st)))
             .direction(thin_scrollbar())
@@ -575,7 +591,7 @@ fn version_list<'a>(s: &'a Strings, st: &'a BibleState) -> Element<'a, Msg> {
             col = col.push(
                 text(v.language.as_str())
                     .size(12)
-                    .color(ui_theme::MUTED)
+                    .color(ui_theme::palette().muted)
                     .font(ui_theme::BOLD),
             );
         }

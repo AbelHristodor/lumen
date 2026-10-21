@@ -57,6 +57,9 @@ pub struct Config {
     /// Playback volume, 0.0 to 1.0.
     #[serde(default = "full_volume")]
     pub video_volume: f32,
+    /// Code of the operator window palette. `None` => the app default.
+    #[serde(default)]
+    pub app_theme: Option<String>,
 }
 
 impl Default for Config {
@@ -71,6 +74,7 @@ impl Default for Config {
             bible_version: None,
             video_dir: None,
             video_volume: 1.0,
+            app_theme: None,
         }
     }
 }
@@ -294,6 +298,7 @@ mod tests {
             bible_version: None,
             video_dir: None,
             video_volume: 1.0,
+            app_theme: None,
         };
         let text = cfg.to_toml().unwrap();
         let back = Config::from_toml(&text).unwrap();
@@ -331,6 +336,7 @@ mod tests {
             bible_version: None,
             video_dir: None,
             video_volume: 1.0,
+            app_theme: None,
         };
         let back = Config::from_toml(&cfg.to_toml().unwrap()).unwrap();
         assert_eq!(back.download_dir, Some("/home/user/Videos".into()));
@@ -348,6 +354,7 @@ mod tests {
             bible_version: None,
             video_dir: None,
             video_volume: 1.0,
+            app_theme: None,
         };
         let back = Config::from_toml(&cfg.to_toml().unwrap()).unwrap();
         assert_eq!(back.language, Some("ro".into()));
@@ -389,6 +396,7 @@ mod tests {
             bible_version: None,
             video_dir: None,
             video_volume: 1.0,
+            app_theme: None,
         };
         set_library_enabled(&mut cfg, "/tmp/u", false);
         assert!(!cfg.libraries[0].enabled);
@@ -413,6 +421,7 @@ mod tests {
             bible_version: None,
             video_dir: None,
             video_volume: 1.0,
+            app_theme: None,
         };
         set_library_enabled(&mut cfg, "/data/default", false);
         assert!(!cfg.libraries[0].enabled);
@@ -494,6 +503,7 @@ mod tests {
             bible_version: None,
             video_dir: None,
             video_volume: 1.0,
+            app_theme: None,
         };
         remove_user_library(&mut cfg, "/tmp/mine");
         assert_eq!(cfg.libraries.len(), 1);

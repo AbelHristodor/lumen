@@ -106,22 +106,22 @@ impl<M> canvas::Program<M> for Picker<'_, M> {
             let fill = if picked {
                 Color {
                     a: 0.35,
-                    ..ui_theme::ACCENT
+                    ..ui_theme::palette().accent
                 }
             } else if hover == Some(i) {
                 Color {
                     a: 0.9,
-                    ..ui_theme::SURFACE_HI
+                    ..ui_theme::palette().surface_hi
                 }
             } else {
-                ui_theme::SURFACE_HI
+                ui_theme::palette().surface_hi
             };
             let path = Path::rounded_rectangle(r.position(), r.size(), 4.0.into());
             frame.fill(&path, fill);
             let edge = if picked {
-                ui_theme::ACCENT
+                ui_theme::palette().accent
             } else {
-                ui_theme::MUTED
+                ui_theme::palette().muted
             };
             frame.stroke(
                 &path,
@@ -132,7 +132,11 @@ impl<M> canvas::Program<M> for Picker<'_, M> {
             frame.fill_text(Text {
                 content: (i + 1).to_string(),
                 position: Point::new(r.center_x(), r.center_y()),
-                color: if picked { Color::WHITE } else { ui_theme::TEXT },
+                color: if picked {
+                    Color::WHITE
+                } else {
+                    ui_theme::palette().text
+                },
                 size: (r.height * 0.4).clamp(12.0, 28.0).into(),
                 font: ui_theme::BOLD,
                 align_x: iced::advanced::text::Alignment::Center,
@@ -143,7 +147,7 @@ impl<M> canvas::Program<M> for Picker<'_, M> {
                 frame.fill_text(Text {
                     content: label.to_string(),
                     position: Point::new(r.center_x(), r.y + r.height - 14.0),
-                    color: ui_theme::MUTED,
+                    color: ui_theme::palette().muted,
                     size: 11.0.into(),
                     align_x: iced::advanced::text::Alignment::Center,
                     align_y: Vertical::Center,

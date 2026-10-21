@@ -74,6 +74,7 @@ pub fn update(app: &mut App, msg: SettingsMsg) -> Task<Msg> {
             }
         }
         SettingsMsg::Language(lang) => app.core.set_language(lang),
+        SettingsMsg::AppTheme(theme) => app.core.set_app_theme(theme),
         SettingsMsg::CheckUpdate => {
             app.status.update = Some(app.core.strings.update_checking.clone());
             return workers::update_check(&app.core);
