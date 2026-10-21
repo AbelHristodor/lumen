@@ -51,6 +51,8 @@ pub struct VideosState {
     pub error: Option<String>,
     /// Playback volume, 0.0 to 1.0, from the config.
     pub volume: f32,
+    /// Seconds under the seek slider while it is dragged.
+    pub scrub: Option<f32>,
 }
 
 impl Default for VideosState {
@@ -72,6 +74,7 @@ impl Default for VideosState {
             opening: false,
             error: None,
             volume: 1.0,
+            scrub: None,
         }
     }
 }
@@ -104,20 +107,10 @@ pub fn tick(app: &App) {
     }
 }
 
-/// Let go of the preview player. When it is also live the live state keeps
-/// its own clone and plays on. Otherwise this was the last clone and the
-/// drop stops its ffmpeg children.
+/// Let go of the preview player.
 fn release_preview(app: &mut App) {
-    if let Some(old) = app.videos.player.take() {
-        let live = app
-            .live
-            .player
-            .as_ref()
-            .is_some_and(|l| Arc::ptr_eq(l, &old));
-        if !live {
-            drop(old);
-        }
-    }
+    // Live holds its own clone, so dropping here never stops a live video.
+    app.videos.player = None;
 }
 
 /// The folder downloads go to. Falls back to the config when `dir` is unset.
@@ -277,16 +270,19 @@ pub fn update(app: &mut App, msg: VideosMsg) -> Task<Msg> {
             v.opening = true;
             return crate::workers::open_video(path, projector_size(app));
         }
-        VideosMsg::Opened(result) => {
-            release_preview(app);
-            let v = &mut app.videos;
-            v.opening = false;
-            match result {
-                Ok(player) => {
-                    player.set_volume(v.volume);
-                    v.player = Some(player);
-                }
-                Err(e) => v.error = Some(e),
+        // A result for an older pick is dropped. The newer pick is still opening.
+        VideosMsg::Opened(Ok(player)) => {
+            if v.picked.as_deref() == Some(player.file()) {
+                v.opening = false;
+                v.scrub = None;
+                player.set_volume(v.volume);
+                v.player = Some(player);
+            }
+        }
+        VideosMsg::Opened(Err(e)) => {
+            if v.opening {
+                v.opening = false;
+                v.error = Some(e);
             }
         }
         VideosMsg::Toggle => {
@@ -294,7 +290,9 @@ pub fn update(app: &mut App, msg: VideosMsg) -> Task<Msg> {
                 p.toggle();
             }
         }
+        VideosMsg::Scrub(secs) => v.scrub = Some(secs),
         VideosMsg::Seek(secs) => {
+            v.scrub = None;
             if let Some(p) = &v.player {
                 p.seek(Duration::from_secs_f32(secs.max(0.0)));
             }

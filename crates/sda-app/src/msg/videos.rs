@@ -26,7 +26,9 @@ pub enum VideosMsg {
     Opened(Result<Arc<sda_media::Player>, String>),
     /// Play or pause the preview player, which is the live one once presented.
     Toggle,
-    /// Seek to a position in seconds, from the slider.
+    /// The seek slider moved. Only stored, the seek waits for release.
+    Scrub(f32),
+    /// Seek to a position in seconds, on slider release.
     Seek(f32),
     /// Step by seconds, the arrows and the step buttons.
     Step(i64),

@@ -189,10 +189,11 @@ captured check, Escape so it clears while the Bible bar has focus.
 | Cmd/Ctrl+1..5 | switch tab |
 | Cmd/Ctrl+K, Cmd/Ctrl+F | focus the search of the current tab |
 | Cmd/Ctrl+O | toggle projector |
-| Enter | present the preview, Present and Bible |
+| Enter | present the preview, Present, Bible, and Videos |
 | Esc | clear search or selection, close a dialog or the sheet |
 | Cmd/Ctrl+. | stop live |
-| Left / Right, Space | live prev / next |
+| Left / Right | live prev / next, or 10 s back / forward on a video |
+| Space | pause a live video, else next slide |
 | B | blank toggle |
 | 1..9 | live jump to slide N |
 | Up / Down | move the hymn selection, Present only |

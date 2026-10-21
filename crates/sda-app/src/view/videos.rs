@@ -105,25 +105,33 @@ fn transport<'a>(app: &'a App, p: &'a sda_media::Player) -> Element<'a, Msg> {
     let pos = p.position();
     let dur = p.duration();
     let playing = p.state() == State::Playing;
-    let seek = slider(0.0..=dur.as_secs_f32().max(0.01), pos.as_secs_f32(), |x| {
-        Msg::Videos(VideosMsg::Seek(x))
+    // While dragging the slider shows the scrub value. The seek runs once on release.
+    let shown = app.videos.scrub.unwrap_or(pos.as_secs_f32());
+    let seek = slider(0.0..=dur.as_secs_f32().max(0.01), shown, |x| {
+        Msg::Videos(VideosMsg::Scrub(x))
     })
+    .on_release(Msg::Videos(VideosMsg::Seek(shown)))
     .step(0.1_f32);
-    let time = text(format!("{} / {}", format_time(pos), format_time(dur)))
-        .size(12)
-        .color(ui_theme::MUTED)
-        .wrapping(text::Wrapping::None);
-    let ghost = |body: Element<'a, Msg>, msg: Msg| {
+    let shown_time = std::time::Duration::from_secs_f32(shown.max(0.0));
+    let time = text(format!(
+        "{} / {}",
+        format_time(shown_time),
+        format_time(dur)
+    ))
+    .size(12)
+    .color(ui_theme::MUTED)
+    .wrapping(text::Wrapping::None);
+    let tbtn = |body: Element<'a, Msg>, msg: Msg| {
         button(body)
             .padding([6, 10])
             .style(ui_theme::ghost_button)
             .on_press(msg)
     };
-    let back = ghost(
+    let back = tbtn(
         icon(Icon::SkipBack, 14.0).into(),
         Msg::Videos(VideosMsg::Step(-10)),
     );
-    let fwd = ghost(
+    let fwd = tbtn(
         icon(Icon::SkipForward, 14.0).into(),
         Msg::Videos(VideosMsg::Step(10)),
     );
@@ -132,7 +140,7 @@ fn transport<'a>(app: &'a App, p: &'a sda_media::Player) -> Element<'a, Msg> {
     } else {
         (Icon::Play, s.play.as_str())
     };
-    let toggle = ghost(
+    let toggle = tbtn(
         labeled(Some(play_icon), play_label, 13.0, None),
         Msg::Videos(VideosMsg::Toggle),
     );

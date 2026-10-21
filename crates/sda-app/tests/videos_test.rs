@@ -251,6 +251,38 @@ mod with_fake_ffmpeg {
     }
 
     #[test]
+    fn scrub_only_stores_and_release_seeks() {
+        let _env = env_lock();
+        let (mut app, player) = opened_app();
+        let _ = app.update(Msg::Videos(VideosMsg::Scrub(1.0)));
+        assert_eq!(app.videos.scrub, Some(1.0));
+        assert_eq!(player.position(), Duration::ZERO);
+        let _ = app.update(Msg::Videos(VideosMsg::Seek(1.0)));
+        assert_eq!(player.position(), Duration::from_secs(1));
+        assert_eq!(app.videos.scrub, None);
+    }
+
+    #[test]
+    fn a_late_open_for_an_older_pick_is_dropped() {
+        let _env = env_lock();
+        unsafe { std::env::set_var("LUMEN_NO_AUDIO", "1") };
+        unsafe { std::env::set_var("FAKE_FRAMES", "60") };
+        let player =
+            Arc::new(Player::open(&fake(), std::path::Path::new("clip.mp4"), (320, 180)).unwrap());
+        unsafe { std::env::remove_var("FAKE_FRAMES") };
+        let mut app = app();
+        let _ = app.update(Msg::Videos(VideosMsg::FileChosen(Some(PathBuf::from(
+            "clip.mp4",
+        )))));
+        let _ = app.update(Msg::Videos(VideosMsg::FileChosen(Some(PathBuf::from(
+            "other.mp4",
+        )))));
+        let _ = app.update(Msg::Videos(VideosMsg::Opened(Ok(player))));
+        assert!(app.videos.player.is_none());
+        assert!(app.videos.opening);
+    }
+
+    #[test]
     fn present_puts_the_same_player_live_and_enter_does_too() {
         let _env = env_lock();
         let (mut app, player) = opened_app();
