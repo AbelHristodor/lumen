@@ -1,5 +1,18 @@
 # Changelog
 
+## v2.2.1
+
+### Videos
+
+- ffmpeg and yt-dlp downloads now match the machine. Linux aarch64 got an x86_64 ffmpeg and a yt-dlp that needed Python. macOS used a source that has shut down, so no Mac could fetch ffmpeg. Both tools are run once before they are kept, so a broken download is reported instead of saved.
+- A theme with a video background fetches ffmpeg on its own. Before, it needed the Videos tab to have run first.
+- Download history drops files that were deleted or moved.
+- No more Broken pipe output from ffmpeg when the app quits, and no ffmpeg left running after it.
+
+### Hymns
+
+- A deck that crashes the parser is skipped instead of failing the whole index.
+
 ## v2.2.0
 
 ### App look
