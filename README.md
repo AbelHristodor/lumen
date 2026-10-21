@@ -4,10 +4,10 @@
 
 # Lumen
 
-[![Latest release](https://img.shields.io/github/v/release/AbelHristodor/lumen?label=release&color=4F8CFF)](https://github.com/AbelHristodor/lumen/releases/latest)
-[![Downloads](https://img.shields.io/github/downloads/AbelHristodor/lumen/total?color=F5B83D)](https://github.com/AbelHristodor/lumen/releases)
+[![Latest release](https://img.shields.io/github/v/release/AbelHristodor/lumen?label=release&color=F0C96E)](https://github.com/AbelHristodor/lumen/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/AbelHristodor/lumen/total?color=F59E4B)](https://github.com/AbelHristodor/lumen/releases)
 [![Release build](https://img.shields.io/github/actions/workflow/status/AbelHristodor/lumen/release.yml?label=release%20build)](https://github.com/AbelHristodor/lumen/actions/workflows/release.yml)
-[![Platforms](https://img.shields.io/badge/platforms-macOS%20%7C%20Windows%20%7C%20Linux-8A909C)](#install)
+[![Platforms](https://img.shields.io/badge/platforms-macOS%20%7C%20Windows%20%7C%20Linux-98A1BF)](#install)
 [![Rust 1.88+](https://img.shields.io/badge/rust-1.88%2B-orange?logo=rust)](https://www.rust-lang.org)
 [![Languages](https://img.shields.io/badge/languages-EN%20%7C%20IT%20%7C%20RO-3DD68C)](#features)
 
@@ -61,6 +61,8 @@ folders of slides too.
   hymnal.
 - **Video downloader.** Paste a YouTube link, pick a quality, and save the
   video to a folder.
+- **App themes.** Lumen, Graphite, Ember, or the light Dawn for the operator
+  window. Projection themes stay separate.
 - **Multilingual UI.** English, Italian, and Romanian.
 - **Keyboard first.** Every live action has a key. See the table below.
 - **Always up to date.** The hymnal and the app update from the latest release.

@@ -1,11 +1,14 @@
 # Changelog
 
-## v2.1.0
+## v2.2.0
 
 ### App look
 
 - The operator window takes its colors from the app mark: navy, gold, lavender. The wordmark is set in Lora.
-- Settings has an App theme section with Lumen, Graphite, the previous neutral look, Ember, and Dawn, the first light theme.
+- Settings has an App theme section with four palettes. Lumen is the default. Graphite is the neutral look of 2.1 and earlier. Ember is warm charcoal with amber. Dawn is light, cream with a navy accent. The pick is saved and applies at once.
+- README screenshots show the 2.2 look.
+
+## v2.1.0
 
 ### Bible
 
