@@ -39,5 +39,16 @@ jobs:
       - name: Test
         run: cargo test --workspace
 
+      # GitHub-hosted Windows runners expose a software D3D12 adapter (WARP).
+      # It is not a hardware-performance test, but it exercises adapter/device
+      # creation and compiles every production renderer pipeline on DX12.
+      - name: Windows DX12 renderer smoke test
+        if: runner.os == 'Windows'
+        env:
+          WGPU_BACKEND: dx12
+          LUMEN_REQUIRE_GPU: "1"
+          RUST_LOG: wgpu_core=info,wgpu_hal=info
+        run: cargo test -p sda-render --test gpu_smoke -- --nocapture
+
       - name: Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
